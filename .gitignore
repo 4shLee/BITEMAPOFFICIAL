@@ -1,0 +1,18 @@
+# Laravel backend
+backend/vendor/
+backend/.env
+backend/storage/logs/*.log
+backend/bootstrap/cache/*.php
+
+# React frontend
+frontend/node_modules/
+frontend/.env
+frontend/dist/
+
+# Temp / generated files
+tmp/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
