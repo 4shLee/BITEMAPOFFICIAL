@@ -5,15 +5,15 @@ import { Badge } from '../components/UI/Badge';
 import { Button } from '../components/UI/Button';
 import { toast } from 'sonner';
 import { usersAPI } from '../../lib/services/api';
-import { ASSIGNABLE_ROLES, getRoleLabel, normalizeRoleKey } from '../../lib/auth/roleAccess';
+import { ASSIGNABLE_ROLES, getRoleLabel, getStoredUser, isSystemAdminRole, normalizeRoleKey } from '../../lib/auth/roleAccess';
 
 const ROLES = ASSIGNABLE_ROLES;
-function UserModal({ user, onClose, onSave }: { user: any; onClose: () => void; onSave: (data: any) => void; }) {
+function UserModal({ user, roles, onClose, onSave }: { user: any; roles: typeof ASSIGNABLE_ROLES; onClose: () => void; onSave: (data: any) => void; }) {
   const [form, setForm] = useState({
     name: user.name || '',
     email: user.email || '',
     phone: user.phone || '',
-    role: user.role || 'Nurse/Vaccinator',
+    role: normalizeRoleKey(user.role || 'nurse_vaccinator'),
     status: user.status || 'Active',
     password: '',
   });
@@ -77,7 +77,7 @@ function UserModal({ user, onClose, onSave }: { user: any; onClose: () => void; 
               onChange={e => setForm({ ...form, role: e.target.value })}
               className="w-full px-3.5 py-2.5 bg-input-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
             >
-              {ROLES.map(role => <option key={role.value} value={role.value}>{role.label}</option>)}
+              {roles.map(role => <option key={role.value} value={role.value}>{role.label}</option>)}
             </select>
             {user?.approval_status === 'pending' && (
               <p className="mt-1.5 text-xs text-muted-foreground">You can change the requested role before approving this account.</p>
@@ -142,6 +142,11 @@ const formatApproval = (status: string) => {
 };
 
 export function Users() {
+  const currentUser = getStoredUser();
+  const currentUserIsSystemAdmin = isSystemAdminRole(currentUser?.role);
+  const assignableRoles = currentUserIsSystemAdmin
+    ? ROLES
+    : ROLES.filter((role) => normalizeRoleKey(role.value) !== 'system_admin');
   const [users, setUsers] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -283,6 +288,7 @@ export function Users() {
                   const approval = user.approval_status || 'approved';
                   const isPending = approval === 'pending';
                   const isRejected = approval === 'rejected';
+                  const canManageUser = currentUserIsSystemAdmin || normalizeRoleKey(user.role) !== 'system_admin';
 
                   return (
                     <tr key={user.id} className="hover:bg-muted/30 transition-colors">
@@ -301,14 +307,16 @@ export function Users() {
                       <td className="px-6 py-4 text-xs text-muted-foreground">{user.lastLogin || 'Never'}</td>
                       <td className="px-6 py-4">
                         <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            onClick={() => { setEditingUser(user); setShowModal(true); }}
-                            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-primary font-medium hover:bg-primary-bg transition-colors"
-                          >
-                            <Edit className="w-3.5 h-3.5" /> Edit
-                          </button>
+                          {canManageUser && (
+                            <button
+                              onClick={() => { setEditingUser(user); setShowModal(true); }}
+                              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-primary font-medium hover:bg-primary-bg transition-colors"
+                            >
+                              <Edit className="w-3.5 h-3.5" /> Edit
+                            </button>
+                          )}
 
-                          {(isPending || isRejected) && (
+                          {canManageUser && (isPending || isRejected) && (
                             <button
                               onClick={() => handleApprove(user)}
                               className="inline-flex items-center gap-1.5 rounded-md border border-success/30 bg-success-bg px-2.5 py-1.5 text-xs text-success font-medium hover:bg-success/10 transition-colors"
@@ -317,7 +325,7 @@ export function Users() {
                             </button>
                           )}
 
-                          {isPending && (
+                          {canManageUser && isPending && (
                             <button
                               onClick={() => handleReject(user)}
                               className="inline-flex items-center gap-1.5 rounded-md border border-destructive/30 bg-destructive-bg px-2.5 py-1.5 text-xs text-destructive font-medium hover:bg-destructive/10 transition-colors"
@@ -326,7 +334,7 @@ export function Users() {
                             </button>
                           )}
 
-                          {!isPending && !isRejected && (
+                          {canManageUser && !isPending && !isRejected && (
                             <button
                               onClick={() => handleToggleStatus(user)}
                               className={'inline-flex items-center rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors ' + (user.status === 'Active' ? 'border-destructive/30 bg-destructive-bg text-destructive hover:bg-destructive/10' : 'border-success/30 bg-success-bg text-success hover:bg-success/10')}
@@ -352,6 +360,7 @@ export function Users() {
       {showModal && (
         <UserModal
           user={editingUser}
+          roles={assignableRoles}
           onClose={() => { setShowModal(false); setEditingUser(null); }}
           onSave={handleSave}
         />

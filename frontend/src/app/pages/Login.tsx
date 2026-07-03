@@ -12,7 +12,7 @@ const initialRequestForm = {
   fullName: "",
   email: "",
   phone: "",
-  role: "Nurse/Vaccinator",
+  role: "nurse_vaccinator",
   password: "",
   confirmPassword: "",
 };

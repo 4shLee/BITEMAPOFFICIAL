@@ -17,6 +17,7 @@ use App\Support\DefaultAdminAccount;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
@@ -33,7 +34,7 @@ class BitemapApiController extends Controller
         'east' => 125.48,
     ];
 
-    private const USER_ROLE_OPTIONS = ['system_admin', 'Clinic Admin', 'Doctor', 'Nurse/Vaccinator'];
+    private const USER_ROLE_OPTIONS = ['system_admin', 'clinic_admin', 'Clinic Admin', 'doctor', 'Doctor', 'Health Officer', 'nurse_vaccinator', 'Nurse/Vaccinator', 'Nurse', 'Vaccinator', 'nurse', 'vaccinator'];
 
     private const DIGOS_BARANGAY_COORDINATES = [
         'Aplaya' => ['lat' => 6.7600, 'lng' => 125.3425],
@@ -135,7 +136,7 @@ class BitemapApiController extends Controller
             'name' => $data['fullName'],
             'email' => strtolower(trim($data['email'])),
             'password' => $data['password'],
-            'role' => $data['role'],
+            'role' => $this->storableUserRole($data['role']),
             'phone' => $data['phone'] ?? null,
             'is_active' => false,
         ];
@@ -453,10 +454,14 @@ class BitemapApiController extends Controller
             'status' => ['nullable', Rule::in(['Active', 'Inactive'])],
         ]);
 
+        if ($this->isClinicAdmin($request->user()) && $this->canonicalUserRole($data['role']) === 'system_admin') {
+            return $this->systemAdminUserForbiddenResponse();
+        }
+
         $values = [
             'name' => $data['name'],
             'email' => strtolower(trim($data['email'])),
-            'role' => $data['role'],
+            'role' => $this->storableUserRole($data['role']),
             'phone' => $data['phone'] ?? null,
             'password' => $data['password'] ?? DefaultAdminAccount::PASSWORD,
             'is_active' => ($data['status'] ?? 'Active') === 'Active',
@@ -483,12 +488,22 @@ class BitemapApiController extends Controller
             'status' => ['nullable', Rule::in(['Active', 'Inactive'])],
         ]);
 
+        if ($this->isClinicAdmin($request->user())) {
+            if ($this->isSystemAdminUser($user) || (isset($data['role']) && $this->canonicalUserRole($data['role']) === 'system_admin')) {
+                return $this->systemAdminUserForbiddenResponse();
+            }
+        }
+
         if (array_key_exists('status', $data)) {
             $data['is_active'] = $data['status'] === 'Active';
             unset($data['status']);
         }
 
         $oldRole = $user->role;
+        if (isset($data['role'])) {
+            $data['role'] = $this->storableUserRole($data['role']);
+        }
+
         $user->update($data);
         $action = isset($data['role']) && $data['role'] !== $oldRole ? 'Update role' : 'Edit record';
         $this->writeAudit($request, $action, 'User Management', $user->id, 'Updated user account for '.$user->name.'.');
@@ -502,6 +517,12 @@ class BitemapApiController extends Controller
             'role' => ['nullable', Rule::in(self::USER_ROLE_OPTIONS)],
         ]);
 
+        if ($this->isClinicAdmin($request->user())) {
+            if ($this->isSystemAdminUser($user) || (! blank($data['role'] ?? null) && $this->canonicalUserRole($data['role']) === 'system_admin')) {
+                return $this->systemAdminUserForbiddenResponse();
+            }
+        }
+
         $updates = ['is_active' => true];
 
         if (Schema::hasColumn('users', 'approval_status')) {
@@ -509,7 +530,7 @@ class BitemapApiController extends Controller
         }
 
         if (! blank($data['role'] ?? null)) {
-            $updates['role'] = $data['role'];
+            $updates['role'] = $this->storableUserRole($data['role']);
         }
 
         $user->update($updates);
@@ -524,6 +545,10 @@ class BitemapApiController extends Controller
 
     public function rejectUser(Request $request, User $user): JsonResponse
     {
+        if ($this->isClinicAdmin($request->user()) && $this->isSystemAdminUser($user)) {
+            return $this->systemAdminUserForbiddenResponse();
+        }
+
         $updates = ['is_active' => false];
 
         if (Schema::hasColumn('users', 'approval_status')) {
@@ -2346,7 +2371,7 @@ class BitemapApiController extends Controller
             'name' => $user->name,
             'full_name' => $user->name,
             'email' => $user->email,
-            'role' => $user->role,
+            'role' => $this->canonicalUserRole($user->role),
             'phone' => $user->phone,
             'is_active' => (bool) $user->is_active,
             'approval_status' => $approvalStatus,
@@ -2357,6 +2382,70 @@ class BitemapApiController extends Controller
             'created_at' => $user->created_at,
             'updated_at' => $user->updated_at,
         ];
+    }
+
+
+
+    private function isClinicAdmin(?User $user): bool
+    {
+        return $this->canonicalUserRole($user?->role) === 'clinic_admin';
+    }
+
+    private function isSystemAdminUser(User $user): bool
+    {
+        return $this->canonicalUserRole($user->role) === 'system_admin';
+    }
+
+    private function systemAdminUserForbiddenResponse(): JsonResponse
+    {
+        return response()->json([
+            'success' => false,
+            'error' => 'Clinic administrators cannot manage system administrator accounts.',
+        ], 403);
+    }
+
+    private function canonicalUserRole(?string $role): string
+    {
+        $key = str($role ?? '')
+            ->trim()
+            ->squish()
+            ->lower()
+            ->replace([' ', '-', '/'], '_')
+            ->toString();
+
+        return match ($key) {
+            'admin' => 'system_admin',
+            'clinic_admin' => 'clinic_admin',
+            'doctor', 'health_officer' => 'doctor',
+            'nurse', 'vaccinator', 'nurse_vaccinator' => 'nurse_vaccinator',
+            default => $role ?? '',
+        };
+    }
+
+
+    private function storableUserRole(?string $role): string
+    {
+        $canonical = $this->canonicalUserRole($role);
+        $enumFallbacks = [
+            'clinic_admin' => 'Clinic Admin',
+            'doctor' => 'Doctor',
+            'nurse_vaccinator' => 'Nurse/Vaccinator',
+        ];
+
+        if (! array_key_exists($canonical, $enumFallbacks)) {
+            return $canonical;
+        }
+
+        try {
+            $column = DB::selectOne("SHOW COLUMNS FROM users WHERE Field = 'role'");
+            if ($column && str_contains((string) $column->Type, "'{$canonical}'")) {
+                return $canonical;
+            }
+        } catch (\Throwable) {
+            return $canonical;
+        }
+
+        return $enumFallbacks[$canonical];
     }
 
     private function incidentMapLocation(Incident $incident): ?array

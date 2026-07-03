@@ -1,4 +1,4 @@
-export type UserRole = 'system_admin' | 'Clinic Admin' | 'Doctor' | 'Nurse/Vaccinator' | 'Admin' | 'Health Officer' | 'Nurse' | 'Vaccinator' | string;
+export type UserRole = 'system_admin' | 'clinic_admin' | 'doctor' | 'nurse_vaccinator' | 'Clinic Admin' | 'Doctor' | 'Nurse/Vaccinator' | 'Admin' | 'Health Officer' | 'Nurse' | 'Vaccinator' | 'nurse' | 'vaccinator' | string;
 
 export interface CurrentUser {
   id?: number | string;
@@ -41,9 +41,9 @@ const ROLE_LABELS: Record<string, string> = {
 
 export const ASSIGNABLE_ROLES = [
   { value: 'system_admin', label: 'System Administrator' },
-  { value: 'Clinic Admin', label: 'Clinic Administrator' },
-  { value: 'Doctor', label: 'Doctor' },
-  { value: 'Nurse/Vaccinator', label: 'Nurse/Vaccinator' },
+  { value: 'clinic_admin', label: 'Clinic Administrator' },
+  { value: 'doctor', label: 'Doctor' },
+  { value: 'nurse_vaccinator', label: 'Nurse/Vaccinator' },
 ];
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -56,6 +56,7 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
   clinic_admin: [
     '/dashboard',
     '/incidents',
+    '/incidents/new',
     '/patients',
     '/pep-schedule',
     '/inventory',
@@ -152,6 +153,10 @@ export function getDefaultPathForRole(role?: string) {
 export function canAccessPath(role: string | undefined, path: string) {
   const cleanPath = path.split('?')[0].replace(/\/+$/, '') || '/';
   const allowedPaths = getRolePermissions(role);
+
+  if (cleanPath === '/incidents/new') {
+    return allowedPaths.includes('/incidents/new');
+  }
 
   return allowedPaths.some((allowedPath) => (
     cleanPath === allowedPath || cleanPath.startsWith(allowedPath + '/')

@@ -78,7 +78,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/reports/download', [BitemapApiController::class, 'downloadReport'])
         ->middleware('role:clinic_admin,doctor');
 
-    Route::get('/animals', [BitemapApiController::class, 'animals'])->middleware('role:clinic_admin,nurse_vaccinator');
-    Route::post('/animals', [BitemapApiController::class, 'animals'])->middleware('role:clinic_admin,nurse_vaccinator');
-    Route::put('/animals/{id}', [BitemapApiController::class, 'animals'])->middleware('role:clinic_admin,nurse_vaccinator');
+    Route::get('/animals', [BitemapApiController::class, 'animals'])->middleware('role:clinic_admin');
+    Route::post('/animals', [BitemapApiController::class, 'animals'])->middleware('role:clinic_admin');
+    Route::put('/animals/{id}', [BitemapApiController::class, 'animals'])->middleware('role:clinic_admin');
 });

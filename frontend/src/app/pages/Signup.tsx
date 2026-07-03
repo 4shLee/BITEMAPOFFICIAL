@@ -12,7 +12,7 @@ export function Signup() {
     fullName: '',
     email: '',
     phone: '',
-    role: 'Nurse/Vaccinator',
+    role: 'nurse_vaccinator',
     password: '',
     confirmPassword: '',
   });

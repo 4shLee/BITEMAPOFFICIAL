@@ -20,7 +20,7 @@ class UserSeeder extends Seeder
                 'name' => 'Doctor',
                 'email' => 'doctor@bitemap.local',
                 'password' => Hash::make(DefaultAdminAccount::PASSWORD),
-                'role' => 'Doctor',
+                'role' => 'doctor',
                 'is_active' => true,
             ];
 
@@ -44,19 +44,19 @@ class UserSeeder extends Seeder
                 'name' => 'Doctor',
                 'email' => 'doctor@bitemap.local',
                 'phone' => '09170000001',
-                'role' => 'Doctor',
+                'role' => 'doctor',
             ],
             [
                 'name' => 'Nurse/Vaccinator',
                 'email' => 'nurse@bitemap.local',
                 'phone' => '09170000002',
-                'role' => 'Nurse/Vaccinator',
+                'role' => 'nurse_vaccinator',
             ],
             [
                 'name' => 'Clinic Administrator',
                 'email' => 'clinic.admin@bitemap.local',
                 'phone' => '09170000003',
-                'role' => 'Clinic Admin',
+                'role' => 'clinic_admin',
             ],
         ];
 
