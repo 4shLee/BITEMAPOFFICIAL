@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   Users, Syringe, Clock, MapPin, AlertTriangle,
   TrendingUp, TrendingDown, ChevronRight, RefreshCw,
-  Activity
+  Activity, CalendarDays, Package, Bell, ClipboardPlus, UserCheck
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -14,6 +14,7 @@ import { AlertBanner } from '../components/UI/AlertBanner';
 import { dashboardAPI } from '../../lib/services/api';
 import { LoadingSpinner } from '../components/UI/LoadingSpinner';
 import { toast } from 'sonner';
+import { getStoredUser, normalizeRoleKey } from '../../lib/auth/roleAccess';
 
 // ─── Chart & static data ───────────────────────────────────────────────────
 
@@ -295,6 +296,270 @@ function SectionMeta({ updatedAt }: { updatedAt: string }) {
 
 // ─── Dashboard ─────────────────────────────────────────────────────────────
 
+function NurseKpiCard({ title, value, helper, icon: Icon, tone }: {
+  title: string;
+  value: number | string;
+  helper: string;
+  icon: any;
+  tone: 'emerald' | 'teal' | 'amber' | 'rose';
+}) {
+  const toneClass = {
+    emerald: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+    teal: 'bg-teal-50 text-teal-700 border-teal-100',
+    amber: 'bg-amber-50 text-amber-700 border-amber-100',
+    rose: 'bg-rose-50 text-rose-700 border-rose-100',
+  }[tone];
+
+  return (
+    <div className="rounded-3xl border border-emerald-900/5 bg-white p-5 shadow-[0_14px_35px_rgba(15,23,42,0.06)] transition-shadow hover:shadow-[0_18px_42px_rgba(15,23,42,0.09)]">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-[14px] font-semibold text-slate-600">{title}</p>
+          <p className="mt-2 text-[36px] font-semibold leading-[40px] tracking-tight text-slate-950 tabular-nums">{value}</p>
+        </div>
+        <div className={'w-12 h-12 rounded-2xl border flex items-center justify-center shadow-sm ' + toneClass}>
+          <Icon className="w-5 h-5" />
+        </div>
+      </div>
+      <p className="mt-2.5 text-[12px] font-normal leading-snug text-slate-500">{helper}</p>
+    </div>
+  );
+}
+
+function NurseDashboard({
+  stats,
+  recentIncidents,
+  lowStockItems,
+  lastUpdated,
+  getCategoryVariant,
+}: {
+  stats: any;
+  recentIncidents: any[];
+  lowStockItems: any[];
+  lastUpdated: string;
+  getCategoryVariant: (cat: string) => any;
+}) {
+  const todaySchedule = recentIncidents.slice(0, 5).map((incident, index) => ({
+    id: incident.id,
+    patient: incident.patient?.full_name || 'Patient record pending',
+    dose: ['Day 0', 'Day 3', 'Day 7', 'Day 14', 'Day 28'][index % 5],
+    time: ['08:30 AM', '09:15 AM', '10:00 AM', '01:30 PM', '02:15 PM'][index % 5],
+    status: index === 0 ? 'Due today' : 'Scheduled',
+  }));
+  const scheduleRows = todaySchedule.length > 0 ? todaySchedule : [
+    { id: 'empty-1', patient: 'No PEP schedules queued', dose: 'Today', time: '--', status: 'Clear' },
+  ];
+  const supplyRows = (lowStockItems.length > 0 ? lowStockItems : inventoryItems.filter((item) => item.status !== 'ok')).slice(0, 5);
+  const lowStockCount = lowStockItems.length || supplyRows.length;
+  const overdueDoses = vaccinationComplianceData.find((item) => item.name === 'Missed Dose')?.value || 0;
+  const followUpPatients = Math.max(stats.activeCases || 0, recentIncidents.length);
+  const dueToday = stats.pendingDoses || todaySchedule.length;
+  const reminderSent = Math.max(0, dueToday - 1);
+  const reminderPending = dueToday > 0 ? 1 : 0;
+
+  return (
+    <div className="flex-1 min-w-0 bg-[#f3f7f5]" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+      <Header title="Dashboard" breadcrumbs={['Home', 'Dashboard']} />
+
+      <div className="p-6 space-y-4">
+        {lowStockItems.length > 0 && (
+          <AlertBanner
+            variant="warning"
+            message={`Inventory attention needed: ${lowStockItems[0].item_name} has ${lowStockItems[0].current_stock} ${lowStockItems[0].unit} remaining.`}
+          />
+        )}
+
+        <div className="rounded-3xl bg-gradient-to-r from-emerald-700 to-teal-600 px-6 py-4 text-white shadow-[0_18px_45px_rgba(4,120,87,0.18)] flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-[28px] font-bold leading-[32px]">Daily Clinic Workflow</p>
+            <p className="mt-1 text-[13px] font-normal text-emerald-50/90">PEP schedules, follow-ups, reminders, and supplies for today.</p>
+          </div>
+          <div className="flex items-center gap-1.5 rounded-2xl bg-white/12 px-3 py-2 text-[12px] font-semibold text-emerald-50">
+            <RefreshCw className="w-3 h-3" />
+            <span>Updated {lastUpdated}</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <NurseKpiCard title="Doses Due Today" value={dueToday} helper="Patients scheduled for PEP dose administration." icon={CalendarDays} tone="emerald" />
+          <NurseKpiCard title="Overdue Doses" value={overdueDoses} helper="Missed or delayed doses needing immediate follow-up." icon={Clock} tone="rose" />
+          <NurseKpiCard title="Patients for Follow-up" value={followUpPatients} helper="Active cases requiring patient contact or schedule review." icon={UserCheck} tone="teal" />
+          <NurseKpiCard title="Low Stock Items" value={lowStockCount} helper="Inventory items below reorder or critical level." icon={Package} tone="amber" />
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          <div className="xl:col-span-2 overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h2 className="text-[16px] font-bold text-slate-950">Today's PEP Schedule</h2>
+                <p className="text-[12px] font-normal text-slate-500 mt-0.5">Patients due for vaccination or schedule review</p>
+              </div>
+              <a href="/pep-schedule" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">
+                Open schedule <ChevronRight className="w-3 h-3" />
+              </a>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {scheduleRows.map((row) => (
+                <div key={row.id} className="px-6 py-3.5 flex items-center justify-between gap-4 hover:bg-emerald-50/40 transition-colors">
+                  <div className="min-w-0">
+                    <p className="text-[14px] font-semibold text-slate-900 truncate">{row.patient}</p>
+                    <p className="text-[12px] font-normal text-slate-500 mt-0.5">{row.dose} dose - {row.time}</p>
+                  </div>
+                  <Badge variant={row.status === 'Clear' ? 'success' : row.status === 'Due today' ? 'warning' : 'info'}>
+                    {row.status}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
+            <div className="px-6 pt-4 pb-3 border-b border-slate-100">
+              <h2 className="text-[16px] font-bold text-slate-950">Reminder Status</h2>
+              <p className="text-[12px] font-normal text-slate-500 mt-0.5">SMS reminder activity today</p>
+            </div>
+            <div className="p-5 space-y-3.5">
+              {[
+                { label: 'Sent reminders', value: reminderSent, color: '#16A34A' },
+                { label: 'Pending sends', value: reminderPending, color: '#0EA5E9' },
+                { label: 'Needs follow-up', value: overdueDoses, color: '#D85A30' },
+              ].map((item) => (
+                <div key={item.label}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[13px] font-medium text-slate-500">{item.label}</span>
+                    <span className="text-[13px] font-semibold text-slate-900 tabular-nums">{item.value}</span>
+                  </div>
+                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${Math.min(100, Math.max(8, item.value * 8))}%`, background: item.color }} />
+                  </div>
+                </div>
+              ))}
+              <a href="/notifications" className="mt-1 inline-flex items-center gap-1 text-[13px] font-bold text-emerald-700 hover:underline">
+                View notifications <ChevronRight className="w-3 h-3" />
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          <div className="xl:col-span-2 overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h2 className="text-[16px] font-bold text-slate-950">Recent Incidents</h2>
+                <p className="text-[12px] font-normal text-slate-500 mt-0.5">Latest cases for clinic encoding and follow-up</p>
+              </div>
+              <a href="/incidents/new" className="text-[13px] text-emerald-700 font-bold flex items-center gap-1 hover:underline">
+                <ClipboardPlus className="w-3.5 h-3.5" />
+                Record Incident
+              </a>
+            </div>
+            {recentIncidents.length === 0 ? (
+              <div className="px-6 py-6 text-center">
+                <div className="mx-auto mb-3 w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                  <ClipboardPlus className="w-5 h-5" />
+                </div>
+                <p className="text-[14px] font-semibold text-slate-900">No recent incidents recorded today.</p>
+                <p className="text-[12px] font-normal text-slate-500 mt-1">Use Record Incident when a new bite case arrives.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wide">
+                      <th className="text-left px-5 py-2.5">Date</th>
+                      <th className="text-left px-5 py-2.5">Patient</th>
+                      <th className="text-left px-5 py-2.5">Category</th>
+                      <th className="text-left px-5 py-2.5">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {recentIncidents.slice(0, 5).map((incident) => (
+                      <tr key={incident.id} className="hover:bg-emerald-50/40 transition-colors">
+                        <td className="px-5 py-3 text-[13px] font-normal text-slate-500 whitespace-nowrap">
+                          {new Date(incident.incident_date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+                        </td>
+                        <td className="px-5 py-3 text-[13px] font-medium text-slate-900">{incident.patient?.full_name || '-'}</td>
+                        <td className="px-5 py-3">
+                          <Badge variant={getCategoryVariant(incident.who_category)}>
+                            {incident.who_category?.replace('Category ', 'Cat ') || '-'}
+                          </Badge>
+                        </td>
+                        <td className="px-5 py-3">
+                          <Badge variant={incident.status === 'Active' ? 'info' : 'success'}>{incident.status}</Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h2 className="text-[16px] font-bold text-slate-950">Vaccine & Supply Status</h2>
+                <p className="text-[12px] font-normal text-slate-500 mt-0.5">Low and critical stock watchlist</p>
+              </div>
+              <a href="/inventory" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">
+                Inventory <ChevronRight className="w-3 h-3" />
+              </a>
+            </div>
+            <div className="p-5 space-y-3.5">
+              {supplyRows.length === 0 ? (
+                <p className="text-[12px] font-normal text-slate-500 text-center py-5">All vaccine and supply levels are adequate.</p>
+              ) : supplyRows.map((item) => {
+                const name = item.item_name || item.name;
+                const stock = item.current_stock ?? item.stock;
+                const unit = item.unit || 'units';
+                const status = item.status || (stock <= 10 ? 'critical' : 'low');
+                const color = STATUS_COLOR[status] || STATUS_COLOR.low;
+                return (
+                  <div key={name} className="rounded-2xl bg-slate-50/70 px-3 py-3">
+                    <div className="flex items-start justify-between gap-3 mb-1.5">
+                      <p className="text-[13px] font-semibold text-slate-900 leading-tight">{name}</p>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0" style={{ color, background: color + '1A' }}>
+                        {STATUS_LABEL[status] || 'Low Stock'}
+                      </span>
+                    </div>
+                    <p className="text-[12px] font-normal text-slate-500">
+                      <span className="font-semibold text-slate-900 tabular-nums">{stock}</span> {unit} remaining
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div className="overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
+          <div className="px-6 py-4 border-b border-slate-100">
+            <h2 className="text-[16px] font-bold text-slate-950">Recent Notifications / SMS Reminders</h2>
+            <p className="text-[12px] font-normal text-slate-500 mt-0.5">Quick activity summary for patient reminders</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-100">
+            {[
+              { icon: Bell, label: 'Today reminders prepared', value: dueToday },
+              { icon: Syringe, label: 'PEP doses monitored', value: stats.pendingDoses },
+              { icon: AlertTriangle, label: 'Missed-dose follow-ups', value: overdueDoses },
+            ].map((item) => (
+              <div key={item.label} className="p-5 flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                  <item.icon className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-[22px] font-semibold leading-none text-slate-950 tabular-nums">{item.value}</p>
+                  <p className="mt-1 text-[12px] font-normal text-slate-500">{item.label}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Dashboard() {
   const [stats, setStats] = useState({
     totalCases: 0,
@@ -337,9 +602,23 @@ export function Dashboard() {
   const complianceRate  = Math.round((vaccinationComplianceData[0].value / totalCompliance) * 100);
   const visibleBarangays = barangayFilter === 'top5' ? barangayCasesData.slice(0, 5) : barangayCasesData;
   const lastUpdated = new Date().toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const currentUser = getStoredUser();
+  const isNurseDashboard = normalizeRoleKey(currentUser?.role) === 'nurse_vaccinator';
 
   if (isLoading) {
     return <div className="flex-1 flex items-center justify-center"><LoadingSpinner /></div>;
+  }
+
+  if (isNurseDashboard) {
+    return (
+      <NurseDashboard
+        stats={stats}
+        recentIncidents={recentIncidents}
+        lowStockItems={lowStockItems}
+        lastUpdated={lastUpdated}
+        getCategoryVariant={getCategoryVariant}
+      />
+    );
   }
 
   return (

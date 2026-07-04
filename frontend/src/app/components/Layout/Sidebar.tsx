@@ -78,7 +78,10 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="w-64 h-screen fixed left-0 top-0 flex flex-col bg-sidebar border-r border-sidebar-border z-20">
+    <aside
+      className="w-64 h-screen fixed left-0 top-0 flex flex-col bg-sidebar border-r border-sidebar-border z-20"
+      style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+    >
       <div className="px-5 pt-6 pb-5 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
           <div

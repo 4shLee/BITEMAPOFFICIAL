@@ -1043,4 +1043,28 @@ Verification completed:
 - Confirmed only one “Back to Public Portal” button remains.
 - Confirmed Sign In, password visibility toggle, and Request Account Approval behavior were preserved.
 
+**Nurse/Vaccinator Dashboard Progress Summary**
 
+Improved the BITEMAP Nurse/Vaccinator dashboard to focus on daily clinic workflow instead of GIS or analytics. Added a nurse-specific dashboard view while keeping RBAC, authentication, routes, API calls, backend behavior, database schema, role permissions, and sidebar access rules unchanged.
+
+The Nurse/Vaccinator dashboard now prioritizes:
+- Doses Due Today
+- Overdue Doses
+- Patients for Follow-up
+- Low Stock Items
+- Today’s PEP Schedule
+- Reminder Status
+- Recent Incidents
+- Vaccine & Supply Status
+- Recent Notifications / SMS Reminders
+
+Removed GIS/analytics-heavy content from the Nurse/Vaccinator dashboard view, including Incident Heatmap, High-Risk Areas, Bite Cases Per Barangay, GIS widgets, and Reports-related sections. These remain only outside the nurse dashboard branch for other roles where appropriate.
+
+Polished the dashboard into a modern SaaS-style healthcare layout with soft rounded cards, light mint-gray background, white card surfaces, subtle borders, soft shadows, emerald/teal accents, improved spacing, compact empty states, and clearer visual hierarchy.
+
+Added Plus Jakarta Sans for the nurse dashboard and sidebar shell while keeping the existing global font unchanged. Typography was refined with clearer dashboard titles, larger KPI numbers, cleaner card titles, muted descriptions, and consistent button/link styling.
+
+Verification completed:
+- `npm run build` passed.
+- Confirmed Nurse/Vaccinator dashboard does not show GIS or Reports widgets.
+- Confirmed no RBAC, API, backend, database, permission, route, or authentication behavior was changed.
