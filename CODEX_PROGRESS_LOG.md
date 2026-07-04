@@ -1026,4 +1026,21 @@ June 4, 2026
 Performed a Supabase cleanup audit for BITEMAP and confirmed the active backend is Laravel API + MySQL. Identified old unused Supabase frontend files, removed confirmed dead Supabase client/auth/service code, and deleted the unused generated Supabase credential file. Verified no active frontend imports still used Supabase, then removed the unused @supabase/supabase-js dependency from the frontend package files.
 Also fixed the missing frontend API client method for today’s PEP schedule alerts by adding notificationsAPI.getTodaySchedules() to the Laravel API service, using the existing backend route. Ran the frontend production build successfully to confirm the cleanup did not break the app.
 
+**Login Page Progress Summary**
+
+Redesigned and polished the BITEMAP login page UI while keeping all authentication logic, RBAC, routes, API calls, backend behavior, form validation, login submit behavior, and account approval behavior unchanged.
+
+Initial improvements included applying Manrope styling to the login page, tightening spacing, updating typography, removing the duplicate “Back to Public Portal” button, and keeping only the top-header public portal button. Text was also updated to use clearer labels such as “Authorized Staff Login,” “Sign In,” and “Access depends on your assigned role.”
+
+The design was then refined with a modern healthcare-inspired emerald/teal color palette, softer slate text, rounded inputs/buttons, a stronger primary “Sign In” button, and a secondary “Request Account Approval” button. The login page was adjusted several times to reduce vertical scrolling, improve visual hierarchy, and make the card feel more premium.
+
+After reviewing the provided reference images, the login page was fully redesigned into a modern split-card layout. The final design includes a large centered rounded login panel, a left emerald/teal gradient branding section with BITEMAP branding and welcome text, a clean white sign-in form on the right, abstract decorative circles/dots, and a curved organic divider between the two sections. The layout remains responsive, with the branding panel hidden on smaller screens so the form stays usable.
+
+Verification completed:
+- `npm run build` passed after the login redesign.
+- Desktop check confirmed the login page fits within one screen without vertical scrolling.
+- Mobile sanity check confirmed the form remains usable without horizontal scrolling.
+- Confirmed only one “Back to Public Portal” button remains.
+- Confirmed Sign In, password visibility toggle, and Request Account Approval behavior were preserved.
+
 

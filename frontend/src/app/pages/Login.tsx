@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router";
-import { AlertCircle, Eye, EyeOff, Lock, ArrowLeft, ShieldAlert, Zap, UserPlus, X, ShieldCheck } from "lucide-react";
+import { AlertCircle, Eye, EyeOff, Lock, ArrowLeft, ArrowRight, Mail, ShieldAlert, Zap, UserPlus, X, ShieldCheck } from "lucide-react";
 import { authAPI } from "../../lib/services/api";
 import { ASSIGNABLE_ROLES, getDefaultPathForRole, getStoredUser, hasAuthSession } from "../../lib/auth/roleAccess";
 import { toast } from "sonner";
@@ -101,22 +101,23 @@ export function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <header className="bg-card border-b border-border">
-        <div className="max-w-7xl mx-auto px-6 py-4">
+    <div className="min-h-screen lg:h-screen lg:overflow-hidden flex flex-col bg-[radial-gradient(circle_at_50%_42%,_rgba(45,212,191,0.24),_transparent_28%),radial-gradient(circle_at_24%_35%,_rgba(16,185,129,0.28),_transparent_34%),radial-gradient(circle_at_86%_58%,_rgba(14,116,144,0.34),_transparent_32%),linear-gradient(128deg,_#047647_0%,_#07876f_44%,_#064b6b_100%)]" style={{ fontFamily: "'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');`}</style>
+      <header className="bg-white border-b border-slate-200/70">
+        <div className="max-w-7xl mx-auto px-6 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center">
-                <AlertCircle className="w-7 h-7 text-white" />
+              <div className="w-11 h-11 bg-gradient-to-br from-emerald-700 to-teal-600 rounded-2xl flex items-center justify-center shadow-md shadow-emerald-900/20">
+                <AlertCircle className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-semibold text-foreground">BITEMAP</h1>
-                <p className="text-xs text-muted-foreground leading-tight">Animal Bite Incident Tracking and Vaccination Monitoring</p>
+                <h1 className="text-[22px] font-extrabold text-slate-950 leading-tight">BITEMAP</h1>
+                <p className="text-[13px] font-medium text-slate-500 leading-tight">Animal Bite Incident Tracking and Vaccination Monitoring</p>
               </div>
             </div>
             <Link
               to="/public"
-              className="flex items-center gap-1.5 px-4 py-2 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-primary-bg transition-colors"
+              className="flex items-center gap-2 px-4 py-2.5 border border-slate-300 rounded-2xl text-[14px] font-semibold text-slate-600 hover:text-emerald-900 hover:border-emerald-700/35 hover:bg-emerald-50 transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
               Back to Public Portal
@@ -125,50 +126,97 @@ export function Login() {
         </div>
       </header>
 
-      <main className="flex-1 flex items-center justify-center px-4 py-12">
-        <div className="w-full max-w-md">
-          <div className="bg-card border border-border rounded-xl shadow-md overflow-hidden">
-            <div className="bg-primary px-8 pt-8 pb-7 text-center">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-white/10 ring-2 ring-white/20 mb-5">
-                <Lock className="w-8 h-8 text-white" strokeWidth={1.5} />
-              </div>
-              <h2 className="text-2xl font-bold text-white tracking-wide mb-2">BITEMAP</h2>
-              <p className="text-sm text-white/85 leading-relaxed max-w-xs mx-auto mb-2">
-                GIS-Based Animal Bite Incident Tracking and Anti-Rabies Vaccination Monitoring System
-              </p>
-            </div>
+      <main className="relative flex-1 min-h-0 overflow-hidden flex items-center justify-center px-4 py-4 lg:py-3">
+        <div className="pointer-events-none absolute inset-0 opacity-35 bg-[radial-gradient(circle_at_50%_44%,_rgba(45,212,191,0.24),_transparent_22%),radial-gradient(circle_at_17%_18%,_rgba(255,255,255,0.16),_transparent_24%),radial-gradient(circle_at_88%_76%,_rgba(20,184,166,0.2),_transparent_28%)]" />
+        <div className="pointer-events-none absolute -left-24 top-[-18rem] h-[34rem] w-[34rem] rounded-full bg-emerald-300/[0.09]" />
+        <div className="pointer-events-none absolute -right-24 bottom-[-20rem] h-[38rem] w-[38rem] rounded-full bg-teal-300/[0.1]" />
+        <div className="pointer-events-none absolute left-16 bottom-[-21rem] h-[40rem] w-[40rem] rounded-full border border-white/[0.07]" />
+        <div className="pointer-events-none absolute right-20 top-9 grid grid-cols-6 gap-4 opacity-[0.10]">
+          {Array.from({ length: 24 }).map((_, index) => (
+            <span key={index} className="h-1.5 w-1.5 rounded-full bg-white" />
+          ))}
+        </div>
+        <div className="pointer-events-none absolute left-20 bottom-24 grid grid-cols-7 gap-4 opacity-[0.10]">
+          {Array.from({ length: 28 }).map((_, index) => (
+            <span key={index} className="h-1.5 w-1.5 rounded-full bg-white" />
+          ))}
+        </div>
 
-            <div className="px-8 pt-7 pb-10">
-              <div className="flex items-center gap-2 mb-6">
-                <div className="flex-1 h-px bg-border" />
-                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest px-2">
-                  Authorized User Sign In
-                </span>
-                <div className="flex-1 h-px bg-border" />
+        <div className="relative w-full max-w-[1120px]">
+          <div className="relative flex min-h-[560px] overflow-hidden rounded-[34px] border border-white/75 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.28),0_0_52px_rgba(20,184,166,0.16)] md:h-[600px]">
+            <section className="relative hidden w-[45%] overflow-hidden bg-[radial-gradient(circle_at_18%_16%,_rgba(45,212,191,0.34),_transparent_28%),radial-gradient(circle_at_86%_76%,_rgba(16,185,129,0.38),_transparent_28%),linear-gradient(145deg,_#065f46_0%,_#047857_42%,_#155e75_100%)] px-16 py-14 text-white md:flex md:flex-col">
+              <div className="pointer-events-none absolute right-[-140px] top-[-92px] h-[790px] w-[270px] rounded-[50%] bg-white" />
+              <div className="pointer-events-none absolute -left-24 bottom-[-11rem] h-[26rem] w-[26rem] rounded-full bg-teal-300/18" />
+              <div className="pointer-events-none absolute left-[-8rem] bottom-[-14rem] h-[30rem] w-[30rem] rounded-full bg-emerald-200/10" />
+              <div className="pointer-events-none absolute bottom-24 right-[-35px] h-56 w-56 rounded-full bg-gradient-to-br from-emerald-300/70 to-teal-800/35 shadow-2xl shadow-emerald-950/30" />
+              <div className="pointer-events-none absolute left-10 top-12 grid grid-cols-6 gap-3 opacity-20">
+                {Array.from({ length: 36 }).map((_, index) => (
+                  <span key={index} className="h-1.5 w-1.5 rounded-full bg-white" />
+                ))}
               </div>
+              <div className="pointer-events-none absolute bottom-20 left-56 grid grid-cols-5 gap-3 opacity-18">
+                {Array.from({ length: 20 }).map((_, index) => (
+                  <span key={index} className="h-1.5 w-1.5 rounded-full bg-white" />
+                ))}
+              </div>
+
+              <div className="relative z-10 flex items-center gap-4">
+                <div className="flex h-16 w-16 items-center justify-center rounded-3xl border border-white/25 bg-white/12 shadow-lg shadow-emerald-950/20">
+                  <AlertCircle className="h-8 w-8 text-white" strokeWidth={1.8} />
+                </div>
+                <div>
+                  <h2 className="text-[28px] font-extrabold leading-none tracking-wide">BITEMAP</h2>
+                  <p className="mt-1 max-w-[230px] text-[13.5px] font-semibold leading-snug text-emerald-50/90">
+                    Animal Bite Incident Tracking and Vaccination Monitoring
+                  </p>
+                </div>
+              </div>
+
+              <div className="relative z-10 mt-auto max-w-[330px] pb-16">
+                <p className="text-[48px] font-extrabold leading-none tracking-[0.08em] text-white">WELCOME</p>
+                <p className="mt-6 text-[30px] font-extrabold leading-tight text-emerald-200">BITEMAP</p>
+                <div className="mt-5 h-1 w-20 rounded-full bg-emerald-300" />
+                <p className="mt-6 text-[17px] font-medium leading-[1.45] text-white/92">
+                  GIS-Based Animal Bite Incident Tracking and Anti-Rabies Vaccination Monitoring System
+                </p>
+              </div>
+            </section>
+
+            <section className="relative z-20 flex w-full items-center justify-center bg-white px-7 py-8 md:w-[55%] md:px-12">
+              <div className="w-full max-w-[450px]">
+                <div className="mb-8 text-center md:text-left">
+                  <h2 className="text-[46px] font-extrabold leading-tight text-slate-950 md:text-[52px]">Sign In</h2>
+                  <p className="mt-2 text-[18px] font-medium text-slate-500 md:text-[19px]">
+                  Authorized Staff Login
+                  </p>
+                </div>
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                  <label htmlFor="username" className="block text-sm font-medium text-foreground mb-1.5">
+                  <label htmlFor="username" className="mb-1.5 block text-[15px] font-bold text-slate-800">
                     Email
                   </label>
-                  <input
-                    id="username"
-                    type="text"
-                    autoComplete="username"
-                    placeholder="Enter your email"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    required
-                    className="w-full px-3.5 py-2.5 text-sm bg-input-background border border-input rounded-lg text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
-                  />
+                  <div className="relative">
+                    <Mail className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
+                    <input
+                      id="username"
+                      type="text"
+                      autoComplete="username"
+                      placeholder="Enter your email"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      required
+                      className="h-[52px] w-full rounded-2xl border border-slate-300 bg-white px-12 text-[15px] font-medium text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-500/25"
+                    />
+                  </div>
                 </div>
 
                 <div>
-                  <label htmlFor="password" className="block text-sm font-medium text-foreground mb-1.5">
+                  <label htmlFor="password" className="mb-1.5 block text-[15px] font-bold text-slate-800">
                     Password
                   </label>
                   <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
                     <input
                       id="password"
                       type={showPassword ? "text" : "password"}
@@ -177,16 +225,16 @@ export function Login() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
-                      className="w-full px-3.5 py-2.5 pr-11 text-sm bg-input-background border border-input rounded-lg text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+                      className="h-[52px] w-full rounded-2xl border border-slate-300 bg-white px-12 pr-12 text-[15px] font-medium text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-500/25"
                     />
                     <button
                       type="button"
                       tabIndex={-1}
                       onClick={() => setShowPassword((value) => !value)}
                       aria-label={showPassword ? "Hide password" : "Show password"}
-                      className="absolute inset-y-0 right-3.5 flex items-center text-muted-foreground hover:text-foreground transition-colors"
+                      className="absolute inset-y-0 right-4 flex items-center text-slate-500 transition-colors hover:text-slate-800"
                     >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                     </button>
                   </div>
                 </div>
@@ -209,47 +257,43 @@ export function Login() {
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full py-2.5 bg-card text-foreground text-sm font-medium border border-border rounded-lg hover:bg-muted transition-colors disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-border focus:ring-offset-2"
+                  className="relative h-[54px] w-full rounded-2xl border border-transparent bg-gradient-to-r from-emerald-700 to-teal-600 text-[16px] font-extrabold text-white shadow-lg shadow-emerald-900/25 transition-colors hover:from-emerald-800 hover:to-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500/35 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isLoading ? (
                     <span className="flex items-center justify-center gap-2">
-                      <span className="w-4 h-4 border-2 border-muted-foreground/30 border-t-foreground rounded-full animate-spin" />
+                      <span className="w-4 h-4 border-2 border-white/35 border-t-white rounded-full animate-spin" />
                       Signing in...
                     </span>
                   ) : (
-                    "Sign In with Credentials"
+                    <>
+                      Sign In
+                      <ArrowRight className="absolute right-5 top-1/2 h-5 w-5 -translate-y-1/2" />
+                    </>
                   )}
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setShowRequestModal(true)}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 transition-colors"
+                  className="inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-2xl border border-emerald-700/35 bg-white px-4 text-[16px] font-extrabold text-emerald-800 transition-colors hover:border-emerald-700/55 hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-teal-500/25 focus:ring-offset-2"
                 >
-                  <UserPlus className="w-4 h-4" />
+                  <UserPlus className="h-5 w-5" />
                   Request Account Approval
                 </button>
-
-                <Link
-                  to="/public"
-                  className="flex items-center justify-center gap-1.5 w-full py-2.5 text-sm font-medium text-muted-foreground border border-border rounded-lg hover:text-foreground hover:border-primary/40 hover:bg-primary-bg transition-colors"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  Back to Public Portal
-                </Link>
               </form>
 
-              <div className="mt-5 flex items-start gap-2.5 bg-destructive-bg border border-destructive/15 rounded-lg px-4 py-3">
-                <ShieldAlert className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
-                <p className="text-xs text-destructive leading-relaxed">
-                  Access is restricted to authorized personnel only.
+              <div className="mt-5 flex items-center justify-center gap-2.5 rounded-2xl border border-rose-200/80 bg-rose-50 px-4 py-3">
+                <ShieldAlert className="h-4 w-4 shrink-0 text-rose-600" />
+                <p className="text-center text-[14px] font-semibold leading-snug text-rose-700">
+                  Access is restricted to authorized clinic personnel only.
                 </p>
               </div>
 
-              <p className="mt-3 text-[11px] text-center text-muted-foreground leading-relaxed">
-                User permissions are automatically determined based on account credentials.
+              <p className="mx-auto mt-3 text-center text-[14px] font-medium leading-snug text-slate-500">
+                Access depends on your assigned role.
               </p>
-            </div>
+              </div>
+            </section>
           </div>
         </div>
       </main>
@@ -408,11 +452,10 @@ export function Login() {
         </div>
       )}
 
-      <footer className="border-t border-border">
-        <div className="max-w-7xl mx-auto px-6 py-8">
-          <div className="text-center text-sm text-muted-foreground">
-            <p className="mb-2">(c) 2026 Digos City Health Office - Cor Jesu College</p>
-            <p>Department of Health - Philippines - Republic Act 9482: Anti-Rabies Act of 2007</p>
+      <footer className="border-t border-transparent bg-transparent">
+        <div className="max-w-7xl mx-auto px-6 py-2.5">
+          <div className="text-center text-[13px] font-medium text-white/90">
+            <p>© 2026 BITEMAP Capstone Project - Cor Jesu College</p>
           </div>
         </div>
       </footer>
