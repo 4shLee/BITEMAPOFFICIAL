@@ -344,6 +344,10 @@ export const notificationsAPI = {
     return apiRequest('/notifications');
   },
 
+  async getTodaySchedules() {
+    return apiRequest('/schedule-alerts/today');
+  },
+
   async sendSMS(phone: string, message: string, patientId?: string, incidentId?: string) {
     return apiRequest('/send-sms', {
       method: 'POST',

@@ -579,3 +579,451 @@ Whenever Codex completes another task, add a new numbered section under `Complet
 - Admin login returned 200.
 - GET /api/schedule-alerts/today returned 200 with live database data.
 
+**Vict's Progress**
+
+# BITEMAP Development Progress Log
+
+## June 1, 2026 – RBAC and Final Role Standardization
+
+### System Administrator RBAC Update
+
+The System Administrator role was restricted and standardized as a technical platform role.
+
+The final role key was set to:
+
+```text
+system_admin
+```
+
+System Administrator is now allowed to access only:
+
+* User Management
+* System Settings
+* Audit Logs
+* System/System Notifications
+* Logout
+
+System Administrator is blocked from clinic and health-related modules such as:
+
+* Dashboard
+* Patients
+* Incidents
+* New Incident
+* PEP Schedule
+* Inventory
+* GIS Map
+* Reports
+
+The default administrator account was also updated:
+
+```text
+Email: admin@bitemap.local
+Password: password
+Role: system_admin
+Status: active
+```
+
+The system now redirects System Administrator users to `/users` instead of the health dashboard.
+
+---
+
+### Final Role Set
+
+The system roles were standardized into four final roles:
+
+```text
+system_admin
+clinic_admin
+doctor
+nurse_vaccinator
+```
+
+Old or temporary roles were removed from the final frontend options, including:
+
+* Health Officer
+* BHW
+* Encoder
+* separate Nurse
+* separate Vaccinator
+
+Compatibility mappings were added to support old role values if existing data still appears in the database.
+
+Examples:
+
+```text
+Admin → system_admin
+Health Officer → doctor
+Nurse → nurse_vaccinator
+Vaccinator → nurse_vaccinator
+Clinic Admin → clinic_admin
+```
+
+---
+
+### Demo/Test Accounts Standardization
+
+The final active demo accounts were standardized as:
+
+| Email                                                           | Password | Final Role       | Display Name         |
+| --------------------------------------------------------------- | -------- | ---------------- | -------------------- |
+| [admin@bitemap.local](mailto:admin@bitemap.local)               | password | system_admin     | System Administrator |
+| [doctor@bitemap.local](mailto:doctor@bitemap.local)             | password | doctor           | Doctor               |
+| [nurse@bitemap.local](mailto:nurse@bitemap.local)               | password | nurse_vaccinator | Nurse/Vaccinator     |
+| [clinic.admin@bitemap.local](mailto:clinic.admin@bitemap.local) | password | clinic_admin     | Clinic Administrator |
+
+Old demo accounts such as:
+
+* `bhw@bitemap.local`
+* `test@example.com`
+* `health.officer@bitemap.local`
+
+were either deactivated or converted into the final role structure.
+
+No `migrate:fresh` command was run.
+
+---
+
+### Frontend RBAC Updates
+
+The frontend RBAC configuration was updated in:
+
+```text
+roleAccess.ts
+```
+
+The sidebar and route guards now follow the final role permissions.
+
+The topbar **New Incident** button is hidden for roles that are not allowed to create incidents.
+
+System Administrator can no longer manually access restricted health-related frontend routes.
+
+---
+
+### Backend RBAC Updates
+
+The backend API middleware now normalizes legacy role values safely.
+
+Backend routes now use final normalized role keys:
+
+```text
+system_admin
+clinic_admin
+doctor
+nurse_vaccinator
+```
+
+Old role access was removed from protected write routes to prevent Doctor from inheriting old Health Officer permissions.
+
+---
+
+## June 2, 2026 – Local Development Setup
+
+The BITEMAP web application was set up from GitHub to the local laptop development environment.
+
+The local project folder was prepared for development and testing.
+
+The app structure includes:
+
+* Laravel backend
+* Vite React frontend
+* MySQL database through local development tools
+
+---
+
+## June 3, 2026 – Project Review, Blank Page Fix, and RBAC Continuation
+
+### Project Review
+
+The `BITEMAPOFFICIAL` project folder was reviewed.
+
+The system was confirmed to be a two-part application:
+
+```text
+backend  → Laravel API backend
+frontend → Vite React TypeScript frontend
+```
+
+Major modules already exist, including:
+
+* Authentication
+* Dashboard
+* Patients
+* Incidents
+* PEP Schedule
+* Inventory
+* GIS Map
+* Reports
+* Notifications
+* User Management
+* Settings
+* Audit Logs
+* Public Portal pages
+
+It was also noted that Laravel is now the active backend, while some old Supabase-related frontend files still exist.
+
+---
+
+### Blank Page Fix
+
+The Vite blank white page issue was fixed.
+
+Cause:
+
+```text
+LucideIcon was imported as a runtime value from lucide-react, but it is only a TypeScript type.
+```
+
+Updated files:
+
+```text
+StatCard.tsx
+EmptyState.tsx
+```
+
+The imports were changed to use `import type`.
+
+After the fix, the frontend rendered correctly and redirected to the login page.
+
+---
+
+# RBAC Fixes Completed
+
+## Nurse/Vaccinator Role
+
+The Nurse/Vaccinator role was standardized to:
+
+```text
+nurse_vaccinator
+```
+
+Compatibility was added for old values:
+
+```text
+Nurse/Vaccinator
+Nurse
+Vaccinator
+nurse
+vaccinator
+```
+
+Nurse/Vaccinator can access:
+
+* Dashboard
+* Patient Registry
+* Incident Management
+* PEP Schedule
+* Inventory
+* Notifications
+* Logout
+
+Nurse/Vaccinator cannot access:
+
+* User Management
+* System Settings
+* Audit Logs
+* Reports
+* GIS Map
+* System administration pages
+
+Nurse/Vaccinator can perform daily clinic workflow tasks such as:
+
+* Register patients
+* Update patient records
+* Record animal bite incidents
+* Encode assessment details
+* Create and update PEP schedules
+* Mark doses as given or missed
+* Reschedule PEP doses
+* Send SMS reminders
+* View and update inventory
+* Add/restock inventory items
+* Record batch/lot number, expiry date, and reorder level
+
+Verified account:
+
+```text
+nurse@bitemap.local
+```
+
+The account successfully logs in as:
+
+```text
+nurse_vaccinator
+```
+
+Allowed APIs return `200`, while restricted APIs return `403`.
+
+---
+
+## Doctor Role
+
+The Doctor role was standardized to:
+
+```text
+doctor
+```
+
+Compatibility was added for old values:
+
+```text
+Doctor
+Health Officer
+```
+
+Doctor can access:
+
+* Dashboard
+* Patient Registry
+* Incident Management
+* PEP Schedule
+* Inventory
+* GIS Map
+* Reports
+* Logout
+
+Doctor cannot access:
+
+* User Management
+* System Settings
+* Audit Logs
+* Notifications
+* New Incident page
+* Inventory create/edit/restock/delete actions
+
+Doctor permissions are mostly view and review-based:
+
+* View patients
+* View patient details
+* View incidents
+* View PEP schedules
+* View inventory
+* View reports
+* View GIS Map
+
+Inventory access for Doctor is view-only.
+
+Verified account:
+
+```text
+doctor@bitemap.local
+```
+
+The account successfully logs in as:
+
+```text
+doctor
+```
+
+Doctor was confirmed unable to add, edit, or restock inventory.
+
+---
+
+## Clinic Admin Role
+
+The Clinic Admin role was standardized to:
+
+```text
+clinic_admin
+```
+
+Compatibility was added for old value:
+
+```text
+Clinic Admin
+```
+
+Clinic Admin can access:
+
+* Dashboard
+* Patient Registry
+* Incident Management
+* New Incident
+* PEP Schedule
+* Inventory
+* GIS Map
+* Reports
+* Notifications
+* User Management
+* Logout
+
+Clinic Admin cannot access:
+
+* System Settings
+* Audit Logs
+* Technical system administration pages reserved for System Administrator
+
+Clinic Admin can manage clinic operations and clinic-level users, but cannot manage `system_admin` users.
+
+System Admin-related actions and role options are hidden from Clinic Admin in User Management.
+
+Verified account:
+
+```text
+clinic.admin@bitemap.local
+```
+
+The account successfully logs in as:
+
+```text
+clinic_admin
+```
+
+---
+
+# Database and Migration Work
+
+Normal migrations were added. No `migrate:fresh` was used.
+
+Added migrations:
+
+```text
+2026_07_03_000001_canonicalize_nurse_vaccinator_role.php
+2026_07_03_000002_canonicalize_doctor_role.php
+2026_07_03_000003_canonicalize_clinic_admin_role.php
+```
+
+These migrations support the final role enum values and convert old role labels into canonical role keys.
+
+The normal migration command may be used:
+
+```powershell
+php artisan migrate
+```
+
+Data was preserved.
+
+---
+
+# Important Constraints Followed
+
+During the RBAC updates:
+
+* No `migrate:fresh` was run.
+* No data was deleted.
+* Existing System Admin behavior was preserved while fixing other roles.
+* Nurse/Vaccinator behavior was preserved while fixing Doctor and Clinic Admin.
+* Doctor behavior was preserved while fixing Clinic Admin.
+* Supabase remnants were not removed yet.
+* Laravel remains the active backend.
+* React TypeScript remains the active frontend.
+* Final role keys were standardized across frontend, backend, route guards, seeders, and migrations.
+
+---
+
+# Current RBAC Status
+
+| Role                 | Status |
+| -------------------- | ------ |
+| System Administrator | Fixed  |
+| Nurse/Vaccinator     | Fixed  |
+| Doctor               | Fixed  |
+| Clinic Admin         | Fixed  |
+
+RBAC/access control is now mostly completed and verified for the four final BITEMAP roles.
+
+---
+June 4, 2026
+Performed a Supabase cleanup audit for BITEMAP and confirmed the active backend is Laravel API + MySQL. Identified old unused Supabase frontend files, removed confirmed dead Supabase client/auth/service code, and deleted the unused generated Supabase credential file. Verified no active frontend imports still used Supabase, then removed the unused @supabase/supabase-js dependency from the frontend package files.
+Also fixed the missing frontend API client method for today’s PEP schedule alerts by adding notificationsAPI.getTodaySchedules() to the Laravel API service, using the existing backend route. Ran the frontend production build successfully to confirm the cleanup did not break the app.
+
+
