@@ -219,6 +219,15 @@ function readNoteValue(notes: string | undefined, label: string) {
   return line ? line.split(':').slice(1).join(':').trim() : '';
 }
 
+function ReadOnlyPatientItem({ label, value }: { label: string; value?: string | number | null }) {
+  return (
+    <div className="rounded-xl border border-border bg-white px-3 py-2.5">
+      <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-foreground">{value || 'Not recorded'}</p>
+    </div>
+  );
+}
+
 function normalizeCategoryForForm(category?: string) {
   return (category || '').replace('Category ', '') || '';
 }
@@ -322,6 +331,8 @@ export function IncidentReport() {
   const selectedPatient = patients.find((patient) => String(patient.id) === formData.patientId);
   const selectedBarangay = barangays.find((barangay) => String(barangay.id) === formData.barangayId);
   const selectedCategory = categoryCards.find((category) => category.value === formData.whoCategory);
+  const linkedPatientName = composePatientName(formData) || selectedPatient?.full_name || 'Linked patient';
+  const linkedPatientAgeSex = [formData.age, formData.sex].filter(Boolean).join(' / ');
 
   const filteredPatients = useMemo(() => {
     const search = formData.patientSearch.trim().toLowerCase();
@@ -427,7 +438,7 @@ export function IncidentReport() {
 
   const handleSetPin = () => {
     if (!selectedBarangay) {
-      setErrors((current) => ({ ...current, barangayId: 'Select Barangay of Incident before placing a pin.' }));
+      setErrors((current) => ({ ...current, barangayId: 'Select Barangay of Incident before using an approximate location.' }));
       return;
     }
 
@@ -435,12 +446,12 @@ export function IncidentReport() {
     const lng = selectedBarangay.longitude ? String(selectedBarangay.longitude) : '';
 
     if (!lat || !lng) {
-      toast.info('Barangay selected. Exact coordinates are optional when the pin is unavailable.');
+      toast.info('Barangay selected. Coordinates are optional, so this incident can be saved as barangay-only.');
       return;
     }
 
     setFormData((current) => ({ ...current, locationLat: lat, locationLng: lng }));
-    toast.success('Incident pin set to the selected barangay coordinates.');
+    toast.success('Approximate location set from the selected barangay.');
   };
 
   const validateForm = () => {
@@ -451,24 +462,26 @@ export function IncidentReport() {
       nextErrors.patientSelection = 'Select an existing patient.';
     }
 
-    if (!formData.firstName.trim()) {
-      nextErrors.firstName = 'First name is required.';
-    }
+    if (!isEditMode) {
+      if (!formData.firstName.trim()) {
+        nextErrors.firstName = 'First name is required.';
+      }
 
-    if (!formData.lastName.trim()) {
-      nextErrors.lastName = 'Last name is required.';
-    }
+      if (!formData.lastName.trim()) {
+        nextErrors.lastName = 'Last name is required.';
+      }
 
-    const age = Number(formData.age);
-    if (!formData.age || Number.isNaN(age) || age < 0 || age > 120) {
-      nextErrors.age = 'Enter a valid age from 0 to 120.';
-    }
+      const age = Number(formData.age);
+      if (!formData.age || Number.isNaN(age) || age < 0 || age > 120) {
+        nextErrors.age = 'Enter a valid age from 0 to 120.';
+      }
 
-    if (!formData.sex) nextErrors.sex = 'Sex is required.';
-    if (!formData.contact.trim()) {
-      nextErrors.contact = 'Contact number is required.';
-    } else if (!isValidPhilippineMobile(formData.contact)) {
-      nextErrors.contact = 'Use a Philippine mobile number, e.g. 09XXXXXXXXX.';
+      if (!formData.sex) nextErrors.sex = 'Sex is required.';
+      if (!formData.contact.trim()) {
+        nextErrors.contact = 'Contact number is required.';
+      } else if (!isValidPhilippineMobile(formData.contact)) {
+        nextErrors.contact = 'Use a Philippine mobile number, e.g. 09XXXXXXXXX.';
+      }
     }
 
     if (!formData.incidentDate) {
@@ -498,18 +511,8 @@ export function IncidentReport() {
     }
 
     const fullName = composePatientName(formData);
-    const payload = {
+    const incidentPayload = {
       patient_id: formData.patientId || undefined,
-      patient_name: fullName,
-      full_name: fullName,
-      first_name: formData.firstName,
-      middle_name: formData.middleName,
-      last_name: formData.lastName,
-      suffix: formData.suffix,
-      age: Number(formData.age),
-      sex: formData.sex,
-      address: formData.address || 'Not provided',
-      contact_number: normalizeContact(formData.contact),
       barangay_id: formData.barangayId,
       incident_date: formData.incidentDate,
       incident_time: formData.incidentTime || null,
@@ -521,6 +524,19 @@ export function IncidentReport() {
       location_lat: formData.locationLat || null,
       location_lng: formData.locationLng || null,
       notes: buildNotes(formData),
+    };
+    const payload = isEditMode ? incidentPayload : {
+      ...incidentPayload,
+      patient_name: fullName,
+      full_name: fullName,
+      first_name: formData.firstName,
+      middle_name: formData.middleName,
+      last_name: formData.lastName,
+      suffix: formData.suffix,
+      age: Number(formData.age),
+      sex: formData.sex,
+      address: formData.address || 'Not provided',
+      contact_number: normalizeContact(formData.contact),
     };
 
     try {
@@ -554,9 +570,16 @@ export function IncidentReport() {
       value: formData.smsConsent ? formData.reminderChannel + ' allowed' : 'SMS not allowed',
     },
   ];
-  const locationHelperText = currentRole === 'nurse_vaccinator'
-    ? 'Location is used for clinic mapping, barangay monitoring, and reports. Nurse/Vaccinator can encode location but cannot access GIS analytics.'
-    : 'Location is used for clinic mapping, barangay monitoring, and reports.';
+  const locationHelperText = 'Location is used for clinic mapping, barangay monitoring, and reports. If the exact location is unknown, selecting the barangay is enough.';
+  const selectedBarangayLat = selectedBarangay?.latitude ? String(selectedBarangay.latitude) : '';
+  const selectedBarangayLng = selectedBarangay?.longitude ? String(selectedBarangay.longitude) : '';
+  const hasLocationPin = Boolean(formData.locationLat && formData.locationLng);
+  const isApproximateBarangayPin = hasLocationPin
+    && selectedBarangayLat === formData.locationLat
+    && selectedBarangayLng === formData.locationLng;
+  const locationPinStatus = hasLocationPin
+    ? (isApproximateBarangayPin ? 'Using approximate barangay location' : 'Exact pin selected')
+    : (formData.barangayId ? 'Barangay only' : 'No pin selected');
 
   if (loadingIncident) {
     return (
@@ -592,12 +615,12 @@ export function IncidentReport() {
       <Header title={isEditMode ? 'Edit Incident Report' : 'New Incident Report'} breadcrumbs={isEditMode ? ['Incidents', 'Edit Incident'] : ['Incidents', 'New Report']} />
 
       <div className="px-5 py-5 lg:px-7 lg:py-6">
-        <form onSubmit={handleSubmit} className="mx-auto grid max-w-[1480px] grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_390px]">
-          <div className="space-y-4">
+        <form onSubmit={handleSubmit} className="mx-auto grid max-w-[1480px] grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
+          <div className="space-y-3">
           <div className="bg-card border border-border rounded-2xl p-4 lg:p-5 shadow-sm">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-4">
               <div>
-                <h2 className="text-base font-bold text-foreground">Section 1: Patient Information</h2>
+                <h2 className="text-base font-bold text-foreground">Patient Information</h2>
                 <p className="text-xs text-muted-foreground mt-1">
                   {isEditMode ? 'Review the patient information attached to this incident.' : 'Choose an existing patient or encode a new patient record.'}
                 </p>
@@ -653,7 +676,32 @@ export function IncidentReport() {
               </div>
             )}
 
-            {formData.patientType === 'new' || isEditMode ? (
+            {isEditMode ? (
+              <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-foreground">Linked Patient Record</h3>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                      Patient profile details are managed in the Patient Registry.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate(formData.patientId ? '/patients/' + formData.patientId : '/patients')}
+                  >
+                    Open Patient Record
+                  </Button>
+                </div>
+                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <ReadOnlyPatientItem label="Full Name" value={linkedPatientName} />
+                  <ReadOnlyPatientItem label="Age / Sex" value={linkedPatientAgeSex} />
+                  <ReadOnlyPatientItem label="Contact Number" value={formData.contact} />
+                  <ReadOnlyPatientItem label="Address" value={formData.address} />
+                </div>
+              </div>
+            ) : formData.patientType === 'new' ? (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
                 <div className="md:col-span-2">
                   <Input
@@ -817,7 +865,7 @@ export function IncidentReport() {
           </div>
 
           <div className="bg-card border border-border rounded-2xl p-4 lg:p-5 shadow-sm">
-            <h2 className="text-base font-bold text-foreground mb-1">Section 2: Bite Details / Exposure Details</h2>
+            <h2 className="text-base font-bold text-foreground mb-1">Bite / Exposure Details</h2>
             <p className="text-xs text-muted-foreground mb-4">Record the exposure details used for clinical workflow and PEP scheduling.</p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -892,9 +940,8 @@ export function IncidentReport() {
           </div>
 
           <div className="bg-card border border-border rounded-2xl p-4 lg:p-5 shadow-sm">
-                <label className="block text-xs font-medium text-foreground mb-2">
-                  WHO Wound Category *
-                </label>
+                <h2 className="text-base font-bold text-foreground mb-1">WHO Wound Category</h2>
+                <p className="text-xs text-muted-foreground mb-3">Select the wound category used for clinical workflow guidance.</p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {categoryCards.map((cat) => (
                     <label
@@ -923,6 +970,19 @@ export function IncidentReport() {
                   ))}
                 </div>
                 {errors.whoCategory && <p className="mt-2 text-xs text-destructive">{errors.whoCategory}</p>}
+                {formData.whoCategory && (
+                  <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 shadow-sm">
+                    <div className="flex items-start gap-3">
+                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
+                      <div>
+                        <p className="text-sm font-bold text-emerald-950">{categoryGuidance[formData.whoCategory]}</p>
+                        <p className="text-xs leading-relaxed text-emerald-700 mt-1">
+                          Recommendation is based on encoded category and is subject to doctor or clinic validation.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
           </div>
 
           <div className="flex flex-wrap gap-3 pb-4 xl:hidden">
@@ -935,12 +995,9 @@ export function IncidentReport() {
           </div>
           </div>
 
-          <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
+          <aside className="space-y-3 xl:self-start">
           <div className="bg-card border border-border rounded-2xl p-4 lg:p-5 shadow-sm">
-            <h2 className="text-base font-bold text-foreground mb-1">Section 3: Incident Location</h2>
-            <p className="text-xs text-muted-foreground mb-4">
-              {locationHelperText}
-            </p>
+            <h2 className="text-base font-bold text-foreground mb-1">Incident Location</h2>
 
             <Select
               label="Barangay of Incident *"
@@ -951,23 +1008,39 @@ export function IncidentReport() {
             />
 
             <div className="mt-4 rounded-2xl border border-dashed border-emerald-200 bg-gradient-to-br from-emerald-50 to-slate-50 p-3">
-              <div className="h-56 flex items-center justify-center rounded-xl bg-white/75">
-                <div className="text-center px-4">
-                  <MapPin className="w-9 h-9 text-emerald-600 mx-auto mb-2" />
-                  <p className="text-sm font-semibold text-foreground">Map pin input placeholder</p>
-                  <p className="text-xs text-muted-foreground mt-1">Click the control below to use the selected barangay coordinates when available.</p>
-                  {formData.locationLat && formData.locationLng && (
-                    <p className="mt-3 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800 inline-flex">
-                      {formData.locationLat}, {formData.locationLng}
+              <div className="min-h-36 rounded-xl bg-white/80 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-xl bg-emerald-100 p-2 text-emerald-700">
+                    <MapPin className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-bold text-foreground">Exact pin not set</p>
+                      <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-800">
+                        {locationPinStatus}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                      Use the barangay location as an approximate pin, or add an exact map pin when map selection is available.
                     </p>
-                  )}
+                    {hasLocationPin ? (
+                      <div className="mt-3 grid gap-1 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-900">
+                        <span>Latitude: {formData.locationLat}</span>
+                        <span>Longitude: {formData.locationLng}</span>
+                      </div>
+                    ) : (
+                      <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
+                        {formData.barangayId ? 'Barangay only' : 'No pin selected'}
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
 
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button type="button" variant="outline" size="sm" onClick={handleSetPin}>
                   <Crosshair className="w-4 h-4 mr-2" />
-                  Set Pin from Barangay
+                  Use Barangay Location
                 </Button>
                 <Button
                   type="button"
@@ -983,26 +1056,14 @@ export function IncidentReport() {
 
               <div className="mt-3 rounded-xl border border-emerald-100 bg-white/75 p-3 text-xs leading-relaxed text-slate-600">
                 <p>{locationHelperText}</p>
-                <p className="mt-1 font-medium text-slate-700">If the exact location is unknown, select the barangay only.</p>
+                {currentRole === 'nurse_vaccinator' && (
+                  <p className="mt-1 font-medium text-slate-700">Nurse/Vaccinator can encode location but cannot access GIS analytics.</p>
+                )}
               </div>
             </div>
           </div>
 
-          {formData.whoCategory && (
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
-                <div>
-                  <p className="text-sm font-bold text-emerald-950">{categoryGuidance[formData.whoCategory]}</p>
-                  <p className="text-xs leading-relaxed text-emerald-700 mt-1">
-                    Recommendation is based on encoded category and is subject to doctor or clinic validation.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <div className="rounded-2xl border border-border bg-card p-4 shadow-sm xl:sticky xl:top-24">
             <div className="mb-3">
               <h3 className="text-base font-bold text-foreground">Incident Summary</h3>
               <p className="text-xs text-muted-foreground mt-0.5">Review key values before saving.</p>
