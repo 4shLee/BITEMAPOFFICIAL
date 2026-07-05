@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { Toaster } from 'sonner';
 import { Dashboard } from './pages/Dashboard';
 import { IncidentReport } from './pages/IncidentReport';
+import { IncidentDetail } from './pages/IncidentDetail';
 import { IncidentListPage } from './components/Incidents/IncidentListPage';
 import { Patients } from './pages/Patients';
 import { PatientDetail } from './pages/PatientDetail';
@@ -81,6 +82,8 @@ export default function App() {
             <Route path="/dashboard" element={<RoleRoute><Dashboard /></RoleRoute>} />
             <Route path="/incidents" element={<RoleRoute><IncidentListPage /></RoleRoute>} />
             <Route path="/incidents/new" element={<RoleRoute><IncidentReport /></RoleRoute>} />
+            <Route path="/incidents/:id/edit" element={<RoleRoute><IncidentReport /></RoleRoute>} />
+            <Route path="/incidents/:id" element={<RoleRoute><IncidentDetail /></RoleRoute>} />
             <Route path="/patients" element={<RoleRoute><Patients /></RoleRoute>} />
             <Route path="/patients/:id" element={<RoleRoute><PatientDetail /></RoleRoute>} />
             <Route path="/pep-schedule" element={<RoleRoute><PEPSchedule /></RoleRoute>} />

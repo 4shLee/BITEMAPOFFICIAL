@@ -11,7 +11,9 @@ import {
   Bell,
   LogOut,
   ClipboardList,
+  ChevronUp,
 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { canAccessPath, getRoleLabel, getStoredUser, getUserDisplayName, getUserInitial, isSystemAdminRole } from '../../../lib/auth/roleAccess';
@@ -63,6 +65,8 @@ export function Sidebar() {
   const currentUser = getStoredUser();
   const displayName = getUserDisplayName(currentUser);
   const userInitial = getUserInitial(currentUser);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
   const visibleMainNav = mainNav.filter((item) => canAccessPath(currentUser?.role, item.path));
   const visibleSystemNav = systemNav
     .filter((item) => canAccessPath(currentUser?.role, item.path))
@@ -76,6 +80,30 @@ export function Sidebar() {
     toast.success('Logged out successfully');
     navigate('/login', { replace: true });
   };
+
+  useEffect(() => {
+    if (!isUserMenuOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsUserMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isUserMenuOpen]);
 
   return (
     <aside
@@ -117,15 +145,6 @@ export function Sidebar() {
             {visibleSystemNav.map(item => (
               <li key={item.path}><NavItem {...item} /></li>
             ))}
-            <li>
-              <button
-                onClick={handleLogout}
-                className="relative w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-slate-50 hover:text-foreground transition-all"
-              >
-                <LogOut className="w-[18px] h-[18px] shrink-0 text-slate-400" />
-                <span>Logout</span>
-              </button>
-            </li>
           </ul>
         </div>
       </nav>
@@ -141,8 +160,30 @@ export function Sidebar() {
         </div>
       </div>
 
-      <div className="px-3 pb-4 border-t border-sidebar-border pt-3">
-        <div className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-slate-50 transition-colors cursor-default">
+      <div ref={userMenuRef} className="relative px-3 pb-4 border-t border-sidebar-border pt-3">
+        {isUserMenuOpen && (
+          <div className="absolute left-3 right-3 bottom-[76px] z-30 rounded-2xl border border-border bg-white p-2 shadow-xl">
+            <div className="px-3 py-2 border-b border-border">
+              <p className="text-sm font-semibold text-foreground truncate">{displayName}</p>
+              <p className="text-xs text-muted-foreground truncate">{getRoleLabel(currentUser?.role)}</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="mt-1 w-full flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold text-destructive hover:bg-destructive-bg transition-colors"
+            >
+              <LogOut className="w-4 h-4 shrink-0" />
+              <span>Logout</span>
+            </button>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => setIsUserMenuOpen((value) => !value)}
+          aria-expanded={isUserMenuOpen}
+          className="w-full flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-slate-50 transition-colors text-left"
+        >
           <div
             className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0"
             style={{ background: 'linear-gradient(135deg, #16A34A 0%, #15803D 100%)' }}
@@ -153,7 +194,8 @@ export function Sidebar() {
             <p className="text-sm font-semibold text-foreground truncate">{displayName}</p>
             <p className="text-[10px] text-muted-foreground truncate">{getRoleLabel(currentUser?.role)}</p>
           </div>
-        </div>
+          <ChevronUp className={'w-4 h-4 shrink-0 text-slate-400 transition-transform ' + (isUserMenuOpen ? 'rotate-180' : '')} />
+        </button>
       </div>
     </aside>
   );

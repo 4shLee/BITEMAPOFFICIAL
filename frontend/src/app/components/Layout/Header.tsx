@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Bell, ChevronRight, Search, Plus, CalendarClock } from 'lucide-react';
-import { Link, useNavigate } from 'react-router';
+import { ArrowLeft, Bell, ChevronRight, Search, Plus, CalendarClock } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { canAccessPath, getStoredUser, getUserInitial, isSystemAdminRole } from '../../../lib/auth/roleAccess';
 import { notificationsAPI } from '../../../lib/services/api';
 
@@ -20,8 +20,10 @@ type TodayScheduleAlert = {
 
 export function Header({ title, breadcrumbs = [] }: HeaderProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const currentUser = getStoredUser();
   const canCreateIncident = canAccessPath(currentUser?.role, '/incidents/new');
+  const isIncidentFormPage = location.pathname === '/incidents/new' || /^\/incidents\/[^/]+\/edit$/.test(location.pathname);
   const canViewScheduleAlerts = canAccessPath(currentUser?.role, '/notifications') && !isSystemAdminRole(currentUser?.role);
   const [todaySchedules, setTodaySchedules] = useState<TodayScheduleAlert[]>([]);
   const [isAlertOpen, setIsAlertOpen] = useState(false);
@@ -84,11 +86,11 @@ export function Header({ title, breadcrumbs = [] }: HeaderProps) {
 
           {canCreateIncident && (
             <button
-              onClick={() => navigate('/incidents/new')}
+              onClick={() => navigate(isIncidentFormPage ? '/incidents' : '/incidents/new')}
               className="hidden lg:flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-sm font-semibold rounded-xl hover:bg-primary-dark transition-colors shadow-sm"
             >
-              <Plus className="w-4 h-4" />
-              New Incident
+              {isIncidentFormPage ? <ArrowLeft className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+              {isIncidentFormPage ? 'Back to Incidents' : 'New Incident'}
             </button>
           )}
 

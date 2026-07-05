@@ -1,195 +1,1071 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router';
+import { AlertCircle, CheckCircle2, Crosshair, MapPin, RotateCcw } from 'lucide-react';
+import { toast } from 'sonner';
 import { Header } from '../components/Layout/Header';
 import { Input } from '../components/UI/Input';
 import { Select } from '../components/UI/Select';
 import { Button } from '../components/UI/Button';
-import { MapPin } from 'lucide-react';
+import { barangaysAPI, incidentsAPI, patientsAPI } from '../../lib/services/api';
+import { getStoredUser, normalizeRoleKey } from '../../lib/auth/roleAccess';
+
+type PatientOption = {
+  id: number | string;
+  full_name?: string;
+  first_name?: string;
+  middle_name?: string;
+  last_name?: string;
+  suffix?: string;
+  age?: number | string;
+  sex?: string;
+  address?: string;
+  contact_number?: string;
+  barangay_id?: number | string;
+};
+
+type BarangayOption = {
+  id: number | string;
+  name: string;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
+};
+
+type FormErrors = Partial<Record<keyof IncidentFormData | 'patientSelection', string>>;
+
+type IncidentFormData = {
+  patientType: 'existing' | 'new';
+  patientId: string;
+  patientSearch: string;
+  firstName: string;
+  middleName: string;
+  lastName: string;
+  suffix: string;
+  age: string;
+  sex: string;
+  address: string;
+  contact: string;
+  smsConsent: boolean;
+  reminderChannel: string;
+  incidentDate: string;
+  incidentTime: string;
+  firstConsultDate: string;
+  animalType: string;
+  exposureType: string;
+  animalStatus: string;
+  animalCondition: string;
+  woundWashed: string;
+  biteSite: string;
+  whoCategory: string;
+  status: string;
+  barangayId: string;
+  locationLat: string;
+  locationLng: string;
+};
+
+const initialFormData: IncidentFormData = {
+  patientType: 'new',
+  patientId: '',
+  patientSearch: '',
+  firstName: '',
+  middleName: '',
+  lastName: '',
+  suffix: '',
+  age: '',
+  sex: '',
+  address: '',
+  contact: '',
+  smsConsent: true,
+  reminderChannel: 'SMS',
+  incidentDate: '',
+  incidentTime: '',
+  firstConsultDate: '',
+  animalType: '',
+  exposureType: 'Bite',
+  animalStatus: 'Unknown',
+  animalCondition: 'Under observation',
+  woundWashed: '',
+  biteSite: '',
+  whoCategory: '',
+  status: 'Active',
+  barangayId: '',
+  locationLat: '',
+  locationLng: '',
+};
+
+const fallbackBarangays: BarangayOption[] = [
+  { id: '1', name: 'Aplaya' },
+  { id: '2', name: 'San Jose' },
+  { id: '3', name: 'Dawis' },
+  { id: '4', name: 'Zone 1' },
+  { id: '5', name: 'Zone 2' },
+  { id: '6', name: 'Mahayahay' },
+  { id: '7', name: 'Balabag' },
+  { id: '8', name: 'Tiguman' },
+];
+
+const categoryGuidance: Record<string, string> = {
+  I: 'No PEP required if reliable history. Provide health advice.',
+  II: 'PEP vaccination recommended.',
+  III: 'PEP vaccination and RIG evaluation recommended.',
+};
+
+const categoryCards = [
+  {
+    value: 'I',
+    label: 'Category I',
+    risk: 'Low risk',
+    desc: 'Touching/feeding animals, licks on intact skin',
+    idleClass: 'border-emerald-100 bg-emerald-50/45 hover:border-emerald-300',
+    activeClass: 'border-emerald-500 bg-emerald-50 shadow-sm ring-2 ring-emerald-100',
+    badgeClass: 'bg-emerald-100 text-emerald-700',
+  },
+  {
+    value: 'II',
+    label: 'Category II',
+    risk: 'Moderate risk',
+    desc: 'Nibbling, minor scratches, abrasions without bleeding',
+    idleClass: 'border-amber-100 bg-amber-50/45 hover:border-amber-300',
+    activeClass: 'border-amber-500 bg-amber-50 shadow-sm ring-2 ring-amber-100',
+    badgeClass: 'bg-amber-100 text-amber-700',
+  },
+  {
+    value: 'III',
+    label: 'Category III',
+    risk: 'High risk',
+    desc: 'Single/multiple bites, licks on broken skin, contamination',
+    idleClass: 'border-rose-100 bg-rose-50/45 hover:border-rose-300',
+    activeClass: 'border-rose-500 bg-rose-50 shadow-sm ring-2 ring-rose-100',
+    badgeClass: 'bg-rose-100 text-rose-700',
+  },
+];
+
+const todayKey = () => new Date().toISOString().split('T')[0];
+
+function normalizeContact(value: string) {
+  return value.replace(/[\s-]/g, '');
+}
+
+function isValidPhilippineMobile(value: string) {
+  const contact = normalizeContact(value);
+  return /^09\d{9}$/.test(contact) || /^\+639\d{9}$/.test(contact);
+}
+
+function composePatientName(formData: IncidentFormData) {
+  return [
+    formData.firstName.trim(),
+    formData.middleName.trim(),
+    formData.lastName.trim(),
+    formData.suffix.trim(),
+  ].filter(Boolean).join(' ');
+}
+
+function splitPatientName(patient: PatientOption | undefined) {
+  if (!patient) {
+    return { firstName: '', middleName: '', lastName: '', suffix: '' };
+  }
+
+  const fullName = (patient.full_name || '').trim();
+  const parts = fullName.split(/\s+/).filter(Boolean);
+  const suffixes = ['jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv', 'v'];
+  const structuredFirst = patient.first_name || '';
+  const structuredMiddle = patient.middle_name || '';
+  const structuredLast = patient.last_name || '';
+  const structuredSuffix = patient.suffix || '';
+
+  if (structuredFirst || structuredMiddle || structuredLast || structuredSuffix) {
+    return {
+      firstName: structuredFirst,
+      middleName: structuredMiddle,
+      lastName: structuredLast,
+      suffix: structuredSuffix,
+    };
+  }
+
+  if (parts.length === 0) {
+    return { firstName: '', middleName: '', lastName: '', suffix: '' };
+  }
+
+  const lastPart = parts[parts.length - 1];
+  const hasSuffix = suffixes.includes(lastPart.toLowerCase());
+  const suffix = hasSuffix ? lastPart : '';
+  const nameParts = hasSuffix ? parts.slice(0, -1) : parts;
+
+  if (nameParts.length === 1) {
+    return { firstName: nameParts[0], middleName: '', lastName: '', suffix };
+  }
+
+  return {
+    firstName: nameParts[0] || '',
+    middleName: nameParts.length > 2 ? nameParts.slice(1, -1).join(' ') : '',
+    lastName: nameParts[nameParts.length - 1] || '',
+    suffix,
+  };
+}
+
+function buildNotes(formData: IncidentFormData) {
+  return [
+    'Exposure Type: ' + formData.exposureType,
+    'Animal Status: ' + formData.animalStatus,
+    'Animal Condition: ' + formData.animalCondition,
+    'Wound Washed: ' + formData.woundWashed,
+    'Date of First Consult: ' + (formData.firstConsultDate || 'Not specified'),
+    'SMS Consent: ' + (formData.smsConsent ? 'Allowed' : 'Not allowed'),
+    'Preferred Reminder Channel: ' + formData.reminderChannel,
+  ].join('\n');
+}
+
+function readNoteValue(notes: string | undefined, label: string) {
+  const line = (notes || '').split('\n').find((item) => item.toLowerCase().startsWith(label.toLowerCase() + ':'));
+  return line ? line.split(':').slice(1).join(':').trim() : '';
+}
+
+function normalizeCategoryForForm(category?: string) {
+  return (category || '').replace('Category ', '') || '';
+}
 
 export function IncidentReport() {
-  const [formData, setFormData] = useState({
-    patientName: '',
-    age: '',
-    sex: 'Male',
-    address: '',
-    contact: '',
-    incidentDate: '',
-    incidentTime: '',
-    animalType: 'Dog',
-    biteSite: '',
-    whoCategory: 'I',
-    barangay: 'Aplaya'
-  });
+  const navigate = useNavigate();
+  const { id } = useParams();
+  const currentUser = getStoredUser();
+  const currentRole = normalizeRoleKey(currentUser?.role);
+  const isEditMode = Boolean(id);
+  const canUpdateIncident = currentRole === 'clinic_admin' || currentRole === 'nurse_vaccinator';
+  const [formData, setFormData] = useState<IncidentFormData>(initialFormData);
+  const [patients, setPatients] = useState<PatientOption[]>([]);
+  const [barangays, setBarangays] = useState<BarangayOption[]>(fallbackBarangays);
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [loadingOptions, setLoadingOptions] = useState(true);
+  const [loadingIncident, setLoadingIncident] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [savedIncident, setSavedIncident] = useState<any>(null);
 
-  const sexOptions = [
-    { value: 'Male', label: 'Male' },
-    { value: 'Female', label: 'Female' }
-  ];
+  useEffect(() => {
+    async function loadOptions() {
+      try {
+        const [patientsResponse, barangaysResponse] = await Promise.all([
+          patientsAPI.getAll(),
+          barangaysAPI.getAll(),
+        ]);
 
-  const animalOptions = [
-    { value: 'Dog', label: 'Dog' },
-    { value: 'Cat', label: 'Cat' },
-    { value: 'Other', label: 'Other' }
-  ];
+        if (patientsResponse.success) setPatients(patientsResponse.data || []);
+        if (barangaysResponse.success && barangaysResponse.data?.length) {
+          setBarangays(barangaysResponse.data);
+        }
+      } catch {
+        toast.error('Some form options could not be loaded. You can still continue with available choices.');
+      } finally {
+        setLoadingOptions(false);
+      }
+    }
+
+    loadOptions();
+  }, []);
+
+  useEffect(() => {
+    async function loadIncidentForEdit() {
+      if (!id) return;
+
+      if (!canUpdateIncident) {
+        setLoadError('You do not have permission to edit incident reports.');
+        return;
+      }
+
+      try {
+        setLoadingIncident(true);
+        setLoadError(null);
+        const response = await incidentsAPI.getById(id);
+        const incident = response.data;
+        const patient = incident?.patient || {};
+        const nameParts = splitPatientName(patient);
+        const notes = incident?.notes || '';
+
+        setFormData({
+          patientType: 'existing',
+          patientId: incident?.patient_id ? String(incident.patient_id) : '',
+          patientSearch: '',
+          firstName: nameParts.firstName,
+          middleName: nameParts.middleName,
+          lastName: nameParts.lastName,
+          suffix: nameParts.suffix,
+          age: patient?.age ? String(patient.age) : '',
+          sex: patient?.sex || '',
+          address: patient?.address || '',
+          contact: incident?.contact_number || patient?.contact_number || '',
+          smsConsent: readNoteValue(notes, 'SMS Consent') !== 'Not allowed',
+          reminderChannel: readNoteValue(notes, 'Preferred Reminder Channel') || 'SMS',
+          incidentDate: incident?.incident_date || '',
+          incidentTime: incident?.incident_time || '',
+          firstConsultDate: readNoteValue(notes, 'Date of First Consult') === 'Not specified' ? '' : readNoteValue(notes, 'Date of First Consult'),
+          animalType: incident?.animal_type || '',
+          exposureType: readNoteValue(notes, 'Exposure Type') || 'Bite',
+          animalStatus: readNoteValue(notes, 'Animal Status') || 'Unknown',
+          animalCondition: readNoteValue(notes, 'Animal Condition') || 'Under observation',
+          woundWashed: readNoteValue(notes, 'Wound Washed') || '',
+          biteSite: incident?.bite_site || incident?.bite_location || '',
+          whoCategory: normalizeCategoryForForm(incident?.who_category),
+          status: incident?.status || 'Active',
+          barangayId: incident?.barangay_id ? String(incident.barangay_id) : '',
+          locationLat: incident?.location_lat ? String(incident.location_lat) : '',
+          locationLng: incident?.location_lng ? String(incident.location_lng) : '',
+        });
+      } catch (error: any) {
+        setLoadError(error.message || 'Unable to load incident report.');
+      } finally {
+        setLoadingIncident(false);
+      }
+    }
+
+    loadIncidentForEdit();
+  }, [id, canUpdateIncident]);
+
+  const selectedPatient = patients.find((patient) => String(patient.id) === formData.patientId);
+  const selectedBarangay = barangays.find((barangay) => String(barangay.id) === formData.barangayId);
+  const selectedCategory = categoryCards.find((category) => category.value === formData.whoCategory);
+
+  const filteredPatients = useMemo(() => {
+    const search = formData.patientSearch.trim().toLowerCase();
+    if (!search) return patients.slice(0, 8);
+
+    return patients.filter((patient) => (
+      (patient.full_name || '').toLowerCase().includes(search) ||
+      (patient.first_name || '').toLowerCase().includes(search) ||
+      (patient.last_name || '').toLowerCase().includes(search) ||
+      (patient.contact_number || '').toLowerCase().includes(search)
+    )).slice(0, 8);
+  }, [formData.patientSearch, patients]);
 
   const barangayOptions = [
-    { value: 'Aplaya', label: 'Aplaya' },
-    { value: 'San Jose', label: 'San Jose' },
-    { value: 'Dawis', label: 'Dawis' },
-    { value: 'Zone 1', label: 'Zone 1' },
-    { value: 'Zone 2', label: 'Zone 2' },
-    { value: 'Mahayahay', label: 'Mahayahay' },
-    { value: 'Balabag', label: 'Balabag' },
-    { value: 'Tiguman', label: 'Tiguman' }
+    { value: '', label: loadingOptions ? 'Loading barangays...' : 'Select barangay' },
+    ...barangays.map((barangay) => ({ value: String(barangay.id), label: barangay.name })),
   ];
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    console.log('Submitting incident report:', formData);
+  const selectOptions = {
+    sex: [
+      { value: '', label: 'Select sex' },
+      { value: 'Male', label: 'Male' },
+      { value: 'Female', label: 'Female' },
+    ],
+    animal: [
+      { value: '', label: 'Select animal type' },
+      { value: 'Dog', label: 'Dog' },
+      { value: 'Cat', label: 'Cat' },
+      { value: 'Other', label: 'Other' },
+    ],
+    exposure: [
+      { value: 'Bite', label: 'Bite' },
+      { value: 'Scratch', label: 'Scratch' },
+      { value: 'Lick on broken skin', label: 'Lick on broken skin' },
+      { value: 'Contact with saliva', label: 'Contact with saliva' },
+    ],
+    animalStatus: [
+      { value: 'Owned', label: 'Owned' },
+      { value: 'Stray', label: 'Stray' },
+      { value: 'Unknown', label: 'Unknown' },
+    ],
+    animalCondition: [
+      { value: 'Alive', label: 'Alive' },
+      { value: 'Dead', label: 'Dead' },
+      { value: 'Missing', label: 'Missing' },
+      { value: 'Under observation', label: 'Under observation' },
+    ],
+    yesNo: [
+      { value: '', label: 'Select answer' },
+      { value: 'Yes', label: 'Yes' },
+      { value: 'No', label: 'No' },
+    ],
+    reminderChannel: [
+      { value: 'SMS', label: 'SMS' },
+      { value: 'Call', label: 'Call' },
+      { value: 'None', label: 'None' },
+    ],
+    status: [
+      { value: 'Active', label: 'Active' },
+      { value: 'Completed', label: 'Completed' },
+      { value: 'Missed', label: 'Missed' },
+      { value: 'Lost to Follow-up', label: 'Lost to Follow-up' },
+    ],
   };
 
-  return (
-    <div className="flex-1">
-      <Header title="New Incident Report" breadcrumbs={['Incidents', 'New Report']} />
+  const updateField = <K extends keyof IncidentFormData>(field: K, value: IncidentFormData[K]) => {
+    setFormData((current) => ({ ...current, [field]: value }));
+    setErrors((current) => ({ ...current, [field]: undefined }));
+  };
 
-      <div className="p-8">
-        <form onSubmit={handleSubmit} className="max-w-4xl">
-          <div className="bg-card border border-border rounded-lg p-6 mb-6">
-            <h2 className="text-base font-medium text-foreground mb-4">Section 1: Patient Information</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
+  const handlePatientTypeChange = (type: 'existing' | 'new') => {
+    setFormData((current) => ({
+      ...current,
+      patientType: type,
+      patientId: '',
+      patientSearch: '',
+      firstName: type === 'new' ? current.firstName : '',
+      middleName: type === 'new' ? current.middleName : '',
+      lastName: type === 'new' ? current.lastName : '',
+      suffix: type === 'new' ? current.suffix : '',
+    }));
+    setErrors({});
+  };
+
+  const handlePatientSelect = (patientId: string) => {
+    const patient = patients.find((item) => String(item.id) === patientId);
+    const nameParts = splitPatientName(patient);
+
+    setFormData((current) => ({
+      ...current,
+      patientId,
+      firstName: nameParts.firstName,
+      middleName: nameParts.middleName,
+      lastName: nameParts.lastName,
+      suffix: nameParts.suffix,
+      age: patient?.age ? String(patient.age) : '',
+      sex: patient?.sex || '',
+      address: patient?.address || '',
+      contact: patient?.contact_number || '',
+    }));
+    setErrors((current) => ({ ...current, patientSelection: undefined }));
+  };
+
+  const handleSetPin = () => {
+    if (!selectedBarangay) {
+      setErrors((current) => ({ ...current, barangayId: 'Select Barangay of Incident before placing a pin.' }));
+      return;
+    }
+
+    const lat = selectedBarangay.latitude ? String(selectedBarangay.latitude) : '';
+    const lng = selectedBarangay.longitude ? String(selectedBarangay.longitude) : '';
+
+    if (!lat || !lng) {
+      toast.info('Barangay selected. Exact coordinates are optional when the pin is unavailable.');
+      return;
+    }
+
+    setFormData((current) => ({ ...current, locationLat: lat, locationLng: lng }));
+    toast.success('Incident pin set to the selected barangay coordinates.');
+  };
+
+  const validateForm = () => {
+    const nextErrors: FormErrors = {};
+    const today = todayKey();
+
+    if (!isEditMode && formData.patientType === 'existing' && !formData.patientId) {
+      nextErrors.patientSelection = 'Select an existing patient.';
+    }
+
+    if (!formData.firstName.trim()) {
+      nextErrors.firstName = 'First name is required.';
+    }
+
+    if (!formData.lastName.trim()) {
+      nextErrors.lastName = 'Last name is required.';
+    }
+
+    const age = Number(formData.age);
+    if (!formData.age || Number.isNaN(age) || age < 0 || age > 120) {
+      nextErrors.age = 'Enter a valid age from 0 to 120.';
+    }
+
+    if (!formData.sex) nextErrors.sex = 'Sex is required.';
+    if (!formData.contact.trim()) {
+      nextErrors.contact = 'Contact number is required.';
+    } else if (!isValidPhilippineMobile(formData.contact)) {
+      nextErrors.contact = 'Use a Philippine mobile number, e.g. 09XXXXXXXXX.';
+    }
+
+    if (!formData.incidentDate) {
+      nextErrors.incidentDate = 'Date of incident is required.';
+    } else if (formData.incidentDate > today) {
+      nextErrors.incidentDate = 'Date of incident cannot be in the future.';
+    }
+
+    if (formData.incidentDate === today && formData.incidentTime) {
+      const selectedTime = new Date(today + 'T' + formData.incidentTime);
+      if (selectedTime > new Date()) nextErrors.incidentTime = 'Time of incident cannot be in the future.';
+    }
+
+    if (!formData.animalType) nextErrors.animalType = 'Animal type is required.';
+    if (!formData.whoCategory) nextErrors.whoCategory = 'Select a WHO wound category.';
+    if (!formData.barangayId) nextErrors.barangayId = 'Barangay of Incident is required.';
+
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validateForm()) {
+      toast.error('Please complete the required incident details.');
+      return;
+    }
+
+    const fullName = composePatientName(formData);
+    const payload = {
+      patient_id: formData.patientId || undefined,
+      patient_name: fullName,
+      full_name: fullName,
+      first_name: formData.firstName,
+      middle_name: formData.middleName,
+      last_name: formData.lastName,
+      suffix: formData.suffix,
+      age: Number(formData.age),
+      sex: formData.sex,
+      address: formData.address || 'Not provided',
+      contact_number: normalizeContact(formData.contact),
+      barangay_id: formData.barangayId,
+      incident_date: formData.incidentDate,
+      incident_time: formData.incidentTime || null,
+      animal_type: formData.animalType,
+      animal_description: 'Status: ' + formData.animalStatus + '; Condition: ' + formData.animalCondition,
+      bite_site: formData.biteSite || formData.exposureType,
+      who_category: formData.whoCategory,
+      status: formData.status,
+      location_lat: formData.locationLat || null,
+      location_lng: formData.locationLng || null,
+      notes: buildNotes(formData),
+    };
+
+    try {
+      setSaving(true);
+      if (isEditMode && id) {
+        await incidentsAPI.update(id, payload);
+        toast.success('Incident report updated successfully.');
+        navigate('/incidents', { state: { refresh: Date.now(), updatedIncidentId: id } });
+      } else {
+        const response = await incidentsAPI.create(payload);
+        setSavedIncident(response.data);
+        toast.success('Incident report saved successfully.');
+      }
+    } catch (error: any) {
+      toast.error(error.message || (isEditMode ? 'Failed to update incident report.' : 'Failed to save incident report.'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const summaryItems = [
+    { label: 'Patient', value: composePatientName(formData) || selectedPatient?.full_name || 'Not selected' },
+    { label: 'Contact', value: formData.contact || 'Not provided' },
+    { label: 'Animal Type', value: formData.animalType || 'Not selected' },
+    { label: 'Exposure', value: formData.exposureType || 'Not selected' },
+    { label: 'WHO Category', value: formData.whoCategory ? 'Category ' + formData.whoCategory : 'Not selected' },
+    { label: 'Status', value: formData.status || 'Active' },
+    { label: 'Barangay', value: selectedBarangay?.name || 'Not selected' },
+    {
+      label: 'Reminders',
+      value: formData.smsConsent ? formData.reminderChannel + ' allowed' : 'SMS not allowed',
+    },
+  ];
+  const locationHelperText = currentRole === 'nurse_vaccinator'
+    ? 'Location is used for clinic mapping, barangay monitoring, and reports. Nurse/Vaccinator can encode location but cannot access GIS analytics.'
+    : 'Location is used for clinic mapping, barangay monitoring, and reports.';
+
+  if (loadingIncident) {
+    return (
+      <div className="flex-1 bg-[#f6f8f7] min-h-screen">
+        <Header title="Edit Incident Report" breadcrumbs={['Incidents', 'Edit Incident']} />
+        <div className="px-5 py-5 lg:px-7 lg:py-6">
+          <div className="rounded-2xl border border-border bg-card p-8 text-center text-sm text-muted-foreground shadow-sm">
+            Loading incident report...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex-1 bg-[#f6f8f7] min-h-screen">
+        <Header title="Edit Incident Report" breadcrumbs={['Incidents', 'Edit Incident']} />
+        <div className="px-5 py-5 lg:px-7 lg:py-6">
+          <div className="rounded-2xl border border-destructive/20 bg-destructive-bg p-8 text-center shadow-sm">
+            <p className="text-sm font-semibold text-destructive">{loadError}</p>
+            <Button type="button" variant="outline" className="mt-4" onClick={() => navigate('/incidents')}>
+              Back to Incidents
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 bg-[#f6f8f7] min-h-screen">
+      <Header title={isEditMode ? 'Edit Incident Report' : 'New Incident Report'} breadcrumbs={isEditMode ? ['Incidents', 'Edit Incident'] : ['Incidents', 'New Report']} />
+
+      <div className="px-5 py-5 lg:px-7 lg:py-6">
+        <form onSubmit={handleSubmit} className="mx-auto grid max-w-[1480px] grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_390px]">
+          <div className="space-y-4">
+          <div className="bg-card border border-border rounded-2xl p-4 lg:p-5 shadow-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-4">
+              <div>
+                <h2 className="text-base font-bold text-foreground">Section 1: Patient Information</h2>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {isEditMode ? 'Review the patient information attached to this incident.' : 'Choose an existing patient or encode a new patient record.'}
+                </p>
+              </div>
+              {!isEditMode && <div className="inline-flex w-fit rounded-xl bg-muted p-1 text-xs font-semibold">
+                {(['existing', 'new'] as const).map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => handlePatientTypeChange(type)}
+                    className={
+                      'rounded-lg px-3 py-1.5 transition-colors ' +
+                      (formData.patientType === type ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground')
+                    }
+                  >
+                    {type === 'existing' ? 'Existing Patient' : 'New Patient'}
+                  </button>
+                ))}
+              </div>}
+            </div>
+
+            {!isEditMode && formData.patientType === 'existing' && (
+              <div className="mb-4 rounded-xl border border-emerald-100 bg-emerald-50/50 p-3">
+                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.8fr)] gap-3">
+                  <Input
+                    label="Search Existing Patient"
+                    placeholder="Search by name or contact number"
+                    value={formData.patientSearch}
+                    onChange={(e) => updateField('patientSearch', e.target.value)}
+                    helperText="Select a patient below to auto-fill available details."
+                  />
+                  <Select
+                    label="Existing Patient *"
+                    options={[
+                      { value: '', label: filteredPatients.length ? 'Select patient' : 'No matching patients' },
+                      ...filteredPatients.map((patient) => ({
+                        value: String(patient.id),
+                        label: (patient.full_name || 'Unnamed patient') + (patient.contact_number ? ' - ' + patient.contact_number : ''),
+                      })),
+                    ]}
+                    value={formData.patientId}
+                    onChange={(e) => handlePatientSelect(e.target.value)}
+                    error={errors.patientSelection}
+                  />
+                </div>
+                {selectedPatient && (
+                  <div className="mt-3 rounded-lg border border-emerald-100 bg-white/70 px-3 py-2 text-xs text-emerald-800">
+                    <span className="font-semibold">{selectedPatient.full_name || 'Unnamed patient'}</span>
+                    <span className="text-emerald-700"> selected</span>
+                    {selectedPatient.contact_number && <span className="text-emerald-700"> - {selectedPatient.contact_number}</span>}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {formData.patientType === 'new' || isEditMode ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
+                <div className="md:col-span-2">
+                  <Input
+                    label="First Name *"
+                    placeholder="First name"
+                    value={formData.firstName}
+                    onChange={(e) => updateField('firstName', e.target.value)}
+                    error={errors.firstName}
+                  />
+                </div>
                 <Input
-                  label="Full Name"
-                  placeholder="Enter patient's full name"
-                  value={formData.patientName}
-                  onChange={(e) => setFormData({ ...formData, patientName: e.target.value })}
-                  required
+                  label="Middle Name / Initial"
+                  placeholder="M.I. or middle name"
+                  value={formData.middleName}
+                  onChange={(e) => updateField('middleName', e.target.value)}
+                />
+                <div className="md:col-span-2">
+                  <Input
+                    label="Last Name *"
+                    placeholder="Last name"
+                    value={formData.lastName}
+                    onChange={(e) => updateField('lastName', e.target.value)}
+                    error={errors.lastName}
+                  />
+                </div>
+                <Input
+                  label="Suffix"
+                  placeholder="Jr., Sr., III"
+                  value={formData.suffix}
+                  onChange={(e) => updateField('suffix', e.target.value)}
+                />
+                <Input
+                  label="Age *"
+                  type="number"
+                  placeholder="Age"
+                  value={formData.age}
+                  onChange={(e) => updateField('age', e.target.value)}
+                  error={errors.age}
+                />
+                <Select
+                  label="Sex *"
+                  options={selectOptions.sex}
+                  value={formData.sex}
+                  onChange={(e) => updateField('sex', e.target.value)}
+                  error={errors.sex}
+                />
+                <div className="md:col-span-2">
+                  <Input
+                    label="Address"
+                    placeholder="Enter complete address"
+                    value={formData.address}
+                    onChange={(e) => updateField('address', e.target.value)}
+                  />
+                </div>
+                <Input
+                  label="Contact Number *"
+                  type="tel"
+                  placeholder="09XXXXXXXXX"
+                  value={formData.contact}
+                  onChange={(e) => updateField('contact', e.target.value)}
+                  error={errors.contact}
+                />
+                <Select
+                  label="Preferred Reminder Channel"
+                  options={selectOptions.reminderChannel}
+                  value={formData.reminderChannel}
+                  onChange={(e) => updateField('reminderChannel', e.target.value)}
                 />
               </div>
-              <Input
-                label="Age"
-                type="number"
-                placeholder="Enter age"
-                value={formData.age}
-                onChange={(e) => setFormData({ ...formData, age: e.target.value })}
-                required
-              />
-              <Select
-                label="Sex"
-                options={sexOptions}
-                value={formData.sex}
-                onChange={(e) => setFormData({ ...formData, sex: e.target.value })}
-              />
-              <div className="md:col-span-2">
+            ) : (
+              <div className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
+                <div className="md:col-span-2">
+                  <Input
+                    label="First Name"
+                    placeholder="First name"
+                    value={formData.firstName}
+                    onChange={(e) => updateField('firstName', e.target.value)}
+                    disabled={Boolean(formData.patientId)}
+                  />
+                </div>
                 <Input
-                  label="Address"
-                  placeholder="Enter complete address"
-                  value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  required
+                  label="Middle Name / Initial"
+                  placeholder="M.I. or middle name"
+                  value={formData.middleName}
+                  onChange={(e) => updateField('middleName', e.target.value)}
+                  disabled={Boolean(formData.patientId)}
+                />
+                <div className="md:col-span-2">
+                  <Input
+                    label="Last Name"
+                    placeholder="Last name"
+                    value={formData.lastName}
+                    onChange={(e) => updateField('lastName', e.target.value)}
+                    disabled={Boolean(formData.patientId)}
+                  />
+                </div>
+                <Input
+                  label="Suffix"
+                  placeholder="Jr., Sr., III"
+                  value={formData.suffix}
+                  onChange={(e) => updateField('suffix', e.target.value)}
+                  disabled={Boolean(formData.patientId)}
                 />
               </div>
-              <Input
-                label="Contact Number"
-                type="tel"
-                placeholder="Enter contact number"
-                value={formData.contact}
-                onChange={(e) => setFormData({ ...formData, contact: e.target.value })}
-                required
-              />
+              {selectedPatient?.full_name && (
+                <p className="text-xs text-muted-foreground">
+                  Existing record name: <span className="font-semibold text-foreground">{selectedPatient.full_name}</span>
+                </p>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <Input
+                  label="Age *"
+                  type="number"
+                  placeholder="Age"
+                  value={formData.age}
+                  onChange={(e) => updateField('age', e.target.value)}
+                  error={errors.age}
+                />
+                <Select
+                  label="Sex *"
+                  options={selectOptions.sex}
+                  value={formData.sex}
+                  onChange={(e) => updateField('sex', e.target.value)}
+                  error={errors.sex}
+                />
+                <Input
+                  label="Contact Number *"
+                  type="tel"
+                  placeholder="09XXXXXXXXX"
+                  value={formData.contact}
+                  onChange={(e) => updateField('contact', e.target.value)}
+                  error={errors.contact}
+                />
+              </div>
+              </div>
+            )}
+
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_220px] gap-3">
+              <label className="flex items-start gap-3 rounded-xl border border-border bg-muted/25 p-3 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  checked={formData.smsConsent}
+                  onChange={(e) => updateField('smsConsent', e.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                />
+                <span>
+                  <span className="font-semibold">Allow SMS reminders for PEP schedule</span>
+                  <span className="block text-xs text-muted-foreground mt-0.5">Supports reminder workflow after saving.</span>
+                </span>
+              </label>
+              {formData.patientType === 'existing' && (
+                <Select
+                  label="Preferred Channel"
+                  options={selectOptions.reminderChannel}
+                  value={formData.reminderChannel}
+                  onChange={(e) => updateField('reminderChannel', e.target.value)}
+                />
+              )}
             </div>
           </div>
 
-          <div className="bg-card border border-border rounded-lg p-6 mb-6">
-            <h2 className="text-base font-medium text-foreground mb-4">Section 2: Bite Details</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-card border border-border rounded-2xl p-4 lg:p-5 shadow-sm">
+            <h2 className="text-base font-bold text-foreground mb-1">Section 2: Bite Details / Exposure Details</h2>
+            <p className="text-xs text-muted-foreground mb-4">Record the exposure details used for clinical workflow and PEP scheduling.</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
               <Input
-                label="Date of Incident"
+                label="Date of Incident *"
                 type="date"
+                max={todayKey()}
                 value={formData.incidentDate}
-                onChange={(e) => setFormData({ ...formData, incidentDate: e.target.value })}
-                required
+                onChange={(e) => updateField('incidentDate', e.target.value)}
+                error={errors.incidentDate}
               />
               <Input
                 label="Time of Incident"
                 type="time"
                 value={formData.incidentTime}
-                onChange={(e) => setFormData({ ...formData, incidentTime: e.target.value })}
-                required
+                onChange={(e) => updateField('incidentTime', e.target.value)}
+                error={errors.incidentTime}
+              />
+              <Input
+                label="Date of First Consult"
+                type="date"
+                max={todayKey()}
+                value={formData.firstConsultDate}
+                onChange={(e) => updateField('firstConsultDate', e.target.value)}
               />
               <Select
-                label="Animal Type"
-                options={animalOptions}
+                label="Exposure Type"
+                options={selectOptions.exposure}
+                value={formData.exposureType}
+                onChange={(e) => updateField('exposureType', e.target.value)}
+              />
+              <Select
+                label="Animal Type *"
+                options={selectOptions.animal}
                 value={formData.animalType}
-                onChange={(e) => setFormData({ ...formData, animalType: e.target.value })}
+                onChange={(e) => updateField('animalType', e.target.value)}
+                error={errors.animalType}
               />
               <Input
                 label="Bite Site"
-                placeholder="e.g., Left arm, Right leg"
+                placeholder="e.g., Left arm, right leg"
                 value={formData.biteSite}
-                onChange={(e) => setFormData({ ...formData, biteSite: e.target.value })}
-                required
+                onChange={(e) => updateField('biteSite', e.target.value)}
               />
-              <div className="md:col-span-2">
+              <Select
+                label="Animal Status"
+                options={selectOptions.animalStatus}
+                value={formData.animalStatus}
+                onChange={(e) => updateField('animalStatus', e.target.value)}
+              />
+              <Select
+                label="Animal Condition"
+                options={selectOptions.animalCondition}
+                value={formData.animalCondition}
+                onChange={(e) => updateField('animalCondition', e.target.value)}
+              />
+              <Select
+                label="Wound Washed"
+                options={selectOptions.yesNo}
+                value={formData.woundWashed}
+                onChange={(e) => updateField('woundWashed', e.target.value)}
+              />
+              {isEditMode && (
+                <Select
+                  label="Incident Status"
+                  options={selectOptions.status}
+                  value={formData.status}
+                  onChange={(e) => updateField('status', e.target.value)}
+                />
+              )}
+            </div>
+          </div>
+
+          <div className="bg-card border border-border rounded-2xl p-4 lg:p-5 shadow-sm">
                 <label className="block text-xs font-medium text-foreground mb-2">
-                  WHO Wound Category
+                  WHO Wound Category *
                 </label>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {[
-                    { value: 'I', label: 'Category I', desc: 'Touching/feeding animals, licks on intact skin' },
-                    { value: 'II', label: 'Category II', desc: 'Nibbling, minor scratches, abrasions without bleeding' },
-                    { value: 'III', label: 'Category III', desc: 'Single/multiple bites, licks on broken skin, contamination' }
-                  ].map((cat) => (
+                  {categoryCards.map((cat) => (
                     <label
                       key={cat.value}
-                      className={`border rounded-lg p-4 cursor-pointer transition-all ${
-                        formData.whoCategory === cat.value
-                          ? 'border-primary bg-primary-bg'
-                          : 'border-border hover:border-primary/50'
-                      }`}
+                      className={
+                        'border rounded-xl p-3 cursor-pointer transition-all ' +
+                        (formData.whoCategory === cat.value
+                          ? cat.activeClass
+                          : cat.idleClass)
+                      }
                     >
                       <input
                         type="radio"
                         name="whoCategory"
                         value={cat.value}
                         checked={formData.whoCategory === cat.value}
-                        onChange={(e) => setFormData({ ...formData, whoCategory: e.target.value })}
+                        onChange={(e) => updateField('whoCategory', e.target.value)}
                         className="sr-only"
                       />
-                      <div className="font-medium text-sm text-foreground mb-1">{cat.label}</div>
-                      <div className="text-xs text-muted-foreground">{cat.desc}</div>
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <div className="font-bold text-sm text-foreground">{cat.label}</div>
+                        <span className={'rounded-full px-2 py-0.5 text-[10px] font-bold ' + cat.badgeClass}>{cat.risk}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground leading-relaxed">{cat.desc}</div>
                     </label>
                   ))}
                 </div>
-              </div>
-            </div>
+                {errors.whoCategory && <p className="mt-2 text-xs text-destructive">{errors.whoCategory}</p>}
           </div>
 
-          <div className="bg-card border border-border rounded-lg p-6 mb-6">
-            <h2 className="text-base font-medium text-foreground mb-4">Section 3: Incident Location</h2>
-            <Select
-              label="Barangay"
-              options={barangayOptions}
-              value={formData.barangay}
-              onChange={(e) => setFormData({ ...formData, barangay: e.target.value })}
-            />
-            <div className="mt-4 bg-muted rounded-lg h-64 flex items-center justify-center">
-              <div className="text-center">
-                <MapPin className="w-12 h-12 text-muted-foreground mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">Click map to pin incident location</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex gap-3">
-            <Button type="submit" size="lg">
-              Save Incident Report
+          <div className="flex flex-wrap gap-3 pb-4 xl:hidden">
+            <Button type="submit" size="lg" disabled={saving}>
+              {saving ? 'Saving...' : isEditMode ? 'Save Changes' : 'Save Incident Report'}
             </Button>
-            <Button type="button" variant="outline" size="lg">
+            <Button type="button" variant="outline" size="lg" onClick={() => navigate('/incidents')}>
               Cancel
             </Button>
           </div>
+          </div>
+
+          <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
+          <div className="bg-card border border-border rounded-2xl p-4 lg:p-5 shadow-sm">
+            <h2 className="text-base font-bold text-foreground mb-1">Section 3: Incident Location</h2>
+            <p className="text-xs text-muted-foreground mb-4">
+              {locationHelperText}
+            </p>
+
+            <Select
+              label="Barangay of Incident *"
+              options={barangayOptions}
+              value={formData.barangayId}
+              onChange={(e) => updateField('barangayId', e.target.value)}
+              error={errors.barangayId}
+            />
+
+            <div className="mt-4 rounded-2xl border border-dashed border-emerald-200 bg-gradient-to-br from-emerald-50 to-slate-50 p-3">
+              <div className="h-56 flex items-center justify-center rounded-xl bg-white/75">
+                <div className="text-center px-4">
+                  <MapPin className="w-9 h-9 text-emerald-600 mx-auto mb-2" />
+                  <p className="text-sm font-semibold text-foreground">Map pin input placeholder</p>
+                  <p className="text-xs text-muted-foreground mt-1">Click the control below to use the selected barangay coordinates when available.</p>
+                  {formData.locationLat && formData.locationLng && (
+                    <p className="mt-3 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800 inline-flex">
+                      {formData.locationLat}, {formData.locationLng}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={handleSetPin}>
+                  <Crosshair className="w-4 h-4 mr-2" />
+                  Set Pin from Barangay
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFormData((current) => ({ ...current, locationLat: '', locationLng: '' }))}
+                  disabled={!formData.locationLat && !formData.locationLng}
+                >
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                  Clear Pin
+                </Button>
+              </div>
+
+              <div className="mt-3 rounded-xl border border-emerald-100 bg-white/75 p-3 text-xs leading-relaxed text-slate-600">
+                <p>{locationHelperText}</p>
+                <p className="mt-1 font-medium text-slate-700">If the exact location is unknown, select the barangay only.</p>
+              </div>
+            </div>
+          </div>
+
+          {formData.whoCategory && (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
+                <div>
+                  <p className="text-sm font-bold text-emerald-950">{categoryGuidance[formData.whoCategory]}</p>
+                  <p className="text-xs leading-relaxed text-emerald-700 mt-1">
+                    Recommendation is based on encoded category and is subject to doctor or clinic validation.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+            <div className="mb-3">
+              <h3 className="text-base font-bold text-foreground">Incident Summary</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">Review key values before saving.</p>
+            </div>
+            <div className="divide-y divide-border rounded-xl border border-border overflow-hidden">
+              {summaryItems.map((item) => (
+                <div key={item.label} className="grid grid-cols-[110px_minmax(0,1fr)] gap-3 bg-white px-3 py-2.5 text-xs">
+                  <span className="font-semibold text-slate-500">{item.label}</span>
+                  <span className="truncate font-semibold text-slate-900">{item.value}</span>
+                </div>
+              ))}
+            </div>
+            {selectedCategory && (
+              <div className={'mt-3 rounded-xl border px-3 py-2 text-xs font-bold ' + selectedCategory.idleClass}>
+                {selectedCategory.risk} workflow guide selected
+              </div>
+            )}
+            <div className="mt-4 grid gap-2">
+              <Button type="submit" size="lg" disabled={saving} className="w-full">
+              {saving ? 'Saving...' : isEditMode ? 'Save Changes' : 'Save Incident Report'}
+            </Button>
+              <Button type="button" variant="outline" size="lg" onClick={() => navigate('/incidents')} className="w-full">
+              Cancel
+            </Button>
+            </div>
+          </div>
+          </aside>
         </form>
       </div>
+
+      {savedIncident && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="h-11 w-11 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                <CheckCircle2 className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-foreground">Incident report saved successfully.</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  A PEP schedule is created automatically by the system when the incident is saved.
+                </p>
+              </div>
+            </div>
+            <div className="mt-6 grid gap-2">
+              <Button type="button" onClick={() => navigate('/pep-schedule')} className="w-full">
+                Create PEP Schedule
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => navigate(savedIncident.patient?.id ? '/patients/' + savedIncident.patient.id : '/incidents')}
+                className="w-full"
+              >
+                View Incident
+              </Button>
+              <Button type="button" variant="outline" onClick={() => navigate('/incidents')} className="w-full">
+                Back to Incident List
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
