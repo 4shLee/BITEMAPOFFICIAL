@@ -320,7 +320,7 @@ export function Reports() {
                     </div>
                     <button
                       onClick={() => handleDownload(report.format === 'Excel' ? 'Excel' : 'PDF')}
-                      className="flex items-center gap-1 text-xs text-primary font-medium hover:underline"
+                      className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-semibold leading-none text-primary hover:bg-primary-bg"
                     >
                       <Download className="w-3.5 h-3.5" /> Download Again
                     </button>

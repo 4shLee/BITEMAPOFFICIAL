@@ -148,6 +148,7 @@ export function Patients() {
                             onClick={() => navigate(`/patients/${patient.id}`)}
                             className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/15"
                             title="View Details"
+                            aria-label="View patient details"
                           >
                             <Eye className="w-5 h-5" />
                           </button>
@@ -156,6 +157,7 @@ export function Patients() {
                               onClick={() => handleEdit(patient)}
                               className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/15"
                               title="Edit"
+                              aria-label="Edit patient"
                             >
                               <Edit className="w-5 h-5" />
                             </button>
@@ -165,6 +167,7 @@ export function Patients() {
                               onClick={() => handleDelete(patient)}
                               className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-destructive/20 bg-destructive/10 text-destructive shadow-sm transition-colors hover:border-destructive/40 hover:bg-destructive/15"
                               title="Delete"
+                              aria-label="Delete patient"
                             >
                               <Trash2 className="w-5 h-5" />
                             </button>

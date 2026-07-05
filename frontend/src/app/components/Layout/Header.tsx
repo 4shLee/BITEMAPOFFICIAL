@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Bell, ChevronRight, Search, Plus, CalendarClock } from 'lucide-react';
+import { ArrowLeft, Bell, ChevronRight, CalendarClock } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { canAccessPath, getStoredUser, getUserInitial, isSystemAdminRole } from '../../../lib/auth/roleAccess';
 import { notificationsAPI } from '../../../lib/services/api';
@@ -22,7 +22,6 @@ export function Header({ title, breadcrumbs = [] }: HeaderProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const currentUser = getStoredUser();
-  const canCreateIncident = canAccessPath(currentUser?.role, '/incidents/new');
   const isIncidentFormPage = location.pathname === '/incidents/new' || /^\/incidents\/[^/]+\/edit$/.test(location.pathname);
   const canViewScheduleAlerts = canAccessPath(currentUser?.role, '/notifications') && !isSystemAdminRole(currentUser?.role);
   const [todaySchedules, setTodaySchedules] = useState<TodayScheduleAlert[]>([]);
@@ -75,22 +74,14 @@ export function Header({ title, breadcrumbs = [] }: HeaderProps) {
         </div>
 
         <div className="flex items-center gap-3 shrink-0">
-          <div className="relative hidden lg:flex items-center">
-            <Search className="absolute left-3 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Search..."
-              className="pl-9 pr-4 py-2 text-sm bg-card border border-border rounded-xl w-52 placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary transition-all focus:w-64 shadow-sm"
-            />
-          </div>
-
-          {canCreateIncident && (
+          {isIncidentFormPage && (
             <button
-              onClick={() => navigate(isIncidentFormPage ? '/incidents' : '/incidents/new')}
-              className="hidden lg:flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-sm font-semibold rounded-xl hover:bg-primary-dark transition-colors shadow-sm"
+              type="button"
+              onClick={() => navigate('/incidents')}
+              className="hidden h-9 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold leading-none text-primary-foreground shadow-sm transition-colors hover:bg-primary-dark lg:inline-flex"
             >
-              {isIncidentFormPage ? <ArrowLeft className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-              {isIncidentFormPage ? 'Back to Incidents' : 'New Incident'}
+              <ArrowLeft className="h-4 w-4" />
+              Back to Incidents
             </button>
           )}
 

@@ -207,7 +207,7 @@ export function Inventory() {
                               {canAdjustStock && (
                                 <button
                                   onClick={() => handleAdjustStock(item)}
-                                  className="px-2 py-1 text-xs bg-primary text-white rounded hover:bg-primary/90 transition-colors"
+                                  className="inline-flex h-8 items-center justify-center rounded bg-primary px-2.5 text-xs font-semibold leading-none text-white transition-colors hover:bg-primary/90"
                                   title="Adjust Stock"
                                 >
                                   Adjust
@@ -218,6 +218,7 @@ export function Inventory() {
                                   onClick={() => handleEdit(item)}
                                   className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/15"
                                   title="Edit"
+                                  aria-label="Edit inventory item"
                                 >
                                   <Edit className="w-5 h-5" />
                                 </button>

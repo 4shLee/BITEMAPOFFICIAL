@@ -267,12 +267,12 @@ export function PEPSchedule() {
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
                               {canUpdatePep && dose.status !== 'done' && (
-                                <button onClick={() => handleMarkDone(dose)} className="text-xs font-medium text-success hover:underline">
+                                <button onClick={() => handleMarkDone(dose)} className="inline-flex h-8 items-center justify-center rounded-md px-2 text-xs font-semibold leading-none text-success hover:bg-success-bg">
                                   Mark Done
                                 </button>
                               )}
                               {canSendNotifications && dose.status !== 'done' && (
-                                <button onClick={() => handleSendReminder(dose)} disabled={!schedule.contact_number} className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary-dark disabled:text-muted-foreground disabled:cursor-not-allowed transition-colors">
+                                <button onClick={() => handleSendReminder(dose)} disabled={!schedule.contact_number} className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-semibold leading-none text-primary transition-colors hover:bg-primary-bg hover:text-primary-dark disabled:cursor-not-allowed disabled:text-muted-foreground">
                                   <MessageSquare className="w-3.5 h-3.5" /> SMS
                                 </button>
                               )}

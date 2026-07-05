@@ -23,7 +23,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     return (
       <button
         ref={ref}
-        className={`rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
+        className={`inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg font-medium leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-50 [&>svg]:m-0 [&>svg]:shrink-0 ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
         {...props}
       >
         {children}

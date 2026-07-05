@@ -229,7 +229,7 @@ export function IncidentListPage() {
                             <>
                               <button
                                 onClick={() => handleReview(incident)}
-                                className="inline-flex h-9 items-center gap-1.5 rounded-md border border-primary/20 bg-primary/10 px-3 text-xs font-semibold text-primary shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/15"
+                                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-primary/20 bg-primary/10 px-3 text-xs font-semibold leading-none text-primary shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/15"
                                 title="Review Incident"
                               >
                                 <Stethoscope className="w-4 h-4" />
@@ -237,7 +237,7 @@ export function IncidentListPage() {
                               </button>
                               <button
                                 onClick={() => handlePepRecommendation(incident)}
-                                className="inline-flex h-9 items-center gap-1.5 rounded-md border border-accent/20 bg-accent-bg px-3 text-xs font-semibold text-accent shadow-sm transition-colors hover:border-accent/40"
+                                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-accent/20 bg-accent-bg px-3 text-xs font-semibold leading-none text-accent shadow-sm transition-colors hover:border-accent/40"
                                 title="PEP Recommendation"
                               >
                                 <ClipboardCheck className="w-4 h-4" />
@@ -260,6 +260,7 @@ export function IncidentListPage() {
                               onClick={() => handleDelete(incident.id)}
                               className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-destructive/20 bg-destructive/10 text-destructive shadow-sm transition-colors hover:border-destructive/40 hover:bg-destructive/15"
                               title="Delete"
+                              aria-label="Delete incident"
                             >
                               <Trash2 className="w-5 h-5" />
                             </button>
