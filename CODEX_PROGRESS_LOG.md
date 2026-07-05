@@ -1068,3 +1068,12 @@ Verification completed:
 - `npm run build` passed.
 - Confirmed Nurse/Vaccinator dashboard does not show GIS or Reports widgets.
 - Confirmed no RBAC, API, backend, database, permission, route, or authentication behavior was changed.
+
+Incident Management Progress Summary
+Today we improved the BITEMAP Incident Management workflow and UI. We fixed the issue where updated incident details were not reflected in the Incident Management list after saving from the Edit Incident Report page. The list now refreshes/re-fetches incident data after edits, and the edit save flow shows the success message Incident report updated successfully.
+We improved the Edit Incident Report page so it focuses on incident-specific data only. Patient profile details are now shown as a read-only linked patient section, with an Open Patient Record button that sends users to the Patient Registry. This prevents accidental editing of master patient data from the incident edit page.
+We also polished the Incident Details page into a compact clinical case summary. Patient, exposure, location, PEP schedule, clinical review, and encoded notes are now displayed in a cleaner, less scroll-heavy layout. Encoded notes were changed from a code-block style into readable clinical key-value rows.
+The Incident Location section was clarified in both New Incident and Edit Incident forms. The old confusing map placeholder text was replaced with clearer location states such as Barangay only, No pin selected, Using approximate barangay location, and Exact pin selected. The button was renamed to Use Barangay Location, and the section now clearly explains that barangay is required while exact coordinates are optional.
+We balanced the Edit Incident Report layout by moving the WHO recommendation/clinical workflow guide directly under the WHO Wound Category cards. The right column now focuses on Incident Location, Incident Summary, and Save/Cancel actions. We also cleaned up section headings and reduced unnecessary whitespace.
+Finally, we cleaned up duplicate controls and button alignment affecting Incident Management. The global header no longer duplicates the New Incident button when the Incident Management page already has it in the module toolbar. Button icons and action buttons were aligned more consistently, and icon-only incident actions now include accessibility labels.
+Build verification was completed successfully with npm run build
