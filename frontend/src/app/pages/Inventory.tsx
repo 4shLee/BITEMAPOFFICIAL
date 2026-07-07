@@ -103,11 +103,11 @@ export function Inventory() {
   }).length;
 
   return (
-    <div className="flex-1">
+    <div className="min-h-screen flex-1 bg-background">
       <Header title="Vaccine & Supply Inventory" breadcrumbs={['Inventory', 'Stock Management']} />
 
-      <div className="p-8">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+      <div className="space-y-5 px-5 py-5 lg:px-7 lg:py-6">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <StatCard
             icon={Package}
             title="Total Items"
@@ -131,12 +131,15 @@ export function Inventory() {
           />
         </div>
 
-        <div className="bg-card border border-border rounded-lg overflow-hidden mb-6">
-          <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-            <h2 className="text-base font-medium text-foreground">Current Stock</h2>
+        <div className="mb-6 overflow-hidden rounded-3xl border border-border/80 bg-card shadow-sm shadow-slate-900/5">
+          <div className="flex items-center justify-between border-b border-border px-5 py-4">
+            <div>
+              <h2 className="text-base font-extrabold text-foreground">Current Stock</h2>
+              <p className="mt-0.5 text-xs font-medium text-muted-foreground">Monitor vaccine and clinic supply levels.</p>
+            </div>
             {canCreateInventory && (
               <Button variant="primary" size="sm" onClick={handleCreate}>
-                <Plus className="w-4 h-4 mr-2" />
+                <Plus className="h-4 w-4" />
                 Add Item
               </Button>
             )}
@@ -145,28 +148,28 @@ export function Inventory() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="bg-muted text-xs font-medium text-muted-foreground">
-                  <th className="text-left px-6 py-3">Vaccine/Supply Name</th>
-                  <th className="text-left px-6 py-3">Type</th>
-                  <th className="text-left px-6 py-3">Current Stock</th>
-                  <th className="text-left px-6 py-3">Unit</th>
-                  <th className="text-left px-6 py-3">Reorder Level</th>
-                  <th className="text-left px-6 py-3">Stock Level</th>
-                  <th className="text-left px-6 py-3">Status</th>
-                  <th className="text-left px-6 py-3">Last Updated</th>
-                  {showInventoryActions && <th className="text-left px-6 py-3">Actions</th>}
+                <tr className="bg-muted/60 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                  <th className="px-5 py-3 text-left">Vaccine/Supply Name</th>
+                  <th className="px-5 py-3 text-left">Type</th>
+                  <th className="px-5 py-3 text-left">Current Stock</th>
+                  <th className="px-5 py-3 text-left">Unit</th>
+                  <th className="px-5 py-3 text-left">Reorder Level</th>
+                  <th className="px-5 py-3 text-left">Stock Level</th>
+                  <th className="px-5 py-3 text-left">Status</th>
+                  <th className="px-5 py-3 text-left">Last Updated</th>
+                  {showInventoryActions && <th className="px-5 py-3 text-left">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {loading ? (
                   <tr>
-                    <td colSpan={inventoryColumnCount} className="px-6 py-8 text-center text-sm text-muted-foreground">
+                    <td colSpan={inventoryColumnCount} className="px-6 py-10 text-center text-sm text-muted-foreground">
                       Loading inventory...
                     </td>
                   </tr>
                 ) : inventory.length === 0 ? (
                   <tr>
-                    <td colSpan={inventoryColumnCount} className="px-6 py-8 text-center text-sm text-muted-foreground">
+                    <td colSpan={inventoryColumnCount} className="px-6 py-10 text-center text-sm text-muted-foreground">
                       No inventory items found
                     </td>
                   </tr>
@@ -174,13 +177,13 @@ export function Inventory() {
                   inventory.map((item) => {
                     const status = getStockStatus(item.current_stock, item.reorder_level);
                     return (
-                      <tr key={item.id} className="hover:bg-muted/50 transition-colors">
-                        <td className="px-6 py-4 text-sm font-medium text-foreground">{item.item_name}</td>
-                        <td className="px-6 py-4 text-sm text-muted-foreground">{item.item_type}</td>
-                        <td className="px-6 py-4 text-sm text-foreground">{item.current_stock}</td>
-                        <td className="px-6 py-4 text-sm text-muted-foreground">{item.unit}</td>
-                        <td className="px-6 py-4 text-sm text-muted-foreground">{item.reorder_level}</td>
-                        <td className="px-6 py-4">
+                      <tr key={item.id} className="transition-colors hover:bg-muted/45">
+                        <td className="px-5 py-4 text-sm font-semibold text-foreground">{item.item_name}</td>
+                        <td className="px-5 py-4 text-sm text-muted-foreground">{item.item_type}</td>
+                        <td className="px-5 py-4 text-sm font-semibold text-foreground">{item.current_stock}</td>
+                        <td className="px-5 py-4 text-sm text-muted-foreground">{item.unit}</td>
+                        <td className="px-5 py-4 text-sm text-muted-foreground">{item.reorder_level}</td>
+                        <td className="px-5 py-4">
                           <div className="w-32">
                             <div className="h-2 bg-muted rounded-full overflow-hidden">
                               <div
@@ -193,21 +196,21 @@ export function Inventory() {
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-5 py-4">
                           <Badge variant={getStatusVariant(status)}>
                             {status}
                           </Badge>
                         </td>
-                        <td className="px-6 py-4 text-xs text-muted-foreground">
+                        <td className="px-5 py-4 text-xs text-muted-foreground">
                           {item.last_updated ? new Date(item.last_updated).toLocaleString() : '-'}
                         </td>
                         {showInventoryActions && (
-                          <td className="px-6 py-4">
+                          <td className="px-5 py-4">
                             <div className="flex items-center gap-2">
                               {canAdjustStock && (
                                 <button
                                   onClick={() => handleAdjustStock(item)}
-                                  className="inline-flex h-8 items-center justify-center rounded bg-primary px-2.5 text-xs font-semibold leading-none text-white transition-colors hover:bg-primary/90"
+                                  className="inline-flex h-8 items-center justify-center rounded-full bg-primary px-3 text-xs font-semibold leading-none text-white shadow-sm transition-colors hover:bg-primary-dark"
                                   title="Adjust Stock"
                                 >
                                   Adjust
@@ -216,7 +219,7 @@ export function Inventory() {
                               {canUpdateInventory && (
                                 <button
                                   onClick={() => handleEdit(item)}
-                                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/15"
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-primary/20 bg-primary-bg text-primary shadow-sm transition-colors hover:border-primary/40 hover:bg-primary-bg/80"
                                   title="Edit"
                                   aria-label="Edit inventory item"
                                 >

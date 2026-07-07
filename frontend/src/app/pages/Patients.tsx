@@ -62,12 +62,12 @@ export function Patients() {
   );
 
   return (
-    <div className="flex-1">
+    <div className="min-h-screen flex-1 bg-background">
       <Header title="Patient Registry" breadcrumbs={['Patients', 'Registry']} />
 
-      <div className="p-8">
-        <div className="bg-card border border-border rounded-lg overflow-hidden">
-          <div className="px-6 py-4 border-b border-border">
+      <div className="px-5 py-5 lg:px-7 lg:py-6">
+        <div className="overflow-hidden rounded-3xl border border-border/80 bg-card shadow-sm shadow-slate-900/5">
+          <div className="border-b border-border px-5 py-4">
             <div className="flex items-center gap-4">
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -76,16 +76,16 @@ export function Patients() {
                   placeholder="Search patients by name, barangay..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 bg-input-background border border-input rounded-lg text-sm"
+                  className="h-10 w-full rounded-full border border-input bg-input-background pl-10 pr-4 text-sm shadow-sm focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/20"
                 />
               </div>
               <Button variant="outline" size="md">
-                <Filter className="w-4 h-4 mr-2" />
+                <Filter className="h-4 w-4" />
                 Filter
               </Button>
               {canCreatePatient && (
                 <Button variant="primary" size="md" onClick={handleCreate}>
-                  <Plus className="w-4 h-4 mr-2" />
+                  <Plus className="h-4 w-4" />
                   Add Patient
                 </Button>
               )}
@@ -95,45 +95,45 @@ export function Patients() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="bg-muted text-xs font-medium text-muted-foreground">
-                  <th className="text-left px-6 py-3">Patient Name</th>
-                  <th className="text-left px-6 py-3">Age</th>
-                  <th className="text-left px-6 py-3">Sex</th>
-                  <th className="text-left px-6 py-3">Barangay</th>
-                  <th className="text-left px-6 py-3">Contact Number</th>
-                  <th className="text-left px-6 py-3">Date Registered</th>
-                  <th className="text-left px-6 py-3">Actions</th>
+                <tr className="bg-muted/60 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                  <th className="px-5 py-3 text-left">Patient Name</th>
+                  <th className="px-5 py-3 text-left">Age</th>
+                  <th className="px-5 py-3 text-left">Sex</th>
+                  <th className="px-5 py-3 text-left">Barangay</th>
+                  <th className="px-5 py-3 text-left">Contact Number</th>
+                  <th className="px-5 py-3 text-left">Date Registered</th>
+                  <th className="px-5 py-3 text-left">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {loading ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-8 text-center text-sm text-muted-foreground">
+                    <td colSpan={7} className="px-6 py-10 text-center text-sm text-muted-foreground">
                       Loading patients...
                     </td>
                   </tr>
                 ) : filteredPatients.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-8 text-center text-sm text-muted-foreground">
+                    <td colSpan={7} className="px-6 py-10 text-center text-sm text-muted-foreground">
                       No patients found
                     </td>
                   </tr>
                 ) : (
                   filteredPatients.map((patient) => (
-                    <tr key={patient.id} className="hover:bg-muted/50 transition-colors">
-                      <td className="px-6 py-4 text-sm font-medium text-foreground">{patient.full_name}</td>
-                      <td className="px-6 py-4 text-sm text-muted-foreground">{patient.age}</td>
-                      <td className="px-6 py-4 text-sm text-muted-foreground">{patient.sex}</td>
-                      <td className="px-6 py-4 text-sm text-muted-foreground">{patient.barangay?.name || 'Unknown'}</td>
-                      <td className="px-6 py-4 text-sm text-muted-foreground">{patient.contact_number}</td>
-                      <td className="px-6 py-4 text-sm text-muted-foreground">
+                    <tr key={patient.id} className="transition-colors hover:bg-muted/45">
+                      <td className="px-5 py-4 text-sm font-semibold text-foreground">{patient.full_name}</td>
+                      <td className="px-5 py-4 text-sm text-muted-foreground">{patient.age}</td>
+                      <td className="px-5 py-4 text-sm text-muted-foreground">{patient.sex}</td>
+                      <td className="px-5 py-4 text-sm text-muted-foreground">{patient.barangay?.name || 'Unknown'}</td>
+                      <td className="px-5 py-4 text-sm text-muted-foreground">{patient.contact_number}</td>
+                      <td className="px-5 py-4 text-sm text-muted-foreground">
                         {new Date(patient.created_at).toLocaleDateString()}
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-5 py-4">
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => navigate(`/patients/${patient.id}`)}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/15"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-primary/20 bg-primary-bg text-primary shadow-sm transition-colors hover:border-primary/40 hover:bg-primary-bg/80"
                             title="View Details"
                             aria-label="View patient details"
                           >
@@ -142,7 +142,7 @@ export function Patients() {
                           {canUpdatePatient && (
                             <button
                               onClick={() => handleEdit(patient)}
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/15"
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-primary/20 bg-primary-bg text-primary shadow-sm transition-colors hover:border-primary/40 hover:bg-primary-bg/80"
                               title="Edit"
                               aria-label="Edit patient"
                             >
@@ -152,7 +152,7 @@ export function Patients() {
                           {canDeletePatient && (
                             <button
                               onClick={() => handleDelete(patient)}
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-destructive/20 bg-destructive/10 text-destructive shadow-sm transition-colors hover:border-destructive/40 hover:bg-destructive/15"
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-destructive/20 bg-destructive-bg text-destructive shadow-sm transition-colors hover:border-destructive/40 hover:bg-destructive-bg/80"
                               title="Delete"
                               aria-label="Delete patient"
                             >
@@ -168,7 +168,7 @@ export function Patients() {
             </table>
           </div>
 
-          <div className="px-6 py-4 border-t border-border flex items-center justify-between">
+          <div className="flex items-center justify-between border-t border-border px-5 py-4">
             <p className="text-sm text-muted-foreground">
               Showing {filteredPatients.length} patient{filteredPatients.length !== 1 ? 's' : ''}
             </p>

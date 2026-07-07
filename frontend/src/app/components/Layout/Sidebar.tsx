@@ -40,9 +40,9 @@ function NavItem({ path, icon: Icon, label }: { path: string; icon: any; label: 
     <NavLink
       to={path}
       className={({ isActive }) =>
-        `relative flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+        `relative flex items-center gap-3 rounded-2xl px-4 py-2.5 text-sm font-semibold transition-all ${
           isActive
-            ? 'bg-primary-bg text-primary font-semibold'
+            ? 'bg-primary-bg text-primary shadow-sm shadow-emerald-900/5'
             : 'text-muted-foreground hover:bg-slate-50 hover:text-foreground'
         }`
       }
@@ -50,9 +50,9 @@ function NavItem({ path, icon: Icon, label }: { path: string; icon: any; label: 
       {({ isActive }) => (
         <>
           {isActive && (
-            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary rounded-r-full" />
+            <span className="absolute left-1 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full bg-primary" />
           )}
-          <Icon className={`w-[18px] h-[18px] shrink-0 ${isActive ? 'text-primary' : 'text-slate-400'}`} />
+          <Icon className={`h-[18px] w-[18px] shrink-0 ${isActive ? 'text-primary' : 'text-slate-400'}`} />
           <span>{label}</span>
         </>
       )}
@@ -107,25 +107,24 @@ export function Sidebar() {
 
   return (
     <aside
-      className="w-64 h-screen fixed left-0 top-0 flex flex-col bg-sidebar border-r border-sidebar-border z-20"
-      style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+      className="fixed left-0 top-0 z-20 flex h-screen w-64 flex-col border-r border-sidebar-border bg-sidebar"
     >
-      <div className="px-5 pt-6 pb-5 border-b border-sidebar-border">
+      <div className="border-b border-sidebar-border px-5 pb-5 pt-6">
         <div className="flex items-center gap-3">
           <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-            style={{ background: 'linear-gradient(135deg, #16A34A 0%, #15803D 100%)' }}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl shadow-sm shadow-emerald-900/20"
+            style={{ background: 'linear-gradient(135deg, #078C55 0%, #05603A 100%)' }}
           >
             <AlertCircle className="w-5 h-5 text-white" />
           </div>
           <div>
-            <p className="text-foreground font-bold text-[15px] leading-tight">BITEMAP</p>
+            <p className="text-[16px] font-extrabold leading-tight text-foreground">BITEMAP</p>
             <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">Bite Incident Tracking</p>
           </div>
         </div>
       </div>
 
-      <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-5">
+      <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
         <div>
           <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest px-4 mb-1.5">
             Menu
@@ -149,20 +148,20 @@ export function Sidebar() {
         </div>
       </nav>
 
-      <div className="mx-3 mb-3 rounded-2xl p-4 text-white" style={{ background: 'linear-gradient(135deg, #16A34A 0%, #15803D 100%)' }}>
+      <div className="mx-3 mb-3 rounded-3xl p-4 text-white shadow-lg shadow-emerald-900/15" style={{ background: 'radial-gradient(circle at top right, rgba(52, 211, 153, 0.55), transparent 35%), linear-gradient(135deg, #078C55 0%, #05603A 100%)' }}>
         <p className="text-xs font-bold mb-0.5">BITEMAP System</p>
         <p className="text-[10px] text-white/75 leading-snug mb-3">
           GIS-Based Anti-Rabies Vaccination Monitoring
         </p>
         <div className="flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-green-300 animate-pulse" />
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-300" />
           <span className="text-[10px] font-semibold text-green-200">Role Access Active</span>
         </div>
       </div>
 
-      <div ref={userMenuRef} className="relative px-3 pb-4 border-t border-sidebar-border pt-3">
+      <div ref={userMenuRef} className="relative border-t border-sidebar-border px-3 pb-4 pt-3">
         {isUserMenuOpen && (
-          <div className="absolute left-3 right-3 bottom-[76px] z-30 rounded-2xl border border-border bg-white p-2 shadow-xl">
+          <div className="absolute bottom-[76px] left-3 right-3 z-30 rounded-2xl border border-border bg-white p-2 shadow-xl shadow-slate-900/15">
             <div className="px-3 py-2 border-b border-border">
               <p className="text-sm font-semibold text-foreground truncate">{displayName}</p>
               <p className="text-xs text-muted-foreground truncate">{getRoleLabel(currentUser?.role)}</p>
@@ -182,11 +181,11 @@ export function Sidebar() {
           type="button"
           onClick={() => setIsUserMenuOpen((value) => !value)}
           aria-expanded={isUserMenuOpen}
-          className="w-full flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-slate-50 transition-colors text-left"
+          className="flex w-full items-center gap-3 rounded-2xl px-2 py-2 text-left transition-colors hover:bg-slate-50"
         >
           <div
-            className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0"
-            style={{ background: 'linear-gradient(135deg, #16A34A 0%, #15803D 100%)' }}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl text-sm font-bold text-white"
+            style={{ background: 'linear-gradient(135deg, #078C55 0%, #05603A 100%)' }}
           >
             {userInitial}
           </div>

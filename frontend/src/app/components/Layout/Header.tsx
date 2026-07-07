@@ -57,11 +57,11 @@ export function Header({ title, breadcrumbs = [] }: HeaderProps) {
   const todayScheduleCount = todaySchedules.length;
 
   return (
-    <header className="bg-background border-b border-border px-8 py-4 sticky top-0 z-10">
+    <header className="sticky top-0 z-10 border-b border-border/70 bg-background/95 px-6 py-3 backdrop-blur lg:px-8">
       <div className="flex items-center justify-between gap-6">
         <div className="min-w-0">
           {breadcrumbs.length > 0 && (
-            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-0.5">
+            <div className="mb-0.5 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
               {breadcrumbs.map((crumb, i) => (
                 <div key={i} className="flex items-center gap-1.5">
                   <span>{crumb}</span>
@@ -70,7 +70,7 @@ export function Header({ title, breadcrumbs = [] }: HeaderProps) {
               ))}
             </div>
           )}
-          <h1 className="text-xl font-bold text-foreground tracking-tight">{title}</h1>
+          <h1 className="text-[22px] font-extrabold tracking-tight text-foreground">{title}</h1>
         </div>
 
         <div className="flex items-center gap-3 shrink-0">
@@ -78,7 +78,7 @@ export function Header({ title, breadcrumbs = [] }: HeaderProps) {
             <button
               type="button"
               onClick={() => navigate('/incidents')}
-              className="hidden h-9 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold leading-none text-primary-foreground shadow-sm transition-colors hover:bg-primary-dark lg:inline-flex"
+              className="hidden h-9 items-center justify-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold leading-none text-primary-foreground shadow-sm shadow-emerald-900/10 transition-colors hover:bg-primary-dark lg:inline-flex"
             >
               <ArrowLeft className="h-4 w-4" />
               Back to Incidents
@@ -90,7 +90,7 @@ export function Header({ title, breadcrumbs = [] }: HeaderProps) {
               <button
                 type="button"
                 onClick={() => setIsAlertOpen((value) => !value)}
-                className={'relative w-9 h-9 flex items-center justify-center bg-card border rounded-xl transition-colors shadow-sm ' + (todayScheduleCount > 0 ? 'border-destructive/35 bg-destructive-bg hover:bg-destructive-bg' : 'border-border hover:border-primary/40 hover:bg-primary-bg')}
+                className={'relative flex h-9 w-9 items-center justify-center rounded-full border bg-card shadow-sm transition-colors ' + (todayScheduleCount > 0 ? 'border-destructive/35 bg-destructive-bg hover:bg-destructive-bg' : 'border-border hover:border-primary/40 hover:bg-primary-bg')}
                 aria-label="Open schedule notifications"
               >
                 <Bell className={'w-4 h-4 ' + (todayScheduleCount > 0 ? 'text-destructive' : 'text-muted-foreground')} />
@@ -102,7 +102,7 @@ export function Header({ title, breadcrumbs = [] }: HeaderProps) {
               </button>
 
               {isAlertOpen && (
-                <div className="absolute right-0 top-11 w-80 rounded-xl border border-border bg-card shadow-xl z-50 overflow-hidden">
+                <div className="absolute right-0 top-11 z-50 w-80 overflow-hidden rounded-2xl border border-border bg-card shadow-xl shadow-slate-900/15">
                   <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-foreground">Today's PEP Schedules</p>
@@ -156,8 +156,8 @@ export function Header({ title, breadcrumbs = [] }: HeaderProps) {
           )}
 
           <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold cursor-default shadow-sm"
-            style={{ background: 'linear-gradient(135deg, #16A34A 0%, #15803D 100%)' }}
+            className="flex h-9 w-9 cursor-default items-center justify-center rounded-2xl text-sm font-bold text-white shadow-sm shadow-emerald-900/20"
+            style={{ background: 'linear-gradient(135deg, #078C55 0%, #05603A 100%)' }}
           >
             {getUserInitial(currentUser)}
           </div>

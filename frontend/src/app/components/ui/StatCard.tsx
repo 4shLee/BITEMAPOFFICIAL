@@ -22,11 +22,11 @@ export function StatCard({
   iconColor = 'text-primary'
 }: StatCardProps) {
   return (
-    <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-all">
+    <div className="rounded-3xl border border-border/80 bg-card p-5 shadow-sm shadow-slate-900/5 transition-all hover:-translate-y-0.5 hover:shadow-md hover:shadow-slate-900/8">
       <div className="flex items-start justify-between">
         <div className="flex-1">
-          <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">{title}</p>
-          <p className="text-3xl font-bold text-foreground tracking-tight mb-1">{value}</p>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
+          <p className="mb-1 text-3xl font-extrabold tracking-tight text-foreground">{value}</p>
           {trend && (
             <div className="flex items-center gap-1 text-xs">
               {trend.direction === 'up' ? (
@@ -40,7 +40,7 @@ export function StatCard({
             </div>
           )}
         </div>
-        <div className={`${iconBgColor} ${iconColor} w-11 h-11 rounded-xl flex items-center justify-center`}>
+        <div className={`${iconBgColor} ${iconColor} flex h-11 w-11 items-center justify-center rounded-2xl shadow-sm`}>
           <Icon className="w-5 h-5" />
         </div>
       </div>
