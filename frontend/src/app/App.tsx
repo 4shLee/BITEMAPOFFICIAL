@@ -7,6 +7,7 @@ import { IncidentDetail } from './pages/IncidentDetail';
 import { IncidentListPage } from './components/Incidents/IncidentListPage';
 import { Patients } from './pages/Patients';
 import { PatientDetail } from './pages/PatientDetail';
+import { PatientRecordForm } from './pages/PatientRecordForm';
 import { PEPSchedule } from './pages/PEPSchedule';
 import { Inventory } from './pages/Inventory';
 import { GISMap } from './pages/GISMap';
@@ -85,6 +86,8 @@ export default function App() {
             <Route path="/incidents/:id/edit" element={<RoleRoute><IncidentReport /></RoleRoute>} />
             <Route path="/incidents/:id" element={<RoleRoute><IncidentDetail /></RoleRoute>} />
             <Route path="/patients" element={<RoleRoute><Patients /></RoleRoute>} />
+            <Route path="/patients/new" element={<RoleRoute><PatientRecordForm /></RoleRoute>} />
+            <Route path="/patients/:id/edit" element={<RoleRoute><PatientRecordForm /></RoleRoute>} />
             <Route path="/patients/:id" element={<RoleRoute><PatientDetail /></RoleRoute>} />
             <Route path="/pep-schedule" element={<RoleRoute><PEPSchedule /></RoleRoute>} />
             <Route path="/inventory" element={<RoleRoute><Inventory /></RoleRoute>} />

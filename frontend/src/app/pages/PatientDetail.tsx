@@ -1,43 +1,73 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { ArrowLeft, Calendar, MapPin, User, Phone, Mail } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Edit, Mail, MapPin, Phone, ShieldCheck, Syringe, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { Header } from '../components/Layout/Header';
 import { Badge } from '../components/UI/Badge';
 import { Button } from '../components/UI/Button';
-import { PatientFormModal } from '../components/Patients/PatientFormModal';
 import { patientsAPI } from '../../lib/services/api';
 import { canPerformAction, getStoredUser } from '../../lib/auth/roleAccess';
 
+function DetailItem({ label, value }: { label: string; value?: string | number | null }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-foreground" title={String(value || 'Not recorded')}>
+        {value || 'Not recorded'}
+      </p>
+    </div>
+  );
+}
+
+function getCategoryVariant(category?: string) {
+  switch (category) {
+    case 'Category I': return 'success';
+    case 'Category II': return 'warning';
+    case 'Category III': return 'danger';
+    default: return 'neutral';
+  }
+}
+
+function getStatusVariant(status?: string) {
+  switch (status) {
+    case 'Done':
+    case 'Completed': return 'success';
+    case 'Upcoming':
+    case 'Active': return 'info';
+    case 'Missed': return 'danger';
+    case 'Pending': return 'neutral';
+    default: return 'neutral';
+  }
+}
+
 export function PatientDetail() {
+  const { id } = useParams();
   const navigate = useNavigate();
   const currentUser = getStoredUser();
   const canUpdatePatient = canPerformAction(currentUser?.role, 'patients.update');
-  const { id } = useParams();
   const [patient, setPatient] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [showEditModal, setShowEditModal] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    async function loadPatient() {
+      if (!id) return;
+
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await patientsAPI.getById(id);
+        setPatient(response.data);
+      } catch (loadError: any) {
+        toast.error(loadError.message || 'Failed to load patient record.');
+        setError(loadError.message || 'Unable to load patient record.');
+      } finally {
+        setLoading(false);
+      }
+    }
+
     loadPatient();
   }, [id]);
-
-  const loadPatient = async () => {
-    if (!id) return;
-
-    try {
-      setLoading(true);
-      const response = await patientsAPI.getById(id);
-      if (response.success) {
-        setPatient(response.data);
-      }
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to load patient record');
-      setPatient(null);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const incidents = useMemo(() => {
     return [...(patient?.incidents || [])].sort((a, b) => {
@@ -47,279 +77,216 @@ export function PatientDetail() {
     });
   }, [patient]);
 
-  const currentIncident = incidents[0];
+  const latestIncident = incidents[0];
   const pepSchedule = useMemo(() => {
-    return [...(currentIncident?.pep_schedules || [])].sort((a, b) => (a.dose_day ?? 0) - (b.dose_day ?? 0));
-  }, [currentIncident]);
-
-  const completedDoses = pepSchedule.filter((dose) => dose.status === 'Done').length;
+    return [...(latestIncident?.pep_schedules || [])].sort((a, b) => (a.dose_day ?? 0) - (b.dose_day ?? 0));
+  }, [latestIncident]);
+  const notifications = patient?.notifications || [];
+  const completedDoses = pepSchedule.filter((dose) => dose.status === 'Done' || dose.status === 'Completed').length;
   const progress = pepSchedule.length ? Math.round((completedDoses / pepSchedule.length) * 100) : 0;
-  const nextDose = pepSchedule.find((dose) => dose.status !== 'Done');
+  const nextDose = pepSchedule.find((dose) => dose.status !== 'Done' && dose.status !== 'Completed');
 
   const formatDate = (value?: string) => {
-    if (!value) return '-';
-    return new Date(value).toLocaleDateString('en-PH', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
+    if (!value) return 'Not recorded';
+    return new Date(value).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
   };
 
-  const getCategoryVariant = (category?: string) => {
-    switch (category) {
-      case 'Category I': return 'success';
-      case 'Category II': return 'warning';
-      case 'Category III': return 'danger';
-      default: return 'neutral';
-    }
-  };
-
-  const getStatusVariant = (status?: string) => {
-    switch (status) {
-      case 'Done':
-      case 'Completed': return 'success';
-      case 'Upcoming':
-      case 'Active': return 'info';
-      case 'Missed': return 'danger';
-      case 'Pending': return 'neutral';
-      default: return 'neutral';
-    }
-  };
-
-  const handleEditClose = (shouldReload?: boolean) => {
-    setShowEditModal(false);
-    if (shouldReload) loadPatient();
-  };
-
-  if (loading) {
-    return (
-      <div className="flex-1">
-        <Header title="Patient Record" breadcrumbs={['Patients', 'Loading']} />
-        <div className="p-8 text-sm text-muted-foreground">Loading patient record...</div>
-      </div>
-    );
-  }
-
-  if (!patient) {
-    return (
-      <div className="flex-1">
-        <Header title="Patient Record" breadcrumbs={['Patients', 'Not found']} />
-        <div className="p-8">
-          <Button variant="outline" size="sm" onClick={() => navigate('/patients')} className="mb-6">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Patients
-          </Button>
-          <div className="bg-card border border-border rounded-lg p-6 text-sm text-muted-foreground">
-            Patient record not found.
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const patientName = patient?.full_name || 'Unknown Patient';
+  const ageSex = [patient?.age, patient?.sex].filter(Boolean).join(' / ');
+  const summary = [
+    ageSex,
+    patient?.contact_number,
+    patient?.barangay?.name,
+    incidents.length ? incidents.length + ' incident' + (incidents.length !== 1 ? 's' : '') : 'No incidents',
+  ].filter(Boolean).join(' - ');
 
   return (
-    <div className="flex-1">
-      <Header title="Patient Record" breadcrumbs={['Patients', patient.full_name]} />
+    <div className="flex-1 bg-[#f6f8f7] min-h-screen">
+      <Header title="Patient Record" breadcrumbs={['Patients', 'View Patient']} />
 
-      <div className="p-8">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => navigate('/patients')}
-          className="mb-6"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Patients
-        </Button>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-card border border-border rounded-lg p-6">
-              <div className="flex items-start justify-between mb-6">
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center text-white text-2xl font-semibold">
-                    {patient.full_name?.charAt(0) || '?'}
+      <div className="px-5 py-4 lg:px-7 lg:py-5">
+        {loading ? (
+          <div className="rounded-2xl border border-border bg-card p-8 text-center text-sm text-muted-foreground shadow-sm">
+            Loading patient record...
+          </div>
+        ) : error || !patient ? (
+          <div className="rounded-2xl border border-destructive/20 bg-destructive-bg p-8 text-center">
+            <p className="text-sm font-semibold text-destructive">{error || 'Patient record not found.'}</p>
+            <Button type="button" variant="outline" className="mt-4" onClick={() => navigate('/patients')}>
+              Back to Patients
+            </Button>
+          </div>
+        ) : (
+          <div className="mx-auto max-w-6xl space-y-4">
+            <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm shadow-emerald-950/5">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/patients')}
+                    className="mb-2 inline-flex items-center gap-2 text-sm font-semibold text-primary hover:underline"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                    Back to Patients
+                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-2xl font-extrabold text-foreground">{patientName}</h2>
+                    <Badge variant={latestIncident ? getCategoryVariant(latestIncident.who_category) : 'neutral'}>
+                      {latestIncident?.who_category || 'No Incident'}
+                    </Badge>
+                    <Badge variant={latestIncident ? getStatusVariant(latestIncident.status) : 'neutral'}>
+                      {latestIncident?.status || 'Registry Record'}
+                    </Badge>
                   </div>
-                  <div>
-                    <h2 className="text-xl font-semibold text-foreground mb-1">{patient.full_name}</h2>
-                    <div className="flex items-center gap-3">
-                      <Badge variant={getCategoryVariant(currentIncident?.who_category)}>
-                        {currentIncident?.who_category || 'No Incident'}
-                      </Badge>
-                      <Badge variant={getStatusVariant(currentIncident?.status)}>
-                        {currentIncident?.status || 'No Status'}
-                      </Badge>
-                    </div>
-                  </div>
+                  <p className="mt-1 text-sm font-medium text-muted-foreground">
+                    {summary || 'Patient registry profile and related clinical activity.'}
+                  </p>
                 </div>
                 {canUpdatePatient && (
-                  <Button variant="outline" size="sm" onClick={() => setShowEditModal(true)}>Edit</Button>
+                  <Button type="button" size="sm" className="shrink-0" onClick={() => navigate('/patients/' + patient.id + '/edit')}>
+                    <Edit className="h-4 w-4" />
+                    Edit Patient
+                  </Button>
                 )}
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="flex items-start gap-3">
-                  <User className="w-5 h-5 text-muted-foreground mt-0.5" />
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Demographics</p>
-                    <p className="text-sm text-foreground">{patient.age} years old, {patient.sex}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <Calendar className="w-5 h-5 text-muted-foreground mt-0.5" />
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Date Registered</p>
-                    <p className="text-sm text-foreground">{formatDate(patient.created_at)}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <MapPin className="w-5 h-5 text-muted-foreground mt-0.5" />
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Address</p>
-                    <p className="text-sm text-foreground">{patient.address}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{patient.barangay?.name || 'No barangay selected'}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <Phone className="w-5 h-5 text-muted-foreground mt-0.5" />
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Contact</p>
-                    <p className="text-sm text-foreground">{patient.contact_number || '-'}</p>
-                    {patient.email && <p className="text-xs text-muted-foreground mt-1">{patient.email}</p>}
-                  </div>
-                </div>
-              </div>
             </div>
 
-            <div className="bg-card border border-border rounded-lg p-6">
-              <h3 className="text-base font-medium text-foreground mb-4">Bite Incident Summary</h3>
-              {currentIncident ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Incident Date</p>
-                    <p className="text-sm text-foreground">{formatDate(currentIncident.incident_date)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Animal Type</p>
-                    <p className="text-sm text-foreground">{currentIncident.animal_type || '-'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Bite Site</p>
-                    <p className="text-sm text-foreground">{currentIncident.bite_site || currentIncident.bite_location || '-'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">WHO Category</p>
-                    <Badge variant={getCategoryVariant(currentIncident.who_category)}>{currentIncident.who_category}</Badge>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">No bite incident recorded for this patient.</p>
-              )}
-            </div>
-
-            <div className="bg-card border border-border rounded-lg overflow-hidden">
-              <div className="px-6 py-4 border-b border-border">
-                <h3 className="text-base font-medium text-foreground">PEP Dose History</h3>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="bg-muted text-xs font-medium text-muted-foreground">
-                      <th className="text-left px-6 py-3">Dose</th>
-                      <th className="text-left px-6 py-3">Date</th>
-                      <th className="text-left px-6 py-3">Vaccine Type</th>
-                      <th className="text-left px-6 py-3">Lot Number</th>
-                      <th className="text-left px-6 py-3">Administered By</th>
-                      <th className="text-left px-6 py-3">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {pepSchedule.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="px-6 py-8 text-center text-sm text-muted-foreground">
-                          No PEP schedule found.
-                        </td>
-                      </tr>
-                    ) : pepSchedule.map((dose) => (
-                      <tr key={dose.id} className="hover:bg-muted/50 transition-colors">
-                        <td className="px-6 py-4 text-sm font-medium text-foreground">Day {dose.dose_day}</td>
-                        <td className="px-6 py-4 text-sm text-muted-foreground">{formatDate(dose.scheduled_date)}</td>
-                        <td className="px-6 py-4 text-sm text-muted-foreground">{dose.vaccine_type || '-'}</td>
-                        <td className="px-6 py-4 text-sm text-muted-foreground">{dose.vaccine_lot_number || '-'}</td>
-                        <td className="px-6 py-4 text-sm text-muted-foreground">{dose.administrator?.name || '-'}</td>
-                        <td className="px-6 py-4">
-                          <Badge variant={getStatusVariant(dose.status)}>{dose.status}</Badge>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            <div className="bg-card border border-border rounded-lg p-6">
-              <h3 className="text-base font-medium text-foreground mb-4">Compliance Status</h3>
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
               <div className="space-y-4">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-muted-foreground">Overall Progress</span>
-                    <span className="text-sm font-medium text-foreground">{progress}%</span>
+                <div className="rounded-2xl border border-border bg-white p-4 shadow-sm">
+                  <div className="mb-3 flex items-center gap-2">
+                    <div className="rounded-xl bg-emerald-50 p-2 text-primary">
+                      <UserRound className="h-4 w-4" />
+                    </div>
+                    <h3 className="text-base font-extrabold text-foreground">Patient Profile Summary</h3>
                   </div>
-                  <div className="h-2 bg-muted rounded-full overflow-hidden">
-                    <div className="h-full bg-primary" style={{ width: progress + '%' }}></div>
-                  </div>
-                </div>
-                <div className="pt-4 border-t border-border space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Completed Doses</span>
-                    <span className="font-medium text-foreground">{completedDoses} / {pepSchedule.length}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Next Due</span>
-                    <span className="font-medium text-accent">{nextDose ? formatDate(nextDose.scheduled_date) : '-'}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+                  <div className="grid gap-4 lg:grid-cols-3">
+                    <section className="rounded-xl bg-[#f8faf9] p-3">
+                      <div className="mb-3 flex items-center gap-2">
+                        <UserRound className="h-4 w-4 text-primary" />
+                        <h4 className="text-sm font-bold text-foreground">Demographics</h4>
+                      </div>
+                      <div className="grid gap-3">
+                        <DetailItem label="Full Name" value={patientName} />
+                        <DetailItem label="Age / Sex" value={ageSex} />
+                        <DetailItem label="Date Registered" value={formatDate(patient.created_at)} />
+                      </div>
+                    </section>
 
-            <div className="bg-card border border-border rounded-lg overflow-hidden">
-              <div className="px-6 py-4 border-b border-border">
-                <h3 className="text-base font-medium text-foreground">Notification Log</h3>
+                    <section className="rounded-xl bg-[#f8faf9] p-3">
+                      <div className="mb-3 flex items-center gap-2">
+                        <Phone className="h-4 w-4 text-primary" />
+                        <h4 className="text-sm font-bold text-foreground">Contact</h4>
+                      </div>
+                      <div className="grid gap-3">
+                        <DetailItem label="Contact Number" value={patient.contact_number} />
+                        <DetailItem label="Email" value={patient.email} />
+                        <DetailItem label="Notification Logs" value={notifications.length} />
+                      </div>
+                    </section>
+
+                    <section className="rounded-xl bg-[#f8faf9] p-3">
+                      <div className="mb-3 flex items-center gap-2">
+                        <MapPin className="h-4 w-4 text-primary" />
+                        <h4 className="text-sm font-bold text-foreground">Location</h4>
+                      </div>
+                      <div className="grid gap-3">
+                        <DetailItem label="Complete Address" value={patient.address} />
+                        <DetailItem label="Barangay" value={patient.barangay?.name} />
+                      </div>
+                    </section>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-border bg-white p-4 shadow-sm">
+                  <div className="mb-3 flex items-center gap-2">
+                    <ShieldCheck className="h-4 w-4 text-primary" />
+                    <h3 className="text-base font-extrabold text-foreground">Related Incident Summary</h3>
+                  </div>
+                  {latestIncident ? (
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                      <DetailItem label="Latest Incident" value={formatDate(latestIncident.incident_date)} />
+                      <DetailItem label="Animal Type" value={latestIncident.animal_type} />
+                      <DetailItem label="Bite Site" value={latestIncident.bite_site || latestIncident.bite_location} />
+                      <DetailItem label="WHO Category" value={latestIncident.who_category} />
+                    </div>
+                  ) : (
+                    <p className="rounded-xl bg-muted/30 px-3 py-3 text-sm text-muted-foreground">No bite incident recorded for this patient.</p>
+                  )}
+                </div>
+
+                <div className="rounded-2xl border border-border bg-white p-4 shadow-sm">
+                  <div className="mb-3 flex items-center gap-2">
+                    <Syringe className="h-4 w-4 text-primary" />
+                    <h3 className="text-base font-extrabold text-foreground">PEP Dose History</h3>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {pepSchedule.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No PEP schedule found.</p>
+                    ) : pepSchedule.map((dose: any) => (
+                      <div key={dose.id} className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2">
+                        <p className="text-xs font-extrabold text-emerald-900">Day {dose.dose_day}</p>
+                        <p className="text-xs font-semibold text-emerald-700">{formatDate(dose.scheduled_date)}</p>
+                        <Badge variant={getStatusVariant(dose.status)} size="sm">{dose.status}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
-              <div className="p-4 space-y-3">
-                {(patient.notifications || []).length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No notifications logged.</p>
-                ) : (patient.notifications || []).map((notification: any) => (
-                  <div key={notification.id} className="pb-3 border-b border-border last:border-0 last:pb-0">
-                    <div className="flex items-start gap-3">
-                      <Mail className="w-4 h-4 text-muted-foreground mt-0.5" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-foreground mb-1">{notification.message}</p>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="success" size="sm">{notification.notification_type || notification.type}</Badge>
-                          <span className="text-xs text-muted-foreground">{notification.sentAt || notification.sent_at || '-'}</span>
-                        </div>
+
+              <aside className="space-y-4">
+                <div className="rounded-2xl border border-border bg-white p-4 shadow-sm">
+                  <div className="mb-3 flex items-center gap-2">
+                    <CalendarDays className="h-4 w-4 text-primary" />
+                    <h3 className="text-base font-extrabold text-foreground">Compliance Status</h3>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Overall Progress</span>
+                        <span className="text-sm font-bold text-foreground">{progress}%</span>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-muted">
+                        <div className="h-full bg-primary" style={{ width: progress + '%' }} />
+                      </div>
+                    </div>
+                    <div className="space-y-2 border-t border-border pt-3 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Completed Doses</span>
+                        <span className="font-semibold text-foreground">{completedDoses} / {pepSchedule.length}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Next Due</span>
+                        <span className="font-semibold text-primary">{nextDose ? formatDate(nextDose.scheduled_date) : '-'}</span>
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
+                </div>
+
+                <div className="rounded-2xl border border-border bg-white p-4 shadow-sm">
+                  <div className="mb-3 flex items-center gap-2">
+                    <Mail className="h-4 w-4 text-primary" />
+                    <h3 className="text-base font-extrabold text-foreground">Notification Log</h3>
+                  </div>
+                  <div className="space-y-3">
+                    {notifications.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No notifications logged.</p>
+                    ) : notifications.slice(0, 5).map((notification: any) => (
+                      <div key={notification.id} className="border-b border-border pb-3 last:border-0 last:pb-0">
+                        <p className="text-sm font-medium text-foreground">{notification.message || 'Reminder notification'}</p>
+                        <div className="mt-1 flex items-center gap-2">
+                          <Badge variant="success" size="sm">{notification.notification_type || notification.type || 'SMS'}</Badge>
+                          <span className="text-xs text-muted-foreground">{notification.sentAt || notification.sent_at || '-'}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </aside>
             </div>
           </div>
-        </div>
+        )}
       </div>
-
-      {showEditModal && canUpdatePatient && (
-        <PatientFormModal
-          patient={patient}
-          onClose={handleEditClose}
-        />
-      )}
     </div>
   );
 }

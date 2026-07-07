@@ -7,7 +7,6 @@ import { Badge } from '../components/UI/Badge';
 import { Button } from '../components/UI/Button';
 import { patientsAPI } from '../../lib/services/api';
 import { canPerformAction, getStoredUser } from '../../lib/auth/roleAccess';
-import { PatientFormModal } from '../components/Patients/PatientFormModal';
 
 export function Patients() {
   const navigate = useNavigate();
@@ -18,8 +17,6 @@ export function Patients() {
   const [searchTerm, setSearchTerm] = useState('');
   const [patients, setPatients] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [editingPatient, setEditingPatient] = useState<any>(null);
 
   useEffect(() => {
     loadPatients();
@@ -40,8 +37,7 @@ export function Patients() {
   };
 
   const handleEdit = (patient: any) => {
-    setEditingPatient(patient);
-    setShowModal(true);
+    navigate('/patients/' + patient.id + '/edit');
   };
 
   const handleDelete = async (patient: any) => {
@@ -57,16 +53,7 @@ export function Patients() {
   };
 
   const handleCreate = () => {
-    setEditingPatient(null);
-    setShowModal(true);
-  };
-
-  const handleModalClose = (shouldReload?: boolean) => {
-    setShowModal(false);
-    setEditingPatient(null);
-    if (shouldReload) {
-      loadPatients();
-    }
+    navigate('/patients/new');
   };
 
   const filteredPatients = patients.filter((patient) =>
@@ -188,13 +175,6 @@ export function Patients() {
           </div>
         </div>
       </div>
-
-      {showModal && (canCreatePatient || canUpdatePatient) && (
-        <PatientFormModal
-          patient={editingPatient}
-          onClose={handleModalClose}
-        />
-      )}
     </div>
   );
 }
