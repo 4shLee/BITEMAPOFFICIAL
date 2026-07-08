@@ -13,12 +13,14 @@ const REQUIRES_REASON = ['Damaged', 'Expired', 'Adjustment'];
 interface StockAdjustmentModalProps {
   item: any;
   onClose: (shouldReload?: boolean) => void;
+  mode?: 'adjust' | 'usage';
 }
 
-export function StockAdjustmentModal({ item, onClose }: StockAdjustmentModalProps) {
+export function StockAdjustmentModal({ item, onClose, mode = 'adjust' }: StockAdjustmentModalProps) {
+  const isUsageMode = mode === 'usage';
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
-    transaction_type: 'Restock',
+    transaction_type: isUsageMode ? 'Used' : 'Restock',
     inventory_batch_id: '',
     quantity: '',
     transaction_date: new Date().toISOString().split('T')[0],
@@ -43,6 +45,11 @@ export function StockAdjustmentModal({ item, onClose }: StockAdjustmentModalProp
       }
       if (isRemovingStock && item.batches?.length > 0 && !formData.inventory_batch_id) {
         toast.error('Please select the affected batch/lot');
+        setLoading(false);
+        return;
+      }
+      if (wouldExceedBatch) {
+        toast.error('Selected batch does not have enough remaining stock');
         setLoading(false);
         return;
       }
@@ -72,16 +79,19 @@ export function StockAdjustmentModal({ item, onClose }: StockAdjustmentModalProp
         notes: formData.notes
       });
 
-      toast.success('Stock adjusted successfully');
+      toast.success(isUsageMode ? 'Stock usage recorded successfully' : 'Stock adjusted successfully');
       onClose(true);
     } catch (error) {
-      toast.error('Failed to adjust stock');
+      toast.error(isUsageMode ? 'Failed to record stock usage' : 'Failed to adjust stock');
     } finally {
       setLoading(false);
     }
   };
 
-  const transactionTypeOptions = [
+  const transactionTypeOptions = isUsageMode ? [
+    { value: 'Used', label: 'Used (Subtract from Current Stock)' },
+    { value: 'Dispensed', label: 'Dispensed (Subtract from Current Stock)' },
+  ] : [
     { value: 'Restock', label: 'Restock (Add to Current Stock)' },
     { value: 'Received', label: 'Received (Add to Current Stock)' },
     { value: 'Used', label: 'Used (Subtract from Current Stock)' },
@@ -90,10 +100,15 @@ export function StockAdjustmentModal({ item, onClose }: StockAdjustmentModalProp
     { value: 'Expired', label: 'Expired (Subtract from Current Stock)' },
     { value: 'Adjustment', label: 'Set Exact Stock (Does Not Add)' }
   ];
+  const today = new Date().toISOString().split('T')[0];
   const batchOptions = [
     { value: '', label: 'Select affected batch/lot' },
     ...(item.batches || [])
-      .filter((batch: any) => Number(batch.quantity_remaining || 0) > 0)
+      .filter((batch: any) => {
+        const hasStock = Number(batch.quantity_remaining || 0) > 0;
+        const isNotExpired = !batch.expiry_date || batch.expiry_date >= today;
+        return hasStock && (!isUsageMode || isNotExpired);
+      })
       .map((batch: any) => ({
         value: String(batch.id),
         label: `${batch.batch_number} - ${batch.quantity_remaining} ${item.unit} remaining - exp ${batch.expiry_date || 'N/A'}`,
@@ -106,6 +121,8 @@ export function StockAdjustmentModal({ item, onClose }: StockAdjustmentModalProp
   const currentStock = Number(item.current_stock) || 0;
   const quantity = parseInt(formData.quantity, 10) || 0;
   const wouldGoNegative = isRemovingStock && quantity > currentStock;
+  const selectedBatch = (item.batches || []).find((batch: any) => String(batch.id) === formData.inventory_batch_id);
+  const wouldExceedBatch = Boolean(isRemovingStock && selectedBatch && quantity > Number(selectedBatch.quantity_remaining || 0));
 
   const getNewStockPreview = () => {
     if (isAddingStock) {
@@ -123,8 +140,10 @@ export function StockAdjustmentModal({ item, onClose }: StockAdjustmentModalProp
       <div className="w-full max-w-xl overflow-hidden rounded-3xl border border-border bg-card shadow-2xl">
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <div>
-            <h2 className="text-lg font-extrabold text-foreground">Adjust Stock</h2>
-            <p className="text-sm text-muted-foreground">{item.item_name}</p>
+            <h2 className="text-lg font-extrabold text-foreground">{isUsageMode ? 'Record Stock Usage' : 'Adjust Stock'}</h2>
+            <p className="text-sm text-muted-foreground">
+              {isUsageMode ? 'Record vaccine or supply usage for this item.' : item.item_name}
+            </p>
           </div>
           <button
             onClick={() => onClose(false)}
@@ -155,6 +174,11 @@ export function StockAdjustmentModal({ item, onClose }: StockAdjustmentModalProp
             {isAddingStock && (
               <div className="rounded-2xl border border-warning/20 bg-warning-bg px-3 py-2 text-xs font-medium text-warning">
                 For new vaccine or supply lots, use Add Batch/Restock when possible so expiry and lot details are tracked.
+              </div>
+            )}
+            {isUsageMode && (
+              <div className="rounded-2xl border border-primary/15 bg-primary-bg px-3 py-2 text-xs font-medium text-primary">
+                Recording usage will subtract from current stock.
               </div>
             )}
 
@@ -189,7 +213,7 @@ export function StockAdjustmentModal({ item, onClose }: StockAdjustmentModalProp
                   onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
                   required
                   min="1"
-                  error={wouldGoNegative ? 'Quantity exceeds available stock.' : undefined}
+                  error={wouldGoNegative ? 'Quantity exceeds available stock.' : wouldExceedBatch ? 'Quantity exceeds selected batch stock.' : undefined}
                 />
                 {!wouldGoNegative && (
                   <p className="mt-1 text-xs text-muted-foreground">
@@ -218,7 +242,7 @@ export function StockAdjustmentModal({ item, onClose }: StockAdjustmentModalProp
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 className="h-24 w-full resize-none rounded-xl border border-input bg-input-background px-3 py-2 text-sm focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/20"
-                placeholder="Reason for stock adjustment, batch number, etc..."
+                placeholder={isUsageMode ? 'Optional usage notes, patient reference, or remarks...' : 'Reason for stock adjustment, batch number, etc...'}
                 required={REQUIRES_REASON.includes(formData.transaction_type)}
               />
             </div>
@@ -233,8 +257,8 @@ export function StockAdjustmentModal({ item, onClose }: StockAdjustmentModalProp
             >
               Cancel
             </Button>
-            <Button type="submit" variant="primary" disabled={loading || wouldGoNegative}>
-              {loading ? 'Adjusting...' : 'Adjust Stock'}
+            <Button type="submit" variant="primary" disabled={loading || wouldGoNegative || wouldExceedBatch}>
+              {loading ? (isUsageMode ? 'Recording...' : 'Adjusting...') : (isUsageMode ? 'Record Usage' : 'Adjust Stock')}
             </Button>
           </div>
         </form>

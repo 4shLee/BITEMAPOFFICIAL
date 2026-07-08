@@ -6,7 +6,7 @@ import { Badge } from '../components/UI/Badge';
 import { Button } from '../components/UI/Button';
 import { StatCard } from '../components/UI/StatCard';
 import { inventoryAPI } from '../../lib/services/api';
-import { canPerformAction, getStoredUser } from '../../lib/auth/roleAccess';
+import { canPerformAction, getStoredUser, normalizeRoleKey } from '../../lib/auth/roleAccess';
 import { InventoryFormModal } from '../components/Inventory/InventoryFormModal';
 import { StockAdjustmentModal } from '../components/Inventory/StockAdjustmentModal';
 import { InventoryBatchModal } from '../components/Inventory/InventoryBatchModal';
@@ -16,6 +16,8 @@ export function Inventory() {
   const canCreateInventory = canPerformAction(currentUser?.role, 'inventory.create');
   const canUpdateInventory = canPerformAction(currentUser?.role, 'inventory.update');
   const canAdjustStock = canPerformAction(currentUser?.role, 'inventory.adjust_stock');
+  const canRecordUsage = canPerformAction(currentUser?.role, 'inventory.record_usage');
+  const isNurseInventoryView = normalizeRoleKey(currentUser?.role) === 'nurse_vaccinator';
   const inventoryColumnCount = 10;
   const [inventory, setInventory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -320,14 +322,14 @@ export function Inventory() {
                                 Restock
                               </button>
                             )}
-                            {canAdjustStock && (
+                            {(canAdjustStock || canRecordUsage) && (
                               <button
                                 onClick={() => handleAdjustStock(item)}
                                 className="inline-flex h-9 shrink-0 items-center justify-center rounded-full bg-primary px-3 text-xs font-semibold leading-none text-white shadow-sm transition-colors hover:bg-primary-dark"
-                                title="Adjust Stock"
-                                aria-label="Adjust stock"
+                                title={isNurseInventoryView ? 'Record Usage' : 'Adjust Stock'}
+                                aria-label={isNurseInventoryView ? 'Record stock usage' : 'Adjust stock'}
                               >
-                                Adjust
+                                {isNurseInventoryView ? 'Record Usage' : 'Adjust'}
                               </button>
                             )}
                             {canUpdateInventory && (
@@ -368,9 +370,10 @@ export function Inventory() {
         />
       )}
 
-      {showAdjustModal && canAdjustStock && adjustingItem && (
+      {showAdjustModal && (canAdjustStock || canRecordUsage) && adjustingItem && (
         <StockAdjustmentModal
           item={adjustingItem}
+          mode={canRecordUsage && !canAdjustStock ? 'usage' : 'adjust'}
           onClose={handleAdjustModalClose}
         />
       )}

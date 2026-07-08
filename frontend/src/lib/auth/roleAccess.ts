@@ -22,6 +22,7 @@ export type PermissionAction =
   | 'inventory.create'
   | 'inventory.update'
   | 'inventory.adjust_stock'
+  | 'inventory.record_usage'
   | 'notifications.send'
   | 'reports.view'
   | 'audit_logs.view'
@@ -95,9 +96,10 @@ const ACTION_PERMISSIONS: Record<PermissionAction, string[]> = {
   'incidents.update': ['clinic_admin', 'nurse_vaccinator'],
   'incidents.delete': ['clinic_admin'],
   'pep.update': ['clinic_admin', 'nurse_vaccinator'],
-  'inventory.create': ['clinic_admin', 'nurse_vaccinator'],
-  'inventory.update': ['clinic_admin', 'nurse_vaccinator'],
-  'inventory.adjust_stock': ['clinic_admin', 'nurse_vaccinator'],
+  'inventory.create': ['clinic_admin'],
+  'inventory.update': ['clinic_admin'],
+  'inventory.adjust_stock': ['clinic_admin'],
+  'inventory.record_usage': ['nurse_vaccinator'],
   'notifications.send': ['clinic_admin', 'nurse_vaccinator'],
   'reports.view': ['clinic_admin', 'doctor'],
   'audit_logs.view': ['system_admin'],

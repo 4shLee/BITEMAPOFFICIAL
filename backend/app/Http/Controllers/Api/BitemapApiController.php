@@ -407,11 +407,34 @@ class BitemapApiController extends Controller
 
     public function updateInventory(Request $request, Inventory $inventory): JsonResponse
     {
+        if ($this->isNurseVaccinator($request->user()) && collect($request->only(['item_name', 'item_type', 'unit', 'reorder_level', 'expiry_date']))->filter(fn ($value) => $value !== null && $value !== '')->isNotEmpty()) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Nurse/Vaccinator can record usage but cannot edit inventory item details.',
+            ], 403);
+        }
+
         $oldStock = $inventory->current_stock;
         $data = $this->inventoryData($request, true);
         $newStock = array_key_exists('current_stock', $data) ? (int) $data['current_stock'] : (int) $oldStock;
         $stockDelta = $newStock - (int) $oldStock;
         $batch = null;
+
+        if ($this->isNurseVaccinator($request->user())) {
+            if (! in_array($request->input('transaction_type'), ['Used', 'Dispensed'], true) || $stockDelta >= 0) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Nurse/Vaccinator can only record used or dispensed stock.',
+                ], 403);
+            }
+
+            if ($inventory->batches()->where('quantity_remaining', '>', 0)->exists() && ! $request->filled('inventory_batch_id')) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Please select the affected batch/lot.',
+                ], 422);
+            }
+        }
 
         if ($request->filled('inventory_batch_id')) {
             $batch = $inventory->batches()->whereKey($request->input('inventory_batch_id'))->first();
@@ -2540,6 +2563,11 @@ class BitemapApiController extends Controller
     private function isClinicAdmin(?User $user): bool
     {
         return $this->canonicalUserRole($user?->role) === 'clinic_admin';
+    }
+
+    private function isNurseVaccinator(?User $user): bool
+    {
+        return $this->canonicalUserRole($user?->role) === 'nurse_vaccinator';
     }
 
     private function isSystemAdminUser(User $user): bool
