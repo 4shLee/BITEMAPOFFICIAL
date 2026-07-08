@@ -716,7 +716,7 @@ Old role access was removed from protected write routes to prevent Doctor from i
 
 ---
 
-## June 2, 2026 – Local Development Setup
+## July 2, 2026 – Local Development Setup
 
 The BITEMAP web application was set up from GitHub to the local laptop development environment.
 
@@ -730,7 +730,7 @@ The app structure includes:
 
 ---
 
-## June 3, 2026 – Project Review, Blank Page Fix, and RBAC Continuation
+## July 3, 2026 – Project Review, Blank Page Fix, and RBAC Continuation
 
 ### Project Review
 
@@ -1022,7 +1022,7 @@ During the RBAC updates:
 RBAC/access control is now mostly completed and verified for the four final BITEMAP roles.
 
 ---
-June 4, 2026
+July 4, 2026
 Performed a Supabase cleanup audit for BITEMAP and confirmed the active backend is Laravel API + MySQL. Identified old unused Supabase frontend files, removed confirmed dead Supabase client/auth/service code, and deleted the unused generated Supabase credential file. Verified no active frontend imports still used Supabase, then removed the unused @supabase/supabase-js dependency from the frontend package files.
 Also fixed the missing frontend API client method for today’s PEP schedule alerts by adding notificationsAPI.getTodaySchedules() to the Laravel API service, using the existing backend route. Ran the frontend production build successfully to confirm the cleanup did not break the app.
 
@@ -1069,7 +1069,7 @@ Verification completed:
 - Confirmed Nurse/Vaccinator dashboard does not show GIS or Reports widgets.
 - Confirmed no RBAC, API, backend, database, permission, route, or authentication behavior was changed.
 
-June 5, 2026
+July 5, 2026
 
 ## Incident Management Progress Summary
 
@@ -1103,3 +1103,70 @@ Improved the BITEMAP Incident Management module workflow and UI.
 ### Result
 
 The Incident Management module is now more consistent, clinic-friendly, and aligned with the intended BITEMAP workflow. Nurse/Vaccinator and Clinic Admin can manage incident encoding more clearly, while patient profile updates remain properly handled through the Patient Registry.
+
+
+**July 7, 2026**
+**UI / Design System**
+- Applied broader BITEMAP UI polish inspired by the uploaded dashboard reference.
+- Updated the visual direction toward a modern healthcare SaaS dashboard style.
+- Improved:
+  - global theme colors
+  - font usage
+  - sidebar styling
+  - header styling
+  - buttons
+  - badges
+  - inputs
+  - stat cards
+  - tables
+- Polished Inventory and Patient Registry pages to better match the new style.
+
+
+**July 8, 2026**
+ 
+**Inventory Module**
+- Improved the Inventory workflow for realistic clinic supply management.
+- Added support for inventory batches/restocks.
+- Added backend support for `inventory_batches`.
+- Added batch fields such as lot number, quantity received, remaining quantity, expiry date, received date, supplier/source, and notes.
+- Added Add Batch / Restock workflow.
+- Added View Batches workflow.
+- Improved Adjust Stock modal with:
+  - current stock / new stock preview
+  - transaction type
+  - batch/lot affected
+  - quantity
+  - transaction date
+  - compact notes/reason field
+  - validation to prevent negative stock
+- Clarified Reorder Level as the low-stock alert threshold.
+- Cleaned up Inventory action buttons.
+- Removed duplicate toolbar Add Batch button.
+- Kept Add Item in the toolbar as the master item creation action.
+- Renamed row-level Batch action to Restock.
+- Updated Add Item modal wording to be more user-friendly.
+
+**Backend / Database**
+- Added an `InventoryBatch` model.
+- Added `inventory_batches` migration.
+- Added API routes for:
+  - viewing inventory item batches
+  - adding inventory batches
+- Updated inventory API response to include batch data and nearest expiry information.
+- Updated stock transaction handling to support batch-related adjustments.
+
+**Migration Fix**
+- Fixed failed Laravel migration:
+  - `2026_07_03_000002_canonicalize_doctor_role`
+- Resolved MySQL ENUM conflict caused by duplicate `doctor` / `Doctor` values.
+- Updated role canonicalization to use lowercase role keys.
+- Also made the clinic admin role canonicalization migration safer.
+- Successfully ran `php artisan migrate`.
+- Confirmed the new inventory batch migration ran successfully.
+
+
+**Verification**
+- Ran `npm run build` multiple times.
+- Builds passed successfully.
+- Ran backend route and PHP syntax checks during inventory/backend work.
+- Confirmed migrations ran successfully.
