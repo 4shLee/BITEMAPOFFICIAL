@@ -188,6 +188,17 @@ export const inventoryAPI = {
       method: 'PUT',
       body: JSON.stringify(stockData),
     });
+  },
+
+  async getBatches(id: string) {
+    return apiRequest('/inventory/' + id + '/batches');
+  },
+
+  async addBatch(id: string, batchData: any) {
+    return apiRequest('/inventory/' + id + '/batches', {
+      method: 'POST',
+      body: JSON.stringify(batchData),
+    });
   }
 };
 

@@ -8,6 +8,7 @@ import { inventoryAPI } from '../../../lib/services/api';
 
 const ADD_STOCK_TYPES = ['Restock', 'Received'];
 const REMOVE_STOCK_TYPES = ['Used', 'Dispensed', 'Damaged', 'Expired'];
+const REQUIRES_REASON = ['Damaged', 'Expired', 'Adjustment'];
 
 interface StockAdjustmentModalProps {
   item: any;
@@ -18,7 +19,9 @@ export function StockAdjustmentModal({ item, onClose }: StockAdjustmentModalProp
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     transaction_type: 'Restock',
+    inventory_batch_id: '',
     quantity: '',
+    transaction_date: new Date().toISOString().split('T')[0],
     notes: ''
   });
 
@@ -30,6 +33,16 @@ export function StockAdjustmentModal({ item, onClose }: StockAdjustmentModalProp
       const quantity = parseInt(formData.quantity, 10);
       if (isNaN(quantity) || quantity <= 0) {
         toast.error('Please enter a valid quantity');
+        setLoading(false);
+        return;
+      }
+      if (REQUIRES_REASON.includes(formData.transaction_type) && !formData.notes.trim()) {
+        toast.error('Please enter a reason for this stock adjustment');
+        setLoading(false);
+        return;
+      }
+      if (isRemovingStock && item.batches?.length > 0 && !formData.inventory_batch_id) {
+        toast.error('Please select the affected batch/lot');
         setLoading(false);
         return;
       }
@@ -54,6 +67,8 @@ export function StockAdjustmentModal({ item, onClose }: StockAdjustmentModalProp
       await inventoryAPI.update(item.id, {
         current_stock: newStock,
         transaction_type: formData.transaction_type,
+        inventory_batch_id: formData.inventory_batch_id || undefined,
+        transaction_date: formData.transaction_date,
         notes: formData.notes
       });
 
@@ -75,6 +90,15 @@ export function StockAdjustmentModal({ item, onClose }: StockAdjustmentModalProp
     { value: 'Expired', label: 'Expired (Subtract from Current Stock)' },
     { value: 'Adjustment', label: 'Set Exact Stock (Does Not Add)' }
   ];
+  const batchOptions = [
+    { value: '', label: 'Select affected batch/lot' },
+    ...(item.batches || [])
+      .filter((batch: any) => Number(batch.quantity_remaining || 0) > 0)
+      .map((batch: any) => ({
+        value: String(batch.id),
+        label: `${batch.batch_number} - ${batch.quantity_remaining} ${item.unit} remaining - exp ${batch.expiry_date || 'N/A'}`,
+      })),
+  ];
 
   const isAddingStock = ADD_STOCK_TYPES.includes(formData.transaction_type);
   const isRemovingStock = REMOVE_STOCK_TYPES.includes(formData.transaction_type);
@@ -95,16 +119,17 @@ export function StockAdjustmentModal({ item, onClose }: StockAdjustmentModalProp
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-card border border-border rounded-lg w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-2xl">
         <div className="px-6 py-4 border-b border-border flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-foreground">Adjust Stock</h2>
+            <h2 className="text-lg font-extrabold text-foreground">Adjust Stock</h2>
             <p className="text-sm text-muted-foreground">{item.item_name}</p>
           </div>
           <button
             onClick={() => onClose(false)}
-            className="p-1 hover:bg-muted rounded transition-colors"
+            className="rounded-full p-1.5 transition-colors hover:bg-muted"
+            aria-label="Close stock adjustment modal"
           >
             <X className="w-5 h-5" />
           </button>
@@ -112,7 +137,7 @@ export function StockAdjustmentModal({ item, onClose }: StockAdjustmentModalProp
 
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
           <div className="p-6 space-y-4">
-            <div className="bg-muted rounded-lg p-4">
+            <div className="rounded-2xl bg-muted p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">Current Stock</p>
@@ -138,6 +163,15 @@ export function StockAdjustmentModal({ item, onClose }: StockAdjustmentModalProp
               onChange={(e) => setFormData({ ...formData, transaction_type: e.target.value })}
             />
 
+            {isRemovingStock && item.batches?.length > 0 && (
+              <Select
+                label="Batch/Lot Affected"
+                options={batchOptions}
+                value={formData.inventory_batch_id}
+                onChange={(e) => setFormData({ ...formData, inventory_batch_id: e.target.value })}
+              />
+            )}
+
             <div>
               <Input
                 label={isAdjustment ? "Exact Stock Amount" : "Quantity"}
@@ -146,7 +180,7 @@ export function StockAdjustmentModal({ item, onClose }: StockAdjustmentModalProp
                 value={formData.quantity}
                 onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
                 required
-                min="0"
+                min="1"
               />
               <p className="text-xs text-muted-foreground mt-1">
                 {isAddingStock && 'This will add to current stock.'}
@@ -155,15 +189,25 @@ export function StockAdjustmentModal({ item, onClose }: StockAdjustmentModalProp
               </p>
             </div>
 
+            <Input
+              label="Transaction Date"
+              type="date"
+              value={formData.transaction_date}
+              onChange={(e) => setFormData({ ...formData, transaction_date: e.target.value })}
+              max={new Date().toISOString().split('T')[0]}
+              required
+            />
+
             <div>
               <label className="block text-xs font-medium text-foreground mb-2">
-                Notes (Optional)
+                Notes / Reason {REQUIRES_REASON.includes(formData.transaction_type) ? '*' : '(Optional)'}
               </label>
               <textarea
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                className="w-full px-3 py-2 bg-input-background border border-input rounded-lg text-sm min-h-[80px]"
+                className="min-h-[80px] w-full rounded-xl border border-input bg-input-background px-3 py-2 text-sm focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/20"
                 placeholder="Reason for stock adjustment, batch number, etc..."
+                required={REQUIRES_REASON.includes(formData.transaction_type)}
               />
             </div>
           </div>

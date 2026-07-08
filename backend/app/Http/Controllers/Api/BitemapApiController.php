@@ -7,6 +7,7 @@ use App\Models\AuditLog;
 use App\Models\Barangay;
 use App\Models\Incident;
 use App\Models\Inventory;
+use App\Models\InventoryBatch;
 use App\Models\InventoryTransaction;
 use App\Models\Notification;
 use App\Models\Patient;
@@ -385,7 +386,8 @@ class BitemapApiController extends Controller
 
     public function inventory(): JsonResponse
     {
-        $items = Inventory::orderBy('item_name')
+        $items = Inventory::with(['batches', 'transactions'])
+            ->orderBy('item_name')
             ->get()
             ->map(fn (Inventory $item) => $this->inventoryPayload($item))
             ->values();
@@ -406,21 +408,109 @@ class BitemapApiController extends Controller
     public function updateInventory(Request $request, Inventory $inventory): JsonResponse
     {
         $oldStock = $inventory->current_stock;
-        $inventory->update($this->inventoryData($request, true));
+        $data = $this->inventoryData($request, true);
+        $newStock = array_key_exists('current_stock', $data) ? (int) $data['current_stock'] : (int) $oldStock;
+        $stockDelta = $newStock - (int) $oldStock;
+        $batch = null;
 
-        if ($request->filled('transaction_type') || $oldStock !== $inventory->current_stock) {
-            InventoryTransaction::create([
-                'inventory_id' => $inventory->id,
-                'transaction_type' => $this->normalizeTransactionType($request->input('transaction_type')),
-                'quantity' => abs((int) $inventory->current_stock - (int) $oldStock),
-                'notes' => $request->input('notes'),
-            ]);
+        if ($request->filled('inventory_batch_id')) {
+            $batch = $inventory->batches()->whereKey($request->input('inventory_batch_id'))->first();
+
+            if (! $batch) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Selected batch was not found for this inventory item.',
+                ], 422);
+            }
+
+            if ($stockDelta < 0 && abs($stockDelta) > (int) $batch->quantity_remaining) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Selected batch does not have enough remaining stock.',
+                ], 422);
+            }
         }
+
+        DB::transaction(function () use ($request, $inventory, $data, $oldStock, $stockDelta, $batch) {
+            $inventory->update($data);
+
+            if ($batch && $stockDelta !== 0) {
+                $batch->update([
+                    'quantity_remaining' => max(0, (int) $batch->quantity_remaining + $stockDelta),
+                ]);
+                $this->syncInventoryNearestExpiry($inventory->fresh());
+            }
+
+            if ($request->filled('transaction_type') || $oldStock !== $inventory->current_stock) {
+                InventoryTransaction::create([
+                    'inventory_id' => $inventory->id,
+                    'inventory_batch_id' => $batch?->id,
+                    'transaction_type' => $this->normalizeTransactionType($request->input('transaction_type')),
+                    'quantity' => abs((int) $inventory->current_stock - (int) $oldStock),
+                    'transaction_date' => $request->input('transaction_date') ?: now()->toDateString(),
+                    'notes' => $request->input('notes'),
+                    'created_by' => $request->user()?->id,
+                ]);
+            }
+        });
 
         return response()->json([
             'success' => true,
-            'data' => $this->inventoryPayload($inventory->fresh()),
+            'data' => $this->inventoryPayload($inventory->fresh(['batches', 'transactions'])),
         ]);
+    }
+
+    public function inventoryBatches(Inventory $inventory): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data' => $inventory->batches()
+                ->orderBy('expiry_date')
+                ->get()
+                ->map(fn (InventoryBatch $batch) => $this->inventoryBatchPayload($batch))
+                ->values(),
+        ]);
+    }
+
+    public function storeInventoryBatch(Request $request, Inventory $inventory): JsonResponse
+    {
+        $data = $request->validate([
+            'batch_number' => ['required', 'string', 'max:100', Rule::unique('inventory_batches')->where('inventory_id', $inventory->id)],
+            'quantity_received' => ['required', 'integer', 'min:1'],
+            'expiry_date' => ['required', 'date'],
+            'received_date' => ['required', 'date', 'before_or_equal:today'],
+            'supplier' => ['nullable', 'string', 'max:150'],
+            'notes' => ['nullable', 'string'],
+        ]);
+
+        $batch = DB::transaction(function () use ($request, $inventory, $data) {
+            $batch = $inventory->batches()->create([
+                ...$data,
+                'quantity_remaining' => $data['quantity_received'],
+                'created_by' => $request->user()?->id,
+            ]);
+
+            $inventory->increment('current_stock', $data['quantity_received']);
+            $this->syncInventoryNearestExpiry($inventory->fresh());
+
+            InventoryTransaction::create([
+                'inventory_id' => $inventory->id,
+                'inventory_batch_id' => $batch->id,
+                'transaction_type' => 'Restocked',
+                'quantity' => $data['quantity_received'],
+                'transaction_date' => $data['received_date'],
+                'notes' => 'Batch/Lot '.$data['batch_number'].' received.'.($data['notes'] ? ' '.$data['notes'] : ''),
+                'created_by' => $request->user()?->id,
+            ]);
+
+            return $batch;
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->inventoryPayload($inventory->fresh(['batches', 'transactions'])),
+            'batch' => $this->inventoryBatchPayload($batch->fresh()),
+        ], 201);
     }
 
     public function users(): JsonResponse
@@ -1999,6 +2089,17 @@ class BitemapApiController extends Controller
         return $data;
     }
 
+    private function syncInventoryNearestExpiry(Inventory $inventory): void
+    {
+        $nearestExpiry = $inventory->batches()
+            ->where('quantity_remaining', '>', 0)
+            ->whereDate('expiry_date', '>=', today())
+            ->orderBy('expiry_date')
+            ->value('expiry_date');
+
+        $inventory->update(['expiry_date' => $nearestExpiry]);
+    }
+
     private function createPepScheduleForIncident(Incident $incident): void
     {
         $startDate = Carbon::parse($incident->incident_date);
@@ -2346,6 +2447,13 @@ class BitemapApiController extends Controller
 
     private function inventoryPayload(Inventory $item): array
     {
+        $item->loadMissing('batches');
+        $batches = $item->batches
+            ->sortBy('expiry_date')
+            ->map(fn (InventoryBatch $batch) => $this->inventoryBatchPayload($batch))
+            ->values();
+        $activeBatch = $batches->first(fn (array $batch) => $batch['quantity_remaining'] > 0 && $batch['status'] !== 'Expired');
+
         return [
             'id' => $item->id,
             'item_name' => $item->item_name,
@@ -2354,10 +2462,53 @@ class BitemapApiController extends Controller
             'unit' => $item->unit,
             'reorder_level' => $item->reorder_level,
             'expiry_date' => optional($item->expiry_date)->toDateString(),
+            'nearest_expiry_date' => optional($item->expiry_date)->toDateString(),
+            'batch_number' => $activeBatch['batch_number'] ?? null,
+            'lot_number' => $activeBatch['batch_number'] ?? null,
+            'quantity_remaining' => $activeBatch['quantity_remaining'] ?? null,
+            'batches' => $batches,
             'last_updated' => optional($item->updated_at)->toDateTimeString(),
             'created_at' => $item->created_at,
             'updated_at' => $item->updated_at,
         ];
+    }
+
+    private function inventoryBatchPayload(InventoryBatch $batch): array
+    {
+        $expiryDate = optional($batch->expiry_date)->toDateString();
+
+        return [
+            'id' => $batch->id,
+            'inventory_id' => $batch->inventory_id,
+            'batch_number' => $batch->batch_number,
+            'lot_number' => $batch->batch_number,
+            'quantity_received' => $batch->quantity_received,
+            'quantity_remaining' => $batch->quantity_remaining,
+            'expiry_date' => $expiryDate,
+            'received_date' => optional($batch->received_date)->toDateString(),
+            'supplier' => $batch->supplier,
+            'notes' => $batch->notes,
+            'status' => $this->inventoryBatchStatus($batch),
+            'created_at' => $batch->created_at,
+            'updated_at' => $batch->updated_at,
+        ];
+    }
+
+    private function inventoryBatchStatus(InventoryBatch $batch): string
+    {
+        if ((int) $batch->quantity_remaining <= 0) {
+            return 'Depleted';
+        }
+
+        if ($batch->expiry_date && $batch->expiry_date->isPast()) {
+            return 'Expired';
+        }
+
+        if ($batch->expiry_date && $batch->expiry_date->diffInDays(today(), false) >= -60) {
+            return 'Expiring Soon';
+        }
+
+        return 'Active';
     }
 
     private function userPayload(User $user): array

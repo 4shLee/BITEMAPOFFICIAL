@@ -52,6 +52,10 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware('role:clinic_admin,nurse_vaccinator');
     Route::put('/inventory/{inventory}', [BitemapApiController::class, 'updateInventory'])
         ->middleware('role:clinic_admin,nurse_vaccinator');
+    Route::get('/inventory/{inventory}/batches', [BitemapApiController::class, 'inventoryBatches'])
+        ->middleware('role:clinic_admin,doctor,nurse_vaccinator');
+    Route::post('/inventory/{inventory}/batches', [BitemapApiController::class, 'storeInventoryBatch'])
+        ->middleware('role:clinic_admin,nurse_vaccinator');
 
     Route::get('/users', [BitemapApiController::class, 'users'])->middleware('role:system_admin,clinic_admin');
     Route::put('/users/{user}', [BitemapApiController::class, 'updateUser'])->middleware('role:system_admin,clinic_admin');

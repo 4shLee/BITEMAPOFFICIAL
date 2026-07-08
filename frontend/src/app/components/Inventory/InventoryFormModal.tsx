@@ -18,7 +18,7 @@ export function InventoryFormModal({ item, onClose }: InventoryFormModalProps) {
     item_type: item?.item_type || 'Vaccine',
     current_stock: item?.current_stock || '',
     reorder_level: item?.reorder_level || '',
-    unit: item?.unit || 'vials',
+    unit: item?.unit || 'Vials',
     description: item?.description || ''
   });
 
@@ -44,29 +44,37 @@ export function InventoryFormModal({ item, onClose }: InventoryFormModalProps) {
 
   const itemTypeOptions = [
     { value: 'Vaccine', label: 'Vaccine' },
-    { value: 'Medication', label: 'Medication' },
-    { value: 'Medical Supply', label: 'Medical Supply' },
-    { value: 'Equipment', label: 'Equipment' }
+    { value: 'Immunoglobulin', label: 'Immunoglobulin' },
+    { value: 'Medicine', label: 'Medicine' },
+    { value: 'Supply', label: 'Supply' },
+    { value: 'Other', label: 'Other' }
   ];
 
   const unitOptions = [
-    { value: 'vials', label: 'Vials' },
-    { value: 'sets', label: 'Sets' },
-    { value: 'pieces', label: 'Pieces' },
-    { value: 'boxes', label: 'Boxes' },
-    { value: 'bottles', label: 'Bottles' }
+    { value: 'Vials', label: 'Vials' },
+    { value: 'Doses', label: 'Doses' },
+    { value: 'Ampoules', label: 'Ampoules' },
+    { value: 'Pieces', label: 'Pieces' },
+    { value: 'Boxes', label: 'Boxes' },
+    { value: 'Kits', label: 'Kits' }
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-card border border-border rounded-lg w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-2xl">
         <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-foreground">
-            {item ? 'Edit Inventory Item' : 'Add Inventory Item'}
-          </h2>
+          <div>
+            <h2 className="text-lg font-extrabold text-foreground">
+              {item ? 'Edit Inventory Item' : 'Add Inventory Item'}
+            </h2>
+            <p className="mt-0.5 text-xs font-medium text-muted-foreground">
+              {item ? 'Update the master item details and reorder level.' : 'Create the master record. Use Add Batch/Restock for lot-level stock.'}
+            </p>
+          </div>
           <button
             onClick={() => onClose(false)}
-            className="p-1 hover:bg-muted rounded transition-colors"
+            className="rounded-full p-1.5 transition-colors hover:bg-muted"
+            aria-label="Close inventory item modal"
           >
             <X className="w-5 h-5" />
           </button>
@@ -100,12 +108,14 @@ export function InventoryFormModal({ item, onClose }: InventoryFormModalProps) {
 
             <div className="grid grid-cols-2 gap-4">
               <Input
-                label="Current Stock"
+                label={item ? 'Current Stock' : 'Initial Stock'}
                 type="number"
-                placeholder="Enter current stock"
+                placeholder={item ? 'Enter current stock' : 'Enter initial stock, or 0 if adding batches later'}
                 value={formData.current_stock}
                 onChange={(e) => setFormData({ ...formData, current_stock: e.target.value })}
+                helperText={!item ? 'Current backend requires this field. Future stock should be managed through batches/restock.' : undefined}
                 required
+                min="0"
               />
 
               <Input
@@ -115,6 +125,7 @@ export function InventoryFormModal({ item, onClose }: InventoryFormModalProps) {
                 value={formData.reorder_level}
                 onChange={(e) => setFormData({ ...formData, reorder_level: e.target.value })}
                 required
+                min="0"
               />
             </div>
 
@@ -125,7 +136,7 @@ export function InventoryFormModal({ item, onClose }: InventoryFormModalProps) {
               <textarea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="w-full px-3 py-2 bg-input-background border border-input rounded-lg text-sm min-h-[80px]"
+                className="min-h-[80px] w-full rounded-xl border border-input bg-input-background px-3 py-2 text-sm focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/20"
                 placeholder="Item description or notes..."
               />
             </div>
