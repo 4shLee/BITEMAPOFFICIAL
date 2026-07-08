@@ -1170,3 +1170,30 @@ The Incident Management module is now more consistent, clinic-friendly, and alig
 - Builds passed successfully.
 - Ran backend route and PHP syntax checks during inventory/backend work.
 - Confirmed migrations ran successfully.
+
+
+**July 8, 2026**
+
+
+**Notifications & Reminders Module**
+- Converted the module to SMS-only based on project scope.
+- Removed Email buttons, Email statistics, Email labels, and Email resend behavior from the Notifications UI.
+- Updated Upcoming Reminders to show only `Send SMS`.
+- Updated SMS statistics to show:
+  - Total SMS Sent Today
+  - Pending SMS
+  - Sent SMS
+  - Failed SMS
+- Improved notification log timestamps so Pending rows no longer say `Sent`.
+- Added readable timestamp labels such as Created, Sent, and Failed.
+- Added SMS-focused filters: All, Pending, Sent, Failed.
+- Styled Notification Log and Upcoming Reminders headers with the emerald/teal green card theme.
+- Made Upcoming Reminders cleaner by limiting it to the next 5 reminders.
+- Added Notification Log pagination with 10 records per page.
+- Added Previous/Next page controls and page indicators.
+- Made the right-side reminders/statistics column sticky on desktop.
+
+**Verification**
+- Ran `npm run build` after changes.
+- Build passed successfully.
+- Only the existing Vite large chunk warning appeared.
