@@ -215,12 +215,6 @@ export function Inventory() {
                 <option value="Expiring Soon">Expiring Soon</option>
                 <option value="Expired">Expired</option>
               </select>
-              {canAdjustStock && (
-                <Button variant="outline" size="sm" onClick={() => handleAddBatch()}>
-                  <Layers className="h-4 w-4" />
-                  Add Batch
-                </Button>
-              )}
               {canCreateInventory && (
                 <Button variant="primary" size="sm" onClick={handleCreate}>
                   <Plus className="h-4 w-4" />
@@ -307,10 +301,10 @@ export function Inventory() {
                           {item.last_updated ? new Date(item.last_updated).toLocaleString() : '-'}
                         </td>
                         <td className="px-5 py-4">
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-nowrap items-center gap-2">
                             <button
                               onClick={() => handleViewBatches(item)}
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-accent/20 bg-accent-bg text-accent shadow-sm transition-colors hover:border-accent/40 hover:bg-accent-bg/80"
+                              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-accent/20 bg-accent-bg text-accent shadow-sm transition-colors hover:border-accent/40 hover:bg-accent-bg/80"
                               title="View Batches"
                               aria-label="View inventory batches"
                             >
@@ -319,17 +313,19 @@ export function Inventory() {
                             {canAdjustStock && (
                               <button
                                 onClick={() => handleAddBatch(item)}
-                                className="inline-flex h-8 items-center justify-center rounded-full border border-primary/20 bg-primary-bg px-3 text-xs font-semibold leading-none text-primary shadow-sm transition-colors hover:border-primary/40 hover:bg-primary-bg/80"
-                                title="Add Batch"
+                                className="inline-flex h-9 shrink-0 items-center justify-center rounded-full border border-primary/20 bg-primary-bg px-3 text-xs font-semibold leading-none text-primary shadow-sm transition-colors hover:border-primary/40 hover:bg-primary-bg/80"
+                                title="Add Batch / Restock"
+                                aria-label="Add batch or restock this inventory item"
                               >
-                                Batch
+                                Restock
                               </button>
                             )}
                             {canAdjustStock && (
                               <button
                                 onClick={() => handleAdjustStock(item)}
-                                className="inline-flex h-8 items-center justify-center rounded-full bg-primary px-3 text-xs font-semibold leading-none text-white shadow-sm transition-colors hover:bg-primary-dark"
+                                className="inline-flex h-9 shrink-0 items-center justify-center rounded-full bg-primary px-3 text-xs font-semibold leading-none text-white shadow-sm transition-colors hover:bg-primary-dark"
                                 title="Adjust Stock"
+                                aria-label="Adjust stock"
                               >
                                 Adjust
                               </button>
@@ -337,11 +333,11 @@ export function Inventory() {
                             {canUpdateInventory && (
                               <button
                                 onClick={() => handleEdit(item)}
-                                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-primary/20 bg-primary-bg text-primary shadow-sm transition-colors hover:border-primary/40 hover:bg-primary-bg/80"
-                                title="Edit"
-                                aria-label="Edit inventory item"
+                                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-primary/20 bg-primary-bg text-primary shadow-sm transition-colors hover:border-primary/40 hover:bg-primary-bg/80"
+                                title="Edit Item Details"
+                                aria-label="Edit item details"
                               >
-                                <Edit className="w-5 h-5" />
+                                <Edit className="h-4 w-4" />
                               </button>
                             )}
                           </div>

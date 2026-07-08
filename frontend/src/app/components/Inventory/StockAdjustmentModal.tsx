@@ -103,11 +103,11 @@ export function StockAdjustmentModal({ item, onClose }: StockAdjustmentModalProp
   const isAddingStock = ADD_STOCK_TYPES.includes(formData.transaction_type);
   const isRemovingStock = REMOVE_STOCK_TYPES.includes(formData.transaction_type);
   const isAdjustment = formData.transaction_type === 'Adjustment';
+  const currentStock = Number(item.current_stock) || 0;
+  const quantity = parseInt(formData.quantity, 10) || 0;
+  const wouldGoNegative = isRemovingStock && quantity > currentStock;
 
   const getNewStockPreview = () => {
-    const quantity = parseInt(formData.quantity, 10) || 0;
-    const currentStock = Number(item.current_stock) || 0;
-
     if (isAddingStock) {
       return currentStock + quantity;
     } else if (isRemovingStock) {
@@ -120,8 +120,8 @@ export function StockAdjustmentModal({ item, onClose }: StockAdjustmentModalProp
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-2xl">
-        <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+      <div className="w-full max-w-xl overflow-hidden rounded-3xl border border-border bg-card shadow-2xl">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <div>
             <h2 className="text-lg font-extrabold text-foreground">Adjust Stock</h2>
             <p className="text-sm text-muted-foreground">{item.item_name}</p>
@@ -135,84 +135,96 @@ export function StockAdjustmentModal({ item, onClose }: StockAdjustmentModalProp
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
-          <div className="p-6 space-y-4">
-            <div className="rounded-2xl bg-muted p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">Current Stock</p>
-                  <p className="text-2xl font-semibold text-foreground">
-                    {item.current_stock} <span className="text-sm font-normal text-muted-foreground">{item.unit}</span>
-                  </p>
-                </div>
-                {formData.quantity && (
-                  <div className="text-right">
-                    <p className="text-xs text-muted-foreground mb-1">New Stock</p>
-                    <p className="text-2xl font-semibold text-primary">
-                      {getNewStockPreview()} <span className="text-sm font-normal text-muted-foreground">{item.unit}</span>
-                    </p>
-                  </div>
-                )}
+        <form onSubmit={handleSubmit}>
+          <div className="space-y-3 px-5 py-4">
+            <div className="grid grid-cols-2 gap-3 rounded-2xl bg-muted p-3">
+              <div className="rounded-xl bg-white/70 px-3 py-2">
+                <p className="mb-1 text-xs font-medium text-muted-foreground">Current Stock</p>
+                <p className="text-2xl font-semibold text-foreground">
+                  {item.current_stock} <span className="text-sm font-normal text-muted-foreground">{item.unit}</span>
+                </p>
+              </div>
+              <div className="rounded-xl bg-white/70 px-3 py-2 text-right">
+                <p className="mb-1 text-xs font-medium text-muted-foreground">New Stock</p>
+                <p className={'text-2xl font-semibold ' + (wouldGoNegative ? 'text-destructive' : 'text-primary')}>
+                  {getNewStockPreview()} <span className="text-sm font-normal text-muted-foreground">{item.unit}</span>
+                </p>
               </div>
             </div>
+
+            {isAddingStock && (
+              <div className="rounded-2xl border border-warning/20 bg-warning-bg px-3 py-2 text-xs font-medium text-warning">
+                For new vaccine or supply lots, use Add Batch/Restock when possible so expiry and lot details are tracked.
+              </div>
+            )}
 
             <Select
               label="Transaction Type"
               options={transactionTypeOptions}
               value={formData.transaction_type}
-              onChange={(e) => setFormData({ ...formData, transaction_type: e.target.value })}
+              onChange={(e) => setFormData({ ...formData, transaction_type: e.target.value, inventory_batch_id: '' })}
             />
 
             {isRemovingStock && item.batches?.length > 0 && (
-              <Select
-                label="Batch/Lot Affected"
-                options={batchOptions}
-                value={formData.inventory_batch_id}
-                onChange={(e) => setFormData({ ...formData, inventory_batch_id: e.target.value })}
-              />
+              <div>
+                <Select
+                  label="Batch/Lot Affected"
+                  options={batchOptions}
+                  value={formData.inventory_batch_id}
+                  onChange={(e) => setFormData({ ...formData, inventory_batch_id: e.target.value })}
+                />
+                <p className="mt-1 text-xs font-medium text-muted-foreground">
+                  Select the batch where the stock was used, dispensed, damaged, or expired.
+                </p>
+              </div>
             )}
 
-            <div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div>
+                <Input
+                  label={isAdjustment ? "Exact Stock Amount" : "Quantity"}
+                  type="number"
+                  placeholder={isAdjustment ? "Enter exact stock amount" : "Enter quantity"}
+                  value={formData.quantity}
+                  onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                  required
+                  min="1"
+                  error={wouldGoNegative ? 'Quantity exceeds available stock.' : undefined}
+                />
+                {!wouldGoNegative && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {isAddingStock && 'This will add to current stock.'}
+                    {isRemovingStock && 'This will subtract from current stock.'}
+                    {isAdjustment && 'This will replace the current stock total.'}
+                  </p>
+                )}
+              </div>
+
               <Input
-                label={isAdjustment ? "Exact Stock Amount" : "Quantity"}
-                type="number"
-                placeholder={isAdjustment ? "Enter exact stock amount" : "Enter quantity"}
-                value={formData.quantity}
-                onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                label="Transaction Date"
+                type="date"
+                value={formData.transaction_date}
+                onChange={(e) => setFormData({ ...formData, transaction_date: e.target.value })}
+                max={new Date().toISOString().split('T')[0]}
                 required
-                min="1"
               />
-              <p className="text-xs text-muted-foreground mt-1">
-                {isAddingStock && 'This will add to current stock.'}
-                {isRemovingStock && 'This will subtract from current stock.'}
-                {isAdjustment && 'This will replace the current stock total.'}
-              </p>
             </div>
 
-            <Input
-              label="Transaction Date"
-              type="date"
-              value={formData.transaction_date}
-              onChange={(e) => setFormData({ ...formData, transaction_date: e.target.value })}
-              max={new Date().toISOString().split('T')[0]}
-              required
-            />
-
             <div>
-              <label className="block text-xs font-medium text-foreground mb-2">
+              <label className="mb-1.5 block text-xs font-semibold text-foreground">
                 Notes / Reason {REQUIRES_REASON.includes(formData.transaction_type) ? '*' : '(Optional)'}
               </label>
               <textarea
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                className="min-h-[80px] w-full rounded-xl border border-input bg-input-background px-3 py-2 text-sm focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="h-24 w-full resize-none rounded-xl border border-input bg-input-background px-3 py-2 text-sm focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/20"
                 placeholder="Reason for stock adjustment, batch number, etc..."
                 required={REQUIRES_REASON.includes(formData.transaction_type)}
               />
             </div>
           </div>
 
-          <div className="px-6 py-4 border-t border-border flex justify-end gap-3">
+          <div className="flex justify-end gap-3 border-t border-border px-5 py-4">
             <Button
               type="button"
               variant="outline"
@@ -221,7 +233,7 @@ export function StockAdjustmentModal({ item, onClose }: StockAdjustmentModalProp
             >
               Cancel
             </Button>
-            <Button type="submit" variant="primary" disabled={loading}>
+            <Button type="submit" variant="primary" disabled={loading || wouldGoNegative}>
               {loading ? 'Adjusting...' : 'Adjust Stock'}
             </Button>
           </div>

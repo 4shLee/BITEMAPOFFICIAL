@@ -68,7 +68,7 @@ export function InventoryFormModal({ item, onClose }: InventoryFormModalProps) {
               {item ? 'Edit Inventory Item' : 'Add Inventory Item'}
             </h2>
             <p className="mt-0.5 text-xs font-medium text-muted-foreground">
-              {item ? 'Update the master item details and reorder level.' : 'Create the master record. Use Add Batch/Restock for lot-level stock.'}
+              {item ? 'Update the master item details and reorder level.' : 'Create the master inventory item. Use Add Batch/Restock for lot-level stock.'}
             </p>
           </div>
           <button
@@ -87,6 +87,7 @@ export function InventoryFormModal({ item, onClose }: InventoryFormModalProps) {
               placeholder="Enter item name"
               value={formData.item_name}
               onChange={(e) => setFormData({ ...formData, item_name: e.target.value })}
+              helperText="Example: Anti-rabies Vaccine, Rabies Immunoglobulin, Sterile Syringe"
               required
             />
 
@@ -110,10 +111,10 @@ export function InventoryFormModal({ item, onClose }: InventoryFormModalProps) {
               <Input
                 label={item ? 'Current Stock' : 'Initial Stock'}
                 type="number"
-                placeholder={item ? 'Enter current stock' : 'Enter initial stock, or 0 if adding batches later'}
+                placeholder={item ? 'Enter current stock' : 'Enter initial stock, or 0 if no stock yet'}
                 value={formData.current_stock}
                 onChange={(e) => setFormData({ ...formData, current_stock: e.target.value })}
-                helperText={!item ? 'Current backend requires this field. Future stock should be managed through batches/restock.' : undefined}
+                helperText={!item ? 'Use 0 if stock will be added later through Add Batch/Restock.' : undefined}
                 required
                 min="0"
               />
@@ -124,6 +125,7 @@ export function InventoryFormModal({ item, onClose }: InventoryFormModalProps) {
                 placeholder="Enter reorder level"
                 value={formData.reorder_level}
                 onChange={(e) => setFormData({ ...formData, reorder_level: e.target.value })}
+                helperText="Alert when stock is at or below this level."
                 required
                 min="0"
               />
