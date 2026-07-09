@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Search, UserPlus, Edit, X, Users as UsersIcon, ShieldCheck, UserCheck, UserX, CheckCircle, XCircle } from 'lucide-react';
+import { Search, UserPlus, Edit, X, Users as UsersIcon, ShieldCheck, UserCheck, UserX, CheckCircle, XCircle, Stethoscope } from 'lucide-react';
 import { Header } from '../components/Layout/Header';
 import { Badge } from '../components/UI/Badge';
 import { Button } from '../components/UI/Button';
@@ -8,7 +8,9 @@ import { usersAPI } from '../../lib/services/api';
 import { ASSIGNABLE_ROLES, getRoleLabel, getStoredUser, isSystemAdminRole, normalizeRoleKey } from '../../lib/auth/roleAccess';
 
 const ROLES = ASSIGNABLE_ROLES;
-function UserModal({ user, roles, onClose, onSave }: { user: any; roles: typeof ASSIGNABLE_ROLES; onClose: () => void; onSave: (data: any) => void; }) {
+const USERS_PER_PAGE = 10;
+
+function UserModal({ user, roles, isCurrentUser, onClose, onSave }: { user: any; roles: typeof ASSIGNABLE_ROLES; isCurrentUser: boolean; onClose: () => void; onSave: (data: any) => void; }) {
   const [form, setForm] = useState({
     name: user.name || '',
     email: user.email || '',
@@ -22,6 +24,10 @@ function UserModal({ user, roles, onClose, onSave }: { user: any; roles: typeof 
     e.preventDefault();
     if (!form.name.trim() || !form.email.trim()) {
       toast.error('Name and email are required.');
+      return;
+    }
+    if (isCurrentUser && form.status === 'Inactive') {
+      toast.error('You cannot deactivate your own account.');
       return;
     }
     const { password, ...userData } = form;
@@ -88,11 +94,15 @@ function UserModal({ user, roles, onClose, onSave }: { user: any; roles: typeof 
             <select
               value={form.status}
               onChange={e => setForm({ ...form, status: e.target.value })}
+              disabled={isCurrentUser}
               className="w-full px-3.5 py-2.5 bg-input-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
             >
               <option value="Active">Active</option>
               <option value="Inactive">Inactive</option>
             </select>
+            {isCurrentUser && (
+              <p className="mt-1.5 text-xs text-muted-foreground">You cannot deactivate your own account.</p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-foreground mb-1.5">Reset Password</label>
@@ -149,6 +159,7 @@ export function Users() {
     : ROLES.filter((role) => normalizeRoleKey(role.value) !== 'system_admin');
   const [users, setUsers] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
   const [showModal, setShowModal] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -167,20 +178,62 @@ export function Users() {
     }
   };
 
-  const filtered = users.filter(u => {
+  const visibleUsers = currentUserIsSystemAdmin
+    ? users
+    : users.filter(u => normalizeRoleKey(u.role) !== 'system_admin');
+
+  const canManageUser = (user: any) => (
+    currentUserIsSystemAdmin || normalizeRoleKey(user.role) !== 'system_admin'
+  );
+
+  const isCurrentUser = (user: any) => {
+    const currentId = currentUser?.id;
+    if (currentId !== undefined && currentId !== null && user?.id !== undefined && user?.id !== null) {
+      return String(user.id) === String(currentId);
+    }
+
+    return Boolean(currentUser?.email && user?.email && user.email.toLowerCase() === currentUser.email.toLowerCase());
+  };
+
+  const filtered = visibleUsers.filter(u => {
     const approval = u.approval_status || 'approved';
+    const status = u.status || '';
     const term = searchTerm.toLowerCase();
     return (
       u.name?.toLowerCase().includes(term) ||
       u.email?.toLowerCase().includes(term) ||
       u.role?.toLowerCase().includes(term) ||
       getRoleLabel(u.role).toLowerCase().includes(term) ||
-      approval.toLowerCase().includes(term)
+      approval.toLowerCase().includes(term) ||
+      status.toLowerCase().includes(term)
     );
   });
+  const totalPages = Math.max(1, Math.ceil(filtered.length / USERS_PER_PAGE));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const pageStartIndex = (safeCurrentPage - 1) * USERS_PER_PAGE;
+  const pageEndIndex = Math.min(pageStartIndex + USERS_PER_PAGE, filtered.length);
+  const paginatedUsers = filtered.slice(pageStartIndex, pageEndIndex);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   const handleSave = async (formData: any) => {
     if (!editingUser) return;
+    if (!canManageUser(editingUser)) {
+      toast.error('System Administrator accounts can only be managed by System Admin.');
+      return;
+    }
+    if (!currentUserIsSystemAdmin && normalizeRoleKey(formData.role) === 'system_admin') {
+      toast.error('Clinic Admin cannot assign System Administrator roles.');
+      return;
+    }
+    if (isCurrentUser(editingUser) && formData.status === 'Inactive') {
+      toast.error('You cannot deactivate your own account.');
+      return;
+    }
 
     try {
       await usersAPI.update(editingUser.id, formData);
@@ -194,6 +247,11 @@ export function Users() {
   };
 
   const handleApprove = async (user: any) => {
+    if (!canManageUser(user)) {
+      toast.error('System Administrator accounts can only be managed by System Admin.');
+      return;
+    }
+
     try {
       await usersAPI.approve(user.id, user.role);
       toast.success(user.name + ' has been approved.');
@@ -204,6 +262,11 @@ export function Users() {
   };
 
   const handleReject = async (user: any) => {
+    if (!canManageUser(user)) {
+      toast.error('System Administrator accounts can only be managed by System Admin.');
+      return;
+    }
+
     try {
       await usersAPI.reject(user.id);
       toast.success(user.name + ' has been rejected.');
@@ -214,6 +277,15 @@ export function Users() {
   };
 
   const handleToggleStatus = async (user: any) => {
+    if (!canManageUser(user)) {
+      toast.error('System Administrator accounts can only be managed by System Admin.');
+      return;
+    }
+    if (isCurrentUser(user) && user.status === 'Active') {
+      toast.error('You cannot deactivate your own account.');
+      return;
+    }
+
     const next = user.status === 'Active' ? 'Inactive' : 'Active';
     try {
       await usersAPI.update(user.id, { status: next });
@@ -224,10 +296,26 @@ export function Users() {
     }
   };
 
-  const totalPending = users.filter(u => (u.approval_status || 'approved') === 'pending').length;
-  const totalActive = users.filter(u => u.status === 'Active' && (u.approval_status || 'approved') === 'approved').length;
+  const totalPending = visibleUsers.filter(u => (u.approval_status || 'approved') === 'pending').length;
+  const totalActive = visibleUsers.filter(u => u.status === 'Active' && (u.approval_status || 'approved') === 'approved').length;
   const totalAdmins = users.filter(u => normalizeRoleKey(u.role) === 'system_admin').length;
-  const totalNurses = users.filter(u => normalizeRoleKey(u.role) === 'nurse_vaccinator').length;
+  const totalDoctors = visibleUsers.filter(u => normalizeRoleKey(u.role) === 'doctor').length;
+  const totalNurses = visibleUsers.filter(u => normalizeRoleKey(u.role) === 'nurse_vaccinator').length;
+  const stats = currentUserIsSystemAdmin
+    ? [
+        { label: 'Total Users', value: users.length, icon: UsersIcon, color: 'text-accent', bg: 'bg-accent-bg' },
+        { label: 'Pending Requests', value: totalPending, icon: UserPlus, color: 'text-warning', bg: 'bg-warning-bg' },
+        { label: 'Active Users', value: totalActive, icon: UserCheck, color: 'text-success', bg: 'bg-success-bg' },
+        { label: 'System Admins', value: totalAdmins, icon: ShieldCheck, color: 'text-destructive', bg: 'bg-destructive-bg' },
+        { label: 'Nurse/Vaccinators', value: totalNurses, icon: UserX, color: 'text-primary', bg: 'bg-primary-bg' },
+      ]
+    : [
+        { label: 'Total Staff', value: visibleUsers.length, icon: UsersIcon, color: 'text-accent', bg: 'bg-accent-bg' },
+        { label: 'Pending Requests', value: totalPending, icon: UserPlus, color: 'text-warning', bg: 'bg-warning-bg' },
+        { label: 'Active Staff', value: totalActive, icon: UserCheck, color: 'text-success', bg: 'bg-success-bg' },
+        { label: 'Doctors', value: totalDoctors, icon: Stethoscope, color: 'text-accent', bg: 'bg-accent-bg' },
+        { label: 'Nurse/Vaccinators', value: totalNurses, icon: UserX, color: 'text-primary', bg: 'bg-primary-bg' },
+      ];
 
   return (
     <div className="flex-1">
@@ -235,13 +323,7 @@ export function Users() {
 
       <div className="p-8 space-y-6">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          {[
-            { label: 'Total Users', value: users.length, icon: UsersIcon, color: 'text-accent', bg: 'bg-accent-bg' },
-            { label: 'Pending Requests', value: totalPending, icon: UserPlus, color: 'text-warning', bg: 'bg-warning-bg' },
-            { label: 'Active Users', value: totalActive, icon: UserCheck, color: 'text-success', bg: 'bg-success-bg' },
-            { label: 'System Admins', value: totalAdmins, icon: ShieldCheck, color: 'text-destructive', bg: 'bg-destructive-bg' },
-            { label: 'Nurse/Vaccinators', value: totalNurses, icon: UserX, color: 'text-primary', bg: 'bg-primary-bg' },
-          ].map(s => (
+          {stats.map(s => (
             <div key={s.label} className="bg-card border border-border rounded-xl p-5 shadow-sm">
               <div className={'w-9 h-9 rounded-lg ' + s.bg + ' flex items-center justify-center mb-3'}>
                 <s.icon className={'w-4.5 h-4.5 ' + s.color} />
@@ -258,9 +340,12 @@ export function Users() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <input
                 type="text"
-                placeholder="Search by name, email, role, or approval status..."
+                placeholder="Search by name, email, role, approval, or status..."
                 value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
+                onChange={e => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1);
+                }}
                 className="w-full pl-10 pr-4 py-2 bg-input-background border border-input rounded-lg text-sm"
               />
             </div>
@@ -284,11 +369,12 @@ export function Users() {
                   <tr><td colSpan={7} className="px-6 py-10 text-center text-sm text-muted-foreground">Loading users...</td></tr>
                 ) : filtered.length === 0 ? (
                   <tr><td colSpan={7} className="px-6 py-10 text-center text-sm text-muted-foreground">No users found.</td></tr>
-                ) : filtered.map(user => {
+                ) : paginatedUsers.map(user => {
                   const approval = user.approval_status || 'approved';
                   const isPending = approval === 'pending';
                   const isRejected = approval === 'rejected';
-                  const canManageUser = currentUserIsSystemAdmin || normalizeRoleKey(user.role) !== 'system_admin';
+                  const userCanBeManaged = canManageUser(user);
+                  const userIsCurrentUser = isCurrentUser(user);
 
                   return (
                     <tr key={user.id} className="hover:bg-muted/30 transition-colors">
@@ -307,7 +393,7 @@ export function Users() {
                       <td className="px-6 py-4 text-xs text-muted-foreground">{user.lastLogin || 'Never'}</td>
                       <td className="px-6 py-4">
                         <div className="flex flex-wrap items-center gap-2">
-                          {canManageUser && (
+                          {userCanBeManaged && (
                             <button
                               onClick={() => { setEditingUser(user); setShowModal(true); }}
                               className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-primary font-medium hover:bg-primary-bg transition-colors"
@@ -316,7 +402,7 @@ export function Users() {
                             </button>
                           )}
 
-                          {canManageUser && (isPending || isRejected) && (
+                          {userCanBeManaged && (isPending || isRejected) && (
                             <button
                               onClick={() => handleApprove(user)}
                               className="inline-flex items-center gap-1.5 rounded-md border border-success/30 bg-success-bg px-2.5 py-1.5 text-xs text-success font-medium hover:bg-success/10 transition-colors"
@@ -325,7 +411,7 @@ export function Users() {
                             </button>
                           )}
 
-                          {canManageUser && isPending && (
+                          {userCanBeManaged && isPending && (
                             <button
                               onClick={() => handleReject(user)}
                               className="inline-flex items-center gap-1.5 rounded-md border border-destructive/30 bg-destructive-bg px-2.5 py-1.5 text-xs text-destructive font-medium hover:bg-destructive/10 transition-colors"
@@ -334,7 +420,7 @@ export function Users() {
                             </button>
                           )}
 
-                          {canManageUser && !isPending && !isRejected && (
+                          {userCanBeManaged && !userIsCurrentUser && !isPending && !isRejected && (
                             <button
                               onClick={() => handleToggleStatus(user)}
                               className={'inline-flex items-center rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors ' + (user.status === 'Active' ? 'border-destructive/30 bg-destructive-bg text-destructive hover:bg-destructive/10' : 'border-success/30 bg-success-bg text-success hover:bg-success/10')}
@@ -351,8 +437,39 @@ export function Users() {
             </table>
           </div>
 
-          <div className="px-6 py-4 border-t border-border">
-            <p className="text-sm text-muted-foreground">Showing {filtered.length} of {users.length} users</p>
+          <div className="flex flex-col gap-3 border-t border-border px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+            {loading ? (
+              <p className="text-sm text-muted-foreground">Loading users...</p>
+            ) : filtered.length > 0 ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Showing {pageStartIndex + 1}-{pageEndIndex} of {filtered.length} user{filtered.length !== 1 ? 's' : ''}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                    disabled={safeCurrentPage === 1}
+                  >
+                    Previous
+                  </Button>
+                  <span className="rounded-full border border-border bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
+                    Page {safeCurrentPage} of {totalPages}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                    disabled={safeCurrentPage === totalPages}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </>
+            ) : null}
           </div>
         </div>
       </div>
@@ -361,6 +478,7 @@ export function Users() {
         <UserModal
           user={editingUser}
           roles={assignableRoles}
+          isCurrentUser={isCurrentUser(editingUser)}
           onClose={() => { setShowModal(false); setEditingUser(null); }}
           onSave={handleSave}
         />
