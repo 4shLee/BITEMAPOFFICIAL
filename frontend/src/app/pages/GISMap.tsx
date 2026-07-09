@@ -123,6 +123,21 @@ export function GISMap() {
   }, [mapLoading]);
 
   useEffect(() => {
+    const map = mapInstanceRef.current;
+    const container = mapContainerRef.current;
+
+    if (!map || !container || typeof ResizeObserver === 'undefined') return;
+
+    const observer = new ResizeObserver(() => {
+      map.invalidateSize();
+    });
+
+    observer.observe(container);
+
+    return () => observer.disconnect();
+  }, [mapLoading]);
+
+  useEffect(() => {
     const loadHeatmapData = async () => {
       setLoading(true);
       setError(null);
@@ -242,23 +257,104 @@ export function GISMap() {
   const emptyMessage = 'No incident data available yet.';
 
   return (
-    <div className="flex-1">
+    <div className="min-h-screen flex-1 bg-[#f3f7f5]">
       <Header title="GIS Heatmap & Analysis" breadcrumbs={['GIS Map', 'Barangay Analysis']} />
 
-      <div className="p-8 flex gap-6">
-        <div className="w-80 space-y-4 flex-shrink-0">
-          <div className="bg-card border border-border rounded-lg p-4">
-            <h3 className="text-sm font-medium text-foreground mb-4">Filters</h3>
-            <div className="space-y-3">
-              <div>
+      <div className="grid grid-cols-1 gap-5 px-5 py-5 lg:px-7 lg:py-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
+          <div className="border-b border-slate-100 px-5 py-4">
+            <h2 className="text-base font-extrabold text-slate-950">Barangay Incident Heatmap</h2>
+            <p className="mt-0.5 text-xs font-medium text-slate-500">Click a barangay marker to inspect incident density, risk, and PEP compliance.</p>
+          </div>
+          <div className="relative h-[520px] md:h-[620px] xl:h-[min(720px,calc(100vh-185px))] xl:min-h-[650px]">
+            <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
+
+            {(mapLoading || loading) && (
+              <div className="absolute inset-0 z-[400] flex items-center justify-center bg-white/80">
+                <p className="text-sm text-slate-500">Loading live GIS data...</p>
+              </div>
+            )}
+
+            {!loading && !mapLoading && !error && barangayData.length === 0 && (
+              <div className="pointer-events-none absolute inset-0 z-[400] flex items-center justify-center">
+                <div className="rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
+                  <p className="text-sm text-slate-500">{emptyMessage}</p>
+                </div>
+              </div>
+            )}
+
+            {error && (
+              <div className="absolute inset-0 z-[400] flex items-center justify-center bg-white/80">
+                <div className="rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
+                  <p className="text-sm text-destructive">{error}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
+          <div className="rounded-3xl border border-emerald-900/5 bg-white p-5 shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
+            {selectedData ? (
+              <div className="space-y-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h2 className="truncate text-lg font-extrabold text-slate-950">{selectedData.barangay_name}</h2>
+                    <p className="mt-0.5 text-xs font-medium text-slate-500">Barangay Analysis</p>
+                  </div>
+                  <Badge variant={getRiskVariant(selectedData.risk_level)}>{selectedData.risk_level}</Badge>
+                </div>
+
+                <div className="rounded-2xl bg-emerald-50 px-4 py-3">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-bold leading-none text-slate-950">{selectedData.total_incident_count}</span>
+                    <span className="text-sm font-medium text-slate-500">incidents</span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">Total bite cases reported</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-2xl bg-slate-50 px-3 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Top Animal</p>
+                    <p className="mt-1 text-sm font-bold text-slate-900">{selectedData.top_animal_type}</p>
+                  </div>
+                  <div className="rounded-2xl bg-slate-50 px-3 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Risk Level</p>
+                    <p className="mt-1 text-sm font-bold text-slate-900">{selectedData.risk_level}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-2 flex items-center justify-between">
+                    <p className="text-xs font-semibold text-slate-500">PEP Compliance Rate</p>
+                    <span className="text-sm font-bold text-slate-950">{selectedData.pep_compliance_rate}%</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className="h-full bg-primary"
+                      style={{ width: selectedData.pep_compliance_rate + '%' }}
+                    ></div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl bg-slate-50 px-4 py-8 text-center">
+                <h2 className="text-base font-extrabold text-slate-950">Barangay Analysis</h2>
+                <p className="mx-auto mt-2 max-w-56 text-sm text-slate-500">Select a barangay on the map to view analysis.</p>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-3xl border border-emerald-900/5 bg-white p-5 shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
+            <h3 className="text-sm font-extrabold text-slate-950">Filters</h3>
+            <div className="mt-4 space-y-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-1">
                 <Input
                   label="Date From"
                   type="date"
                   value={dateFrom}
                   onChange={(event) => setDateFrom(event.target.value)}
                 />
-              </div>
-              <div>
                 <Input
                   label="Date To"
                   type="date"
@@ -281,101 +377,24 @@ export function GISMap() {
             </div>
           </div>
 
-          <div className="bg-card border border-border rounded-lg p-4">
-            <h3 className="text-sm font-medium text-foreground mb-3">Legend</h3>
-            <div className="space-y-2">
+          <div className="rounded-3xl border border-emerald-900/5 bg-white p-5 shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
+            <h3 className="text-sm font-extrabold text-slate-950">Legend</h3>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3 xl:grid-cols-1">
               <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded bg-[#16A34A]"></div>
-                <span className="text-xs text-muted-foreground">0-10 incidents</span>
+                <div className="h-4 w-4 shrink-0 rounded bg-[#16A34A]"></div>
+                <span className="text-xs font-medium text-slate-500">0-10 incidents</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded bg-[#F2C94C]"></div>
-                <span className="text-xs text-muted-foreground">11-20 incidents</span>
+                <div className="h-4 w-4 shrink-0 rounded bg-[#F2C94C]"></div>
+                <span className="text-xs font-medium text-slate-500">11-20 incidents</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded bg-[#DC2626]"></div>
-                <span className="text-xs text-muted-foreground">21+ incidents</span>
+                <div className="h-4 w-4 shrink-0 rounded bg-[#DC2626]"></div>
+                <span className="text-xs font-medium text-slate-500">21+ incidents</span>
               </div>
             </div>
           </div>
-        </div>
-
-        <div className="flex-1 bg-card border border-border rounded-lg overflow-hidden">
-          <div className="h-[600px] relative">
-            <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
-
-            {(mapLoading || loading) && (
-              <div className="absolute inset-0 bg-card/80 flex items-center justify-center z-[400]">
-                <p className="text-sm text-muted-foreground">Loading live GIS data...</p>
-              </div>
-            )}
-
-            {!loading && !mapLoading && !error && barangayData.length === 0 && (
-              <div className="absolute inset-0 flex items-center justify-center z-[400] pointer-events-none">
-                <div className="bg-card border border-border rounded-lg px-4 py-3 shadow-sm">
-                  <p className="text-sm text-muted-foreground">{emptyMessage}</p>
-                </div>
-              </div>
-            )}
-
-            {error && (
-              <div className="absolute inset-0 bg-card/80 flex items-center justify-center z-[400]">
-                <div className="bg-card border border-border rounded-lg px-4 py-3 shadow-sm">
-                  <p className="text-sm text-destructive">{error}</p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="w-80 bg-card border border-border rounded-lg p-6 flex-shrink-0 space-y-6">
-          {selectedData ? (
-            <>
-              <div>
-                <h2 className="text-lg font-medium text-foreground mb-1">{selectedData.barangay_name}</h2>
-                <p className="text-sm text-muted-foreground">Barangay Analysis</p>
-              </div>
-
-              <div>
-                <div className="flex items-baseline gap-2 mb-1">
-                  <span className="text-3xl font-semibold text-foreground">{selectedData.total_incident_count}</span>
-                  <span className="text-sm text-muted-foreground">incidents</span>
-                </div>
-                <p className="text-xs text-muted-foreground">Total bite cases reported</p>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <p className="text-xs text-muted-foreground mb-2">Risk Level</p>
-                  <Badge variant={getRiskVariant(selectedData.risk_level)}>{selectedData.risk_level}</Badge>
-                </div>
-
-                <div>
-                  <p className="text-xs text-muted-foreground mb-2">Top Animal Type</p>
-                  <Badge variant="info">{selectedData.top_animal_type}</Badge>
-                </div>
-
-                <div>
-                  <p className="text-xs text-muted-foreground mb-2">PEP Compliance Rate</p>
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-primary"
-                        style={{ width: selectedData.pep_compliance_rate + '%' }}
-                      ></div>
-                    </div>
-                    <span className="text-sm font-medium text-foreground">{selectedData.pep_compliance_rate}%</span>
-                  </div>
-                </div>
-              </div>
-            </>
-          ) : (
-            <div>
-              <h2 className="text-lg font-medium text-foreground mb-1">Barangay Analysis</h2>
-              <p className="text-sm text-muted-foreground">{emptyMessage}</p>
-            </div>
-          )}
-        </div>
+        </aside>
       </div>
     </div>
   );
