@@ -102,20 +102,67 @@ export function Login() {
 
   return (
     <div
-      className="min-h-screen lg:h-screen lg:overflow-hidden flex flex-col bg-slate-50 bg-cover bg-center bg-no-repeat"
+      className="min-h-screen flex flex-col bg-slate-50 bg-cover bg-center bg-no-repeat"
       style={{
         fontFamily: "'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
         backgroundImage: "url('/images/login-bg.png')",
       }}
     >
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');`}</style>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+
+        @keyframes loginGlowShift {
+          0%, 100% { transform: translate3d(-3%, -2%, 0) scale(1); opacity: 0.42; }
+          50% { transform: translate3d(4%, 3%, 0) scale(1.06); opacity: 0.62; }
+        }
+
+        @keyframes loginWaveDrift {
+          0% { transform: translate3d(-4%, 0, 0); }
+          100% { transform: translate3d(4%, -1%, 0); }
+        }
+
+        @keyframes loginDotFloat {
+          0%, 100% { transform: translate3d(0, 0, 0); opacity: 0.18; }
+          50% { transform: translate3d(18px, -14px, 0); opacity: 0.28; }
+        }
+
+        .login-animated-glow {
+          background:
+            radial-gradient(circle at 35% 35%, rgba(255,255,255,0.34), transparent 30%),
+            radial-gradient(circle at 72% 60%, rgba(20,184,166,0.24), transparent 34%);
+          animation: loginGlowShift 18s ease-in-out infinite;
+        }
+
+        .login-animated-wave {
+          background:
+            linear-gradient(112deg, transparent 0%, rgba(255,255,255,0.22) 45%, transparent 72%),
+            repeating-linear-gradient(100deg, rgba(255,255,255,0.13) 0 1px, transparent 1px 14px);
+          clip-path: ellipse(78% 34% at 50% 100%);
+          animation: loginWaveDrift 22s ease-in-out infinite alternate;
+        }
+
+        .login-animated-dots {
+          background-image: radial-gradient(circle, rgba(255,255,255,0.58) 1px, transparent 1.5px);
+          background-size: 28px 28px;
+          mask-image: linear-gradient(115deg, transparent 0%, black 38%, black 72%, transparent 100%);
+          animation: loginDotFloat 16s ease-in-out infinite;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .login-animated-glow,
+          .login-animated-wave,
+          .login-animated-dots {
+            animation: none;
+          }
+        }
+      `}</style>
       <header className="relative z-10 border-b border-slate-200/70 bg-white">
-        <div className="mx-auto max-w-7xl px-5 py-3 sm:px-8">
+        <div className="mx-auto max-w-7xl px-5 py-2 sm:px-8">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <img src="/images/bitemap-logo.png" alt="BITEMAP logo" className="h-12 w-12 object-contain sm:h-14 sm:w-14" />
+              <img src="/images/bitemap-logo.png" alt="BITEMAP logo" className="h-10 w-10 object-contain sm:h-12 sm:w-12" />
               <div>
-                <h1 className="text-[22px] font-extrabold leading-tight text-teal-800 sm:text-[24px]">BITEMAP</h1>
+                <h1 className="text-[21px] font-extrabold leading-tight text-teal-800 sm:text-[23px]">BITEMAP</h1>
                 <p className="hidden text-[13px] font-medium leading-tight text-slate-500 sm:block">Animal Bite Incident Tracking and Vaccination Monitoring</p>
               </div>
             </div>
@@ -132,35 +179,38 @@ export function Login() {
       </header>
 
       <main
-        className="relative flex flex-1 items-center justify-center overflow-hidden bg-cover bg-center bg-no-repeat px-4 py-6"
+        className="relative flex min-h-[calc(100vh-108px)] flex-1 items-center justify-center overflow-hidden bg-cover bg-center bg-no-repeat px-4 py-3 sm:py-4"
         style={{ backgroundImage: "url('/images/login-bg.png')" }}
       >
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/8 via-teal-50/4 to-teal-950/12" />
+        <div className="login-animated-glow pointer-events-none absolute inset-0" />
+        <div className="login-animated-dots pointer-events-none absolute left-0 top-[18%] h-[44%] w-[58%] opacity-60" />
+        <div className="login-animated-wave pointer-events-none absolute inset-x-[-8%] bottom-[-10%] h-[34%] opacity-45" />
 
-        <section className="relative w-full max-w-[500px] rounded-[30px] border border-white/85 bg-white/95 px-7 py-7 shadow-[0_24px_80px_rgba(15,118,110,0.24)] backdrop-blur-md sm:px-9 sm:py-8">
-          <div className="mb-5 text-center">
-            <div className="mx-auto mb-3 flex h-20 w-20 items-center justify-center rounded-full bg-teal-50 shadow-inner shadow-teal-900/5">
-              <img src="/images/bitemap-logo.png" alt="BITEMAP logo" className="h-16 w-16 object-contain" />
+        <section className="relative w-full max-w-[480px] rounded-[28px] border border-white/85 bg-white/95 px-6 py-5 shadow-[0_22px_70px_rgba(15,118,110,0.24)] backdrop-blur-md sm:px-8 sm:py-6">
+          <div className="mb-4 text-center">
+            <div className="mx-auto mb-2 flex h-16 w-16 items-center justify-center rounded-full bg-teal-50 shadow-inner shadow-teal-900/5">
+              <img src="/images/bitemap-logo.png" alt="BITEMAP logo" className="h-12 w-12 object-contain" />
             </div>
-            <p className="text-[34px] font-extrabold leading-tight text-teal-800 sm:text-[38px]">BITEMAP</p>
-            <p className="mx-auto mt-2 max-w-[390px] text-[14px] font-medium leading-relaxed text-slate-600">
+            <p className="text-[30px] font-extrabold leading-tight text-teal-800 sm:text-[34px]">BITEMAP</p>
+            <p className="mx-auto mt-1.5 max-w-[390px] text-[13px] font-medium leading-relaxed text-slate-600">
               GIS-Based Animal Bite Incident Tracking and Anti-Rabies Vaccination Monitoring System
             </p>
           </div>
 
-          <div className="mb-5 text-center">
-            <div className="mx-auto mb-3 h-1 w-12 rounded-full bg-teal-200" />
-            <h2 className="text-[24px] font-extrabold leading-tight text-slate-900 sm:text-[26px]">Sign In</h2>
-            <p className="mt-1.5 text-[14px] font-semibold text-slate-500">Authorized Staff Login</p>
+          <div className="mb-4 text-center">
+            <div className="mx-auto mb-2 h-1 w-11 rounded-full bg-teal-200" />
+            <h2 className="text-[23px] font-extrabold leading-tight text-slate-900 sm:text-[25px]">Sign In</h2>
+            <p className="mt-1 text-[13px] font-semibold text-slate-500">Authorized Staff Login</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-3">
             <div>
               <label htmlFor="username" className="sr-only">
                 Email
               </label>
               <div className="relative">
-                <div className="absolute left-0 top-1/2 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-teal-50 text-teal-700">
+                <div className="absolute left-0 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-teal-50 text-teal-700">
                   <Mail className="h-4 w-4" />
                 </div>
                 <input
@@ -171,7 +221,7 @@ export function Login() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
-                  className="h-12 w-full rounded-full border border-slate-200 bg-white/90 pl-16 pr-5 text-[15px] font-medium text-slate-900 shadow-sm shadow-slate-900/5 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                  className="h-11 w-full rounded-full border border-slate-200 bg-white/90 pl-14 pr-5 text-[14px] font-medium text-slate-900 shadow-sm shadow-slate-900/5 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                 />
               </div>
             </div>
@@ -181,7 +231,7 @@ export function Login() {
                 Password
               </label>
               <div className="relative">
-                <div className="absolute left-0 top-1/2 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-teal-50 text-teal-700">
+                <div className="absolute left-0 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-teal-50 text-teal-700">
                   <Lock className="h-4 w-4" />
                 </div>
                 <input
@@ -192,7 +242,7 @@ export function Login() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="h-12 w-full rounded-full border border-slate-200 bg-white/90 pl-16 pr-12 text-[15px] font-medium text-slate-900 shadow-sm shadow-slate-900/5 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                  className="h-11 w-full rounded-full border border-slate-200 bg-white/90 pl-14 pr-12 text-[14px] font-medium text-slate-900 shadow-sm shadow-slate-900/5 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                 />
                 <button
                   type="button"
@@ -224,7 +274,7 @@ export function Login() {
             <button
               type="submit"
               disabled={isLoading}
-              className="relative h-[52px] w-full rounded-full border border-transparent bg-gradient-to-r from-teal-800 to-teal-600 text-[15px] font-extrabold text-white shadow-lg shadow-teal-900/20 transition-colors hover:from-teal-900 hover:to-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500/35 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+              className="relative h-12 w-full rounded-full border border-transparent bg-gradient-to-r from-teal-800 to-teal-600 text-[15px] font-extrabold text-white shadow-lg shadow-teal-900/20 transition-colors hover:from-teal-900 hover:to-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500/35 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isLoading ? (
                 <span className="flex items-center justify-center gap-2">
@@ -242,21 +292,21 @@ export function Login() {
             <button
               type="button"
               onClick={() => setShowRequestModal(true)}
-              className="inline-flex h-[50px] w-full items-center justify-center gap-2 rounded-full border border-teal-700/55 bg-white px-4 text-[15px] font-extrabold text-teal-800 transition-colors hover:border-teal-700 hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-teal-500/25 focus:ring-offset-2"
+              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border border-teal-700/55 bg-white px-4 text-[14px] font-extrabold text-teal-800 transition-colors hover:border-teal-700 hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-teal-500/25 focus:ring-offset-2"
             >
               <UserPlus className="h-5 w-5" />
               Request Account Approval
             </button>
           </form>
 
-          <div className="mt-5 flex items-center justify-center gap-2.5 rounded-2xl border border-rose-200/80 bg-rose-50/80 px-4 py-3">
+          <div className="mt-4 flex items-center justify-center gap-2.5 rounded-2xl border border-rose-200/80 bg-rose-50/80 px-4 py-2.5">
             <ShieldAlert className="h-4 w-4 shrink-0 text-rose-600" />
             <p className="text-center text-[13px] font-semibold leading-snug text-rose-700">
               Access is restricted to authorized clinic personnel only.
             </p>
           </div>
 
-          <p className="mx-auto mt-3 text-center text-[13px] font-medium leading-snug text-slate-500">
+          <p className="mx-auto mt-2 text-center text-[13px] font-medium leading-snug text-slate-500">
             Access depends on your assigned role.
           </p>
         </section>
