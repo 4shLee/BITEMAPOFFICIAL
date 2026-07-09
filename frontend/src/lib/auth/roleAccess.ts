@@ -111,6 +111,13 @@ const ACTION_PERMISSIONS: Record<PermissionAction, string[]> = {
   'activity.monitor': ['system_admin'],
 };
 
+const PATH_ACTION_GUARDS: Array<{ pattern: RegExp; action: PermissionAction }> = [
+  { pattern: /^\/incidents\/new$/, action: 'incidents.create' },
+  { pattern: /^\/incidents\/[^/]+\/edit$/, action: 'incidents.update' },
+  { pattern: /^\/patients\/new$/, action: 'patients.create' },
+  { pattern: /^\/patients\/[^/]+\/edit$/, action: 'patients.update' },
+];
+
 export function normalizeRoleKey(role?: string) {
   const key = (role || '').trim().replace(/\s+/g, '_').replace(/[-/]+/g, '_').toLowerCase();
 
@@ -154,11 +161,13 @@ export function getDefaultPathForRole(role?: string) {
 
 export function canAccessPath(role: string | undefined, path: string) {
   const cleanPath = path.split('?')[0].replace(/\/+$/, '') || '/';
-  const allowedPaths = getRolePermissions(role);
+  const guardedPath = PATH_ACTION_GUARDS.find((guard) => guard.pattern.test(cleanPath));
 
-  if (cleanPath === '/incidents/new') {
-    return allowedPaths.includes('/incidents/new');
+  if (guardedPath) {
+    return canPerformAction(role, guardedPath.action);
   }
+
+  const allowedPaths = getRolePermissions(role);
 
   return allowedPaths.some((allowedPath) => (
     cleanPath === allowedPath || cleanPath.startsWith(allowedPath + '/')

@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import {
   Users, Syringe, Clock, MapPin, AlertTriangle,
-  TrendingUp, TrendingDown, ChevronRight, RefreshCw,
-  Activity, CalendarDays, Package, Bell, ClipboardPlus, UserCheck
+  ChevronRight, RefreshCw, CalendarDays, Package,
+  Bell, ClipboardPlus, UserCheck
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, AreaChart, Area
+  PieChart, Pie, Cell
 } from 'recharts';
 import { Header } from '../components/Layout/Header';
 import { Badge } from '../components/UI/Badge';
@@ -14,7 +14,7 @@ import { AlertBanner } from '../components/UI/AlertBanner';
 import { dashboardAPI } from '../../lib/services/api';
 import { LoadingSpinner } from '../components/UI/LoadingSpinner';
 import { toast } from 'sonner';
-import { getStoredUser, normalizeRoleKey } from '../../lib/auth/roleAccess';
+import { canPerformAction, getStoredUser, normalizeRoleKey } from '../../lib/auth/roleAccess';
 
 // ─── Chart & static data ───────────────────────────────────────────────────
 
@@ -43,14 +43,6 @@ const vaccinationComplianceData = [
   { name: 'In Progress', value: 23,  color: '#0EA5E9' },
   { name: 'Pending',     value: 27,  color: '#BA7517' },
   { name: 'Missed Dose', value: 18,  color: '#D85A30' },
-];
-
-const weeklyVaccineActivity = [
-  { week: 'Wk 1', doses: 12 },
-  { week: 'Wk 2', doses: 18 },
-  { week: 'Wk 3', doses: 15 },
-  { week: 'Wk 4', doses: 22 },
-  { week: 'Wk 5', doses: 9  },
 ];
 
 const animalTypeData = [
@@ -283,17 +275,6 @@ function RankedBar({ rank, name, value, max, color }: {
   );
 }
 
-// ─── Section header with optional "Last Updated" ───────────────────────────
-
-function SectionMeta({ updatedAt }: { updatedAt: string }) {
-  return (
-    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-      <RefreshCw className="w-2.5 h-2.5" />
-      <span>Updated {updatedAt}</span>
-    </div>
-  );
-}
-
 // ─── Dashboard ─────────────────────────────────────────────────────────────
 
 function NurseKpiCard({ title, value, helper, icon: Icon, tone }: {
@@ -332,12 +313,14 @@ function NurseDashboard({
   lowStockItems,
   lastUpdated,
   getCategoryVariant,
+  canCreateIncident,
 }: {
   stats: any;
   recentIncidents: any[];
   lowStockItems: any[];
   lastUpdated: string;
   getCategoryVariant: (cat: string) => any;
+  canCreateIncident: boolean;
 }) {
   const todaySchedule = recentIncidents.slice(0, 5).map((incident, index) => ({
     id: incident.id,
@@ -448,10 +431,12 @@ function NurseDashboard({
                 <h2 className="text-[16px] font-bold text-slate-950">Recent Incidents</h2>
                 <p className="text-[12px] font-normal text-slate-500 mt-0.5">Latest cases for clinic encoding and follow-up</p>
               </div>
-              <a href="/incidents/new" className="text-[13px] text-emerald-700 font-bold flex items-center gap-1 hover:underline">
-                <ClipboardPlus className="w-3.5 h-3.5" />
-                Record Incident
-              </a>
+              {canCreateIncident && (
+                <a href="/incidents/new" className="text-[13px] text-emerald-700 font-bold flex items-center gap-1 hover:underline">
+                  <ClipboardPlus className="w-3.5 h-3.5" />
+                  Record Incident
+                </a>
+              )}
             </div>
             {recentIncidents.length === 0 ? (
               <div className="px-6 py-6 text-center">
@@ -560,6 +545,330 @@ function NurseDashboard({
   );
 }
 
+function ClinicAdminDashboard({
+  stats,
+  recentIncidents,
+  lowStockItems,
+  barangayFilter,
+  setBarangayFilter,
+  visibleBarangays,
+  lastUpdated,
+  complianceRate,
+  getCategoryVariant,
+}: {
+  stats: any;
+  recentIncidents: any[];
+  lowStockItems: any[];
+  barangayFilter: 'top5' | 'all';
+  setBarangayFilter: (filter: 'top5' | 'all') => void;
+  visibleBarangays: typeof barangayCasesData;
+  lastUpdated: string;
+  complianceRate: number;
+  getCategoryVariant: (cat: string) => any;
+}) {
+  const highRiskWatchlist = highRiskBarangays.slice(0, 5);
+  const highRiskAlertCount = highRiskWatchlist.filter((barangay) => barangay.level === 'Critical' || barangay.level === 'High').length;
+  const displayedHighRiskCount = Math.max(Number(stats.highRiskBarangays || 0), highRiskAlertCount);
+  const clinicSupplyRows = (lowStockItems.length > 0 ? lowStockItems : inventoryItems.filter((item) => item.status !== 'ok')).slice(0, 5);
+  const recentIncidentRows = recentIncidents.slice(0, 5);
+
+  return (
+    <div className="flex-1 min-w-0 bg-[#f3f7f5]" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+      <Header title="Dashboard" breadcrumbs={['Home', 'Dashboard']} />
+
+      <div className="p-6 space-y-4">
+        {lowStockItems.length > 0 && (
+          <AlertBanner
+            variant="warning"
+            message={`Inventory attention needed: ${lowStockItems[0].item_name} has ${lowStockItems[0].current_stock} ${lowStockItems[0].unit} remaining.`}
+          />
+        )}
+
+        <div className="rounded-3xl bg-gradient-to-r from-emerald-700 to-teal-600 px-6 py-4 text-white shadow-[0_18px_45px_rgba(4,120,87,0.18)] flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-[28px] font-bold leading-[32px]">Clinic Operations Overview</p>
+            <p className="mt-1 text-[13px] font-normal text-emerald-50/90">Clinic-wide monitoring for incidents, PEP compliance, inventory, GIS, and reports.</p>
+          </div>
+          <div className="flex items-center gap-1.5 rounded-2xl bg-white/12 px-3 py-2 text-[12px] font-semibold text-emerald-50">
+            <RefreshCw className="w-3 h-3" />
+            <span>Updated {lastUpdated}</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <NurseKpiCard title="Total Bite Cases" value={stats.totalCases} helper="All bite incidents logged for clinic monitoring." icon={Users} tone="emerald" />
+          <NurseKpiCard title="Completed PEP" value={stats.completedVaccinations} helper={`${complianceRate}% of tracked PEP cycles completed.`} icon={Syringe} tone="teal" />
+          <NurseKpiCard title="Pending Follow-ups" value={stats.pendingDoses} helper="Upcoming or pending PEP doses needing review." icon={Clock} tone="amber" />
+          <NurseKpiCard title="High-Risk Barangays" value={displayedHighRiskCount} helper="Critical or high areas under active monitoring." icon={MapPin} tone="rose" />
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          <div className="xl:col-span-2 overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
+            <div className="px-6 py-4 border-b border-slate-100 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h2 className="text-[16px] font-bold text-slate-950">Monthly Bite Incident Trends</h2>
+                <p className="text-[12px] font-normal text-slate-500 mt-0.5">Cases reported vs. vaccinated for the last 6 months</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-3 text-[11px] font-medium text-slate-500">
+                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#D85A30' }} /> Bite Cases</span>
+                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#16A34A' }} /> Vaccinated</span>
+              </div>
+            </div>
+            <div className="px-5 pt-4 pb-5">
+              <ResponsiveContainer width="100%" height={210}>
+                <BarChart data={monthlyTrendData} barGap={3} barCategoryGap="28%" margin={{ top: 2, right: 6, left: -18, bottom: 0 }}>
+                  <CartesianGrid key="bc-grid" strokeDasharray="3 3" stroke="#E8E5DC" vertical={false} />
+                  <XAxis key="bc-xaxis" dataKey="month" tick={{ fontSize: 11, fill: '#64748B' }} axisLine={false} tickLine={false} />
+                  <YAxis key="bc-yaxis" tick={{ fontSize: 11, fill: '#64748B' }} axisLine={false} tickLine={false} />
+                  <Tooltip key="bc-tooltip" content={<ChartTooltip />} cursor={{ fill: '#ECFDF5' }} />
+                  <Bar key="bc-bar-cases" dataKey="cases" name="Bite Cases" fill="#D85A30" radius={[5, 5, 0, 0]} />
+                  <Bar key="bc-bar-vaccinated" dataKey="vaccinated" name="Vaccinated" fill="#16A34A" radius={[5, 5, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
+            <div className="px-6 py-4 border-b border-slate-100">
+              <h2 className="text-[16px] font-bold text-slate-950">Vaccination Compliance</h2>
+              <p className="text-[12px] font-normal text-slate-500 mt-0.5">Current PEP cycle status</p>
+            </div>
+            <div className="px-5 py-4">
+              <div className="flex justify-center">
+                <div className="relative" style={{ width: 160, height: 160 }}>
+                  <PieChart width={160} height={160}>
+                    <Pie key="pc-pie" data={vaccinationComplianceData} cx={80} cy={80} innerRadius={50} outerRadius={72} paddingAngle={2} dataKey="value" stroke="none">
+                      {vaccinationComplianceData.map((entry) => <Cell key={`cell-${entry.name}`} fill={entry.color} />)}
+                    </Pie>
+                    <Tooltip key="pc-tooltip" content={<ChartTooltip />} />
+                  </PieChart>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <p className="text-[26px] font-bold leading-none text-slate-950">{complianceRate}%</p>
+                    <p className="mt-1 text-[11px] font-medium text-slate-500">Completed</p>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
+                {vaccinationComplianceData.map((item) => (
+                  <div key={item.name} className="flex items-center justify-between gap-3">
+                    <span className="flex items-center gap-2 text-[12px] font-medium text-slate-500">
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: item.color }} />
+                      {item.name}
+                    </span>
+                    <span className="text-[12px] font-semibold text-slate-900 tabular-nums">{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          <div className="xl:col-span-2 overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
+            <div className="px-6 py-4 border-b border-slate-100 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h2 className="text-[16px] font-bold text-slate-950">Bite Cases Per Barangay</h2>
+                <p className="text-[12px] font-normal text-slate-500 mt-0.5">Incident density by location for {new Date().getFullYear()}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex rounded-xl bg-emerald-50 p-0.5 text-[12px] font-semibold">
+                  {(['top5', 'all'] as const).map((filter) => (
+                    <button
+                      key={filter}
+                      type="button"
+                      onClick={() => setBarangayFilter(filter)}
+                      className={'rounded-lg px-3 py-1 transition-colors ' + (barangayFilter === filter ? 'bg-white text-emerald-800 shadow-sm' : 'text-emerald-700/70 hover:text-emerald-900')}
+                    >
+                      {filter === 'top5' ? 'Top 5' : 'All'}
+                    </button>
+                  ))}
+                </div>
+                <a href="/gis-map" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">
+                  View GIS map <ChevronRight className="w-3 h-3" />
+                </a>
+              </div>
+            </div>
+            <div className="px-6 py-4 space-y-3">
+              {visibleBarangays.map((barangay, index) => (
+                <RankedBar key={barangay.name} rank={index + 1} name={barangay.name} value={barangay.cases} max={barangayCasesData[0].cases} color={barangay.fill} />
+              ))}
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-[16px] font-bold text-slate-950">High-Risk Areas</h2>
+                <p className="text-[12px] font-normal text-slate-500 mt-0.5">Top barangays needing oversight</p>
+              </div>
+              <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-bold text-red-700">{displayedHighRiskCount} active</span>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {highRiskWatchlist.map((barangay) => (
+                <div key={barangay.name} className="px-5 py-3 flex items-center justify-between gap-3 hover:bg-emerald-50/40 transition-colors">
+                  <div className="min-w-0 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: barangay.dotColor }} />
+                    <span className="truncate text-[13px] font-semibold text-slate-900">{barangay.name}</span>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="text-[12px] text-slate-500 tabular-nums">{barangay.cases} cases</span>
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${barangay.badgeClass}`}>{barangay.level}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-slate-100 px-5 py-3">
+              <a href="/reports" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">
+                Open reports <ChevronRight className="w-3 h-3" />
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          <div className="xl:col-span-2 overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-[16px] font-bold text-slate-950">Recent Incidents</h2>
+                <p className="text-[12px] font-normal text-slate-500 mt-0.5">Latest 5 bite cases reported</p>
+              </div>
+              <a href="/incidents" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">
+                View all incidents <ChevronRight className="w-3 h-3" />
+              </a>
+            </div>
+            {recentIncidentRows.length === 0 ? (
+              <div className="px-6 py-7 text-center">
+                <div className="mx-auto mb-3 w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                  <ClipboardPlus className="w-5 h-5" />
+                </div>
+                <p className="text-[14px] font-semibold text-slate-900">No recent incidents recorded.</p>
+                <p className="mt-1 text-[12px] text-slate-500">New clinic-wide cases will appear here.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-slate-50 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                      <th className="px-5 py-2.5 text-left">Date</th>
+                      <th className="px-5 py-2.5 text-left">Patient</th>
+                      <th className="px-5 py-2.5 text-left">Barangay</th>
+                      <th className="px-5 py-2.5 text-left">Category</th>
+                      <th className="px-5 py-2.5 text-left">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {recentIncidentRows.map((incident) => (
+                      <tr key={incident.id} className="hover:bg-emerald-50/40 transition-colors">
+                        <td className="px-5 py-3 text-[12px] text-slate-500 whitespace-nowrap">
+                          {new Date(incident.incident_date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </td>
+                        <td className="px-5 py-3 text-[13px] font-semibold text-slate-900">{incident.patient?.full_name || '-'}</td>
+                        <td className="px-5 py-3 text-[12px] text-slate-500">{incident.barangay?.name || '-'}</td>
+                        <td className="px-5 py-3"><Badge variant={getCategoryVariant(incident.who_category)}>{incident.who_category?.replace('Category ', 'Cat ') || '-'}</Badge></td>
+                        <td className="px-5 py-3"><Badge variant={incident.status === 'Active' ? 'info' : 'success'}>{incident.status}</Badge></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-[16px] font-bold text-slate-950">Vaccine & Supply Status</h2>
+                <p className="text-[12px] font-normal text-slate-500 mt-0.5">Low and critical stock watchlist</p>
+              </div>
+              <a href="/inventory" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">
+                Inventory <ChevronRight className="w-3 h-3" />
+              </a>
+            </div>
+            <div className="p-5 space-y-3">
+              {clinicSupplyRows.length === 0 ? (
+                <p className="py-5 text-center text-[13px] text-slate-500">All vaccine and supply levels are adequate.</p>
+              ) : clinicSupplyRows.map((item) => {
+                const name = item.item_name || item.name;
+                const stock = item.current_stock ?? item.stock;
+                const unit = item.unit || 'units';
+                const status = item.status || (stock <= 10 ? 'critical' : 'low');
+                const color = STATUS_COLOR[status] || STATUS_COLOR.low;
+                return (
+                  <div key={name} className="rounded-2xl bg-slate-50/80 px-3 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-[13px] font-semibold leading-tight text-slate-900">{name}</p>
+                      <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={{ color, background: color + '1A' }}>
+                        {STATUS_LABEL[status] || 'Low Stock'}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[12px] text-slate-500"><span className="font-semibold text-slate-900 tabular-nums">{stock}</span> {unit} remaining</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          <div className="overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
+            <div className="px-6 py-4 border-b border-slate-100">
+              <h2 className="text-[16px] font-bold text-slate-950">Biting Animal Types</h2>
+              <p className="text-[12px] font-normal text-slate-500 mt-0.5">Distribution of reported incidents</p>
+            </div>
+            <div className="px-5 py-4 space-y-4">
+              {animalTypeData.map((animal) => (
+                <div key={animal.type}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="flex items-center gap-2 text-[13px] font-semibold text-slate-900">
+                      <span className="w-2 h-2 rounded-full" style={{ background: animal.color }} />
+                      {animal.type}
+                    </span>
+                    <span className="text-[12px] text-slate-500 tabular-nums">{animal.count} / {animal.pct}%</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${animal.pct}%`, background: animal.color }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="xl:col-span-2 overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-[16px] font-bold text-slate-950">GIS Summary</h2>
+                <p className="text-[12px] font-normal text-slate-500 mt-0.5">Barangay hotspot overview for clinic planning</p>
+              </div>
+              <a href="/gis-map" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">
+                View GIS map <ChevronRight className="w-3 h-3" />
+              </a>
+            </div>
+            <div className="grid grid-cols-1 gap-4 p-5 lg:grid-cols-[1.25fr_0.75fr]">
+              <div className="h-56 overflow-hidden rounded-2xl bg-slate-100">
+                <HeatmapPreview />
+              </div>
+              <div className="space-y-3">
+                <div className="rounded-2xl bg-emerald-50 px-4 py-3">
+                  <p className="text-[12px] font-semibold text-emerald-800">Priority area</p>
+                  <p className="mt-1 text-[24px] font-bold leading-none text-slate-950">{highRiskWatchlist[0]?.name || 'None'}</p>
+                  <p className="mt-1 text-[12px] text-slate-500">{highRiskWatchlist[0]?.cases || 0} cases in the current watchlist.</p>
+                </div>
+                <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                  <p className="text-[12px] font-semibold text-slate-700">Operational links</p>
+                  <div className="mt-2 flex flex-col gap-2">
+                    <a href="/reports" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">Open reports <ChevronRight className="w-3 h-3" /></a>
+                    <a href="/notifications" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">View notifications <ChevronRight className="w-3 h-3" /></a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Dashboard() {
   const [stats, setStats] = useState({
     totalCases: 0,
@@ -604,6 +913,7 @@ export function Dashboard() {
   const lastUpdated = new Date().toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   const currentUser = getStoredUser();
   const isNurseDashboard = normalizeRoleKey(currentUser?.role) === 'nurse_vaccinator';
+  const canCreateIncident = canPerformAction(currentUser?.role, 'incidents.create');
 
   if (isLoading) {
     return <div className="flex-1 flex items-center justify-center"><LoadingSpinner /></div>;
@@ -617,470 +927,22 @@ export function Dashboard() {
         lowStockItems={lowStockItems}
         lastUpdated={lastUpdated}
         getCategoryVariant={getCategoryVariant}
+        canCreateIncident={canCreateIncident}
       />
     );
   }
 
   return (
-    <div className="flex-1 min-w-0">
-      <Header title="Dashboard" breadcrumbs={['Home', 'Dashboard']} />
-
-      <div className="p-6 space-y-5">
-
-        {/* Low stock alert */}
-        {lowStockItems.length > 0 && (
-          <AlertBanner
-            variant="warning"
-            message={`Low Stock Alert: ${lowStockItems[0].item_name} — only ${lowStockItems[0].current_stock} ${lowStockItems[0].unit} remaining. Please reorder immediately.`}
-          />
-        )}
-
-        {/* Last updated strip */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-            <Activity className="w-3 h-3 text-primary" />
-            <span>Real-time analytics for <span className="font-medium text-foreground">Animal Bite Surveillance</span></span>
-          </div>
-          <SectionMeta updatedAt={lastUpdated} />
-        </div>
-
-        {/* ── KPI row ──────────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-
-          {/* Total bite cases */}
-          <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex items-start justify-between mb-4">
-              <div className="w-9 h-9 rounded-lg bg-primary-bg flex items-center justify-center">
-                <Users className="w-4.5 h-4.5 text-primary" />
-              </div>
-              <span className="text-[11px] text-destructive font-semibold flex items-center gap-0.5 bg-destructive-bg px-1.5 py-0.5 rounded-full">
-                <TrendingUp className="w-3 h-3" /> +12%
-              </span>
-            </div>
-            <p className="text-3xl font-bold text-foreground tracking-tight">{stats.totalCases}</p>
-            <p className="text-xs font-medium text-muted-foreground mt-1">Total Bite Cases</p>
-            <p className="text-[10px] text-muted-foreground/60 mt-0.5">vs. previous month</p>
-          </div>
-
-          {/* Vaccinated */}
-          <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex items-start justify-between mb-4">
-              <div className="w-9 h-9 rounded-lg bg-success-bg flex items-center justify-center">
-                <Syringe className="w-4.5 h-4.5 text-success" />
-              </div>
-              <span className="text-[11px] text-success font-semibold flex items-center gap-0.5 bg-success-bg px-1.5 py-0.5 rounded-full">
-                <TrendingUp className="w-3 h-3" /> +8%
-              </span>
-            </div>
-            <p className="text-3xl font-bold text-foreground tracking-tight">{stats.completedVaccinations}</p>
-            <p className="text-xs font-medium text-muted-foreground mt-1">Fully Vaccinated</p>
-            <div className="mt-2 flex items-center gap-2">
-              <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                <div className="h-full bg-success rounded-full" style={{ width: `${complianceRate}%` }} />
-              </div>
-              <span className="text-[11px] font-bold text-success">{complianceRate}%</span>
-            </div>
-          </div>
-
-          {/* Pending doses */}
-          <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex items-start justify-between mb-4">
-              <div className="w-9 h-9 rounded-lg bg-warning-bg flex items-center justify-center">
-                <Clock className="w-4.5 h-4.5 text-warning" />
-              </div>
-              <span className="text-[11px] text-warning font-semibold flex items-center gap-0.5 bg-warning-bg px-1.5 py-0.5 rounded-full">
-                <TrendingDown className="w-3 h-3" /> -5%
-              </span>
-            </div>
-            <p className="text-3xl font-bold text-foreground tracking-tight">{stats.pendingDoses}</p>
-            <p className="text-xs font-medium text-muted-foreground mt-1">Pending Doses</p>
-            <p className="text-[10px] text-muted-foreground/60 mt-0.5">Requires follow-up</p>
-          </div>
-
-          {/* High-risk barangays */}
-          <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex items-start justify-between mb-4">
-              <div className="w-9 h-9 rounded-lg bg-destructive-bg flex items-center justify-center">
-                <MapPin className="w-4.5 h-4.5 text-destructive" />
-              </div>
-              <span className="text-[11px] text-destructive font-semibold flex items-center gap-0.5 bg-destructive-bg px-1.5 py-0.5 rounded-full">
-                <AlertTriangle className="w-3 h-3" /> Alert
-              </span>
-            </div>
-            <p className="text-3xl font-bold text-foreground tracking-tight">{stats.highRiskBarangays}</p>
-            <p className="text-xs font-medium text-muted-foreground mt-1">High-Risk Barangays</p>
-            <p className="text-[10px] text-muted-foreground/60 mt-0.5">Active monitoring</p>
-          </div>
-        </div>
-
-        {/* ── Monthly trend + compliance ────────────────────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-
-          {/* Bar chart */}
-          <div className="lg:col-span-2 bg-card border border-border rounded-2xl shadow-sm">
-            <div className="px-5 pt-5 pb-4 border-b border-border flex items-start justify-between">
-              <div>
-                <h2 className="text-sm font-semibold text-foreground">Monthly Bite Incident Trends</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">Cases reported vs. vaccinated — last 6 months</p>
-              </div>
-              <div className="flex items-center gap-4 text-[11px] text-muted-foreground mt-0.5">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ background: '#D85A30' }} />
-                  Bite Cases
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ background: '#16A34A' }} />
-                  Vaccinated
-                </span>
-              </div>
-            </div>
-            <div className="px-5 pt-4 pb-5">
-              <ResponsiveContainer width="100%" height={195}>
-                <BarChart data={monthlyTrendData} barGap={3} barCategoryGap="28%" margin={{ top: 2, right: 6, left: -18, bottom: 0 }}>
-                  <CartesianGrid key="bc-grid" strokeDasharray="3 3" stroke="#E8E5DC" vertical={false} />
-                  <XAxis key="bc-xaxis" dataKey="month" tick={{ fontSize: 11, fill: '#888780' }} axisLine={false} tickLine={false} />
-                  <YAxis key="bc-yaxis" tick={{ fontSize: 11, fill: '#888780' }} axisLine={false} tickLine={false} />
-                  <Tooltip key="bc-tooltip" content={<ChartTooltip />} cursor={{ fill: '#F4F2EC' }} />
-                  <Bar key="bc-bar-cases"      dataKey="cases"     name="Bite Cases" fill="#D85A30" radius={[3, 3, 0, 0]} />
-                  <Bar key="bc-bar-vaccinated" dataKey="vaccinated" name="Vaccinated" fill="#16A34A" radius={[3, 3, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* Compliance donut */}
-          <div className="bg-card border border-border rounded-2xl shadow-sm">
-            <div className="px-5 pt-5 pb-4 border-b border-border">
-              <h2 className="text-sm font-semibold text-foreground">Vaccination Compliance</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">Current PEP cycle status</p>
-            </div>
-            <div className="px-5 pt-4 pb-5">
-              <div className="flex justify-center mb-3">
-                <div className="relative" style={{ width: 168, height: 168 }}>
-                  <PieChart width={168} height={168}>
-                    <Pie
-                      key="pc-pie"
-                      data={vaccinationComplianceData}
-                      cx={84} cy={84}
-                      innerRadius={52} outerRadius={76}
-                      paddingAngle={2}
-                      dataKey="value"
-                      stroke="none"
-                    >
-                      {vaccinationComplianceData.map((entry) => (
-                        <Cell key={`cell-${entry.name}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip key="pc-tooltip" content={<ChartTooltip />} />
-                  </PieChart>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                    <p className="text-2xl font-bold text-foreground">{complianceRate}%</p>
-                    <p className="text-[11px] text-muted-foreground font-medium">Completed</p>
-                  </div>
-                </div>
-              </div>
-              <div className="space-y-2 border-t border-border pt-3">
-                {vaccinationComplianceData.map((item) => (
-                  <div key={item.name} className="flex items-center justify-between">
-                    <span className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: item.color }} />
-                      {item.name}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
-                        <div className="h-full rounded-full" style={{ width: `${Math.round((item.value / totalCompliance) * 100)}%`, background: item.color }} />
-                      </div>
-                      <span className="text-xs font-semibold text-foreground tabular-nums w-7 text-right">{item.value}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ── Barangay ranking + Vaccination activity ───────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-
-          {/* Barangay bar ranking */}
-          <div className="lg:col-span-2 bg-card border border-border rounded-2xl shadow-sm">
-            <div className="px-5 pt-5 pb-4 border-b border-border flex items-start justify-between">
-              <div>
-                <h2 className="text-sm font-semibold text-foreground">Bite Cases Per Barangay</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">Incident density by location — {new Date().getFullYear()}</p>
-              </div>
-              <div className="flex bg-muted rounded-lg p-0.5 gap-0.5 text-xs mt-0.5">
-                {(['top5', 'all'] as const).map((f) => (
-                  <button
-                    key={f}
-                    onClick={() => setBarangayFilter(f)}
-                    className={`px-2.5 py-1 rounded-md transition-colors font-medium ${
-                      barangayFilter === f
-                        ? 'bg-card text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {f === 'top5' ? 'Top 5' : 'All'}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="px-5 py-4 space-y-3">
-              {visibleBarangays.map((b, i) => (
-                <RankedBar
-                  key={b.name}
-                  rank={i + 1}
-                  name={b.name}
-                  value={b.cases}
-                  max={barangayCasesData[0].cases}
-                  color={b.fill}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Weekly vaccination area chart */}
-          <div className="bg-card border border-border rounded-2xl shadow-sm">
-            <div className="px-5 pt-5 pb-4 border-b border-border">
-              <h2 className="text-sm font-semibold text-foreground">Vaccination Activity</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">Doses administered — current month</p>
-            </div>
-            <div className="px-5 pt-4">
-              <ResponsiveContainer width="100%" height={128}>
-                <AreaChart data={weeklyVaccineActivity} margin={{ top: 2, right: 4, left: -22, bottom: 0 }}>
-                  <defs key="ac-defs">
-                    <linearGradient id="vaccGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%"   stopColor="#16A34A" stopOpacity={0.18} />
-                      <stop offset="100%" stopColor="#16A34A" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid key="ac-grid"   strokeDasharray="3 3" stroke="#E8E5DC" vertical={false} />
-                  <XAxis       key="ac-xaxis"  dataKey="week" tick={{ fontSize: 10, fill: '#888780' }} axisLine={false} tickLine={false} />
-                  <YAxis       key="ac-yaxis"  tick={{ fontSize: 10, fill: '#888780' }} axisLine={false} tickLine={false} />
-                  <Tooltip     key="ac-tooltip" content={<ChartTooltip />} />
-                  <Area
-                    key="ac-area-doses"
-                    type="monotone"
-                    dataKey="doses"
-                    name="Doses"
-                    stroke="#16A34A"
-                    strokeWidth={2}
-                    fill="url(#vaccGrad)"
-                    dot={{ r: 3, fill: '#16A34A', strokeWidth: 0 }}
-                    activeDot={{ r: 4, fill: '#15803D' }}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="px-5 pb-5 pt-3 border-t border-border mt-3">
-              <div className="grid grid-cols-3 divide-x divide-border text-center">
-                <div className="pr-2">
-                  <p className="text-base font-bold text-foreground">76</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Total Doses</p>
-                </div>
-                <div className="px-2">
-                  <p className="text-base font-bold text-primary">57</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Patients</p>
-                </div>
-                <div className="pl-2">
-                  <p className="text-base font-bold text-foreground">1.33</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Avg / Patient</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ── Recent incidents + GIS preview + High-risk ─────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-
-          {/* Incidents table */}
-          <div className="lg:col-span-2 bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-semibold text-foreground">Recent Incidents</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">Latest bite cases reported</p>
-              </div>
-              <a href="/incidents" className="text-xs text-primary font-medium flex items-center gap-0.5 hover:underline">
-                View all <ChevronRight className="w-3 h-3" />
-              </a>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-muted/50 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-                    <th className="text-left px-5 py-2.5">Date</th>
-                    <th className="text-left px-5 py-2.5">Patient</th>
-                    <th className="text-left px-5 py-2.5">Barangay</th>
-                    <th className="text-left px-5 py-2.5">Category</th>
-                    <th className="text-left px-5 py-2.5">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {recentIncidents.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-5 py-10 text-center text-sm text-muted-foreground">
-                        No incidents recorded yet.
-                      </td>
-                    </tr>
-                  ) : (
-                    recentIncidents.slice(0, 8).map((incident) => (
-                      <tr key={incident.id} className="hover:bg-muted/30 transition-colors">
-                        <td className="px-5 py-3 text-xs text-muted-foreground whitespace-nowrap">
-                          {new Date(incident.incident_date).toLocaleDateString('en-PH', {
-                            month: 'short', day: 'numeric', year: 'numeric'
-                          })}
-                        </td>
-                        <td className="px-5 py-3 text-xs font-medium text-foreground">
-                          {incident.patient?.full_name || '—'}
-                        </td>
-                        <td className="px-5 py-3 text-xs text-muted-foreground">
-                          {incident.barangay?.name || '—'}
-                        </td>
-                        <td className="px-5 py-3">
-                          <Badge variant={getCategoryVariant(incident.who_category)}>
-                            {incident.who_category?.replace('Category ', 'Cat ') || '—'}
-                          </Badge>
-                        </td>
-                        <td className="px-5 py-3">
-                          <Badge variant={incident.status === 'Active' ? 'info' : 'success'}>
-                            {incident.status}
-                          </Badge>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Right column */}
-          <div className="space-y-4">
-
-            {/* GIS heatmap card */}
-            <div className="bg-card border border-border rounded-2xl shadow-sm p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <h2 className="text-sm font-semibold text-foreground">Incident Heatmap</h2>
-                  <p className="text-xs text-muted-foreground">Barangay hotspot overview</p>
-                </div>
-                <a href="/gis-map" className="text-xs text-primary font-medium flex items-center gap-0.5 hover:underline">
-                  Full GIS <ChevronRight className="w-3 h-3" />
-                </a>
-              </div>
-              <div className="h-44 rounded-lg overflow-hidden" style={{ background: '#E8E4DC' }}>
-                <HeatmapPreview />
-              </div>
-            </div>
-
-            {/* High-risk barangays list */}
-            <div className="bg-card border border-border rounded-2xl shadow-sm p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold text-foreground">High-Risk Areas</h2>
-                <span className="text-[11px] font-semibold text-destructive bg-destructive-bg px-2 py-0.5 rounded-full">
-                  {stats.highRiskBarangays} active
-                </span>
-              </div>
-              <div className="space-y-0">
-                {highRiskBarangays.map((b, i) => (
-                  <div
-                    key={b.name}
-                    className={`flex items-center justify-between py-2 ${
-                      i < highRiskBarangays.length - 1 ? 'border-b border-border' : ''
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: b.dotColor }} />
-                      <span className="text-xs font-medium text-foreground">{b.name}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground tabular-nums">{b.cases} cases</span>
-                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${b.badgeClass}`}>
-                        {b.level}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ── Animal types + Inventory ──────────────────────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-
-          {/* Animal type breakdown */}
-          <div className="bg-card border border-border rounded-2xl shadow-sm">
-            <div className="px-5 pt-5 pb-4 border-b border-border">
-              <h2 className="text-sm font-semibold text-foreground">Biting Animal Types</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">Distribution of reported incidents</p>
-            </div>
-            <div className="px-5 py-4 space-y-4">
-              {animalTypeData.map((a) => (
-                <div key={a.type}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="flex items-center gap-2 text-xs font-medium text-foreground">
-                      <span className="w-2 h-2 rounded-full" style={{ background: a.color }} />
-                      {a.type}
-                    </span>
-                    <span className="text-xs text-muted-foreground tabular-nums">{a.count} · {a.pct}%</span>
-                  </div>
-                  <div className="h-2 bg-muted rounded-full overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${a.pct}%`, background: a.color }} />
-                  </div>
-                </div>
-              ))}
-              <p className="text-[10px] text-muted-foreground pt-1 border-t border-border">
-                Total: 133 incidents recorded
-              </p>
-            </div>
-          </div>
-
-          {/* Inventory status */}
-          <div className="lg:col-span-2 bg-card border border-border rounded-2xl shadow-sm">
-            <div className="px-5 pt-5 pb-4 border-b border-border flex items-start justify-between">
-              <div>
-                <h2 className="text-sm font-semibold text-foreground">Vaccine & Supply Status</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">Current inventory levels</p>
-              </div>
-              <a href="/inventory" className="text-xs text-primary font-medium flex items-center gap-0.5 hover:underline mt-0.5">
-                Manage <ChevronRight className="w-3 h-3" />
-              </a>
-            </div>
-            <div className="px-5 py-4 grid grid-cols-2 gap-x-6 gap-y-4">
-              {inventoryItems.map((item) => {
-                const pct   = item.max > 0 ? Math.round((item.stock / item.max) * 100) : 0;
-                const color = STATUS_COLOR[item.status];
-                const label = STATUS_LABEL[item.status];
-                return (
-                  <div key={item.name}>
-                    <div className="flex items-start justify-between mb-1.5">
-                      <p className="text-xs font-medium text-foreground leading-tight max-w-[140px]">{item.name}</p>
-                      <span
-                        className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ml-1"
-                        style={{ color, background: color + '1A' }}
-                      >
-                        {label}
-                      </span>
-                    </div>
-                    <div className="h-2 bg-muted rounded-full overflow-hidden mb-1">
-                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
-                    </div>
-                    <p className="text-[10px] text-muted-foreground">
-                      <span className="font-semibold text-foreground">{item.stock}</span>
-                      <span className="mx-1">/</span>
-                      {item.max} {item.unit}
-                      <span className="ml-1 text-muted-foreground/60">({pct}%)</span>
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-      </div>
-    </div>
+    <ClinicAdminDashboard
+      stats={stats}
+      recentIncidents={recentIncidents}
+      lowStockItems={lowStockItems}
+      barangayFilter={barangayFilter}
+      setBarangayFilter={setBarangayFilter}
+      visibleBarangays={visibleBarangays}
+      lastUpdated={lastUpdated}
+      complianceRate={complianceRate}
+      getCategoryVariant={getCategoryVariant}
+    />
   );
 }
