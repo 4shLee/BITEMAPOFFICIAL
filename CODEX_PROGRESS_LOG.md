@@ -1172,9 +1172,6 @@ The Incident Management module is now more consistent, clinic-friendly, and alig
 - Confirmed migrations ran successfully.
 
 
-**July 8, 2026**
-
-
 **Notifications & Reminders Module**
 - Converted the module to SMS-only based on project scope.
 - Removed Email buttons, Email statistics, Email labels, and Email resend behavior from the Notifications UI.
@@ -1197,3 +1194,49 @@ The Incident Management module is now more consistent, clinic-friendly, and alig
 - Ran `npm run build` after changes.
 - Build passed successfully.
 - Only the existing Vite large chunk warning appeared.
+
+**July 9, 2026**
+
+**Role Access / Shared RBAC**
+- Audited role-based behavior across shared modules.
+- Tightened shared route guards so create/edit URLs require correct action permissions.
+- Preserved existing RBAC rules and did not change backend permissions.
+- Kept Nurse/Vaccinator workflow unchanged.
+
+**Dashboard**
+- Polished the Clinic Admin Dashboard to match the cleaner Nurse/Vaccinator dashboard style.
+- Kept Clinic Admin focused on analytics, monitoring, GIS, reports, inventory, and operations.
+- Added a cleaner operations overview layout.
+- Improved spacing, cards, visual hierarchy, and action links.
+- Fixed high-risk barangay count consistency.
+
+**GIS Heatmap / GIS Map**
+- Made the map larger and more visually dominant.
+- Moved filters, legend, and Barangay Analysis into a compact right sidebar.
+- Improved responsive layout so the map stacks cleanly on smaller screens.
+- Added map resize handling so Leaflet renders correctly after layout changes.
+- Preserved existing GIS role access and backend data behavior.
+
+**Reports**
+- Changed report preview from a placeholder list into a real selected-report preview.
+- Added report-specific summaries and preview table columns.
+- Renamed “Generate From Database” to “Generate Report”.
+- Moved Report Preview to the main left area.
+- Moved Report Configuration to the right sidebar.
+- Clarified that preview rows show only a limited sample.
+- Kept PDF/Excel downloads connected to the full filtered report.
+- Removed temporary “Generated Reports This Session” section.
+
+**Header / Sidebar**
+- Added notification bell for all authenticated roles.
+- Kept Notifications/SMS module hidden from Doctor based on current RBAC.
+- Added global search only on pages without module-specific search.
+- Hid global search on pages with their own search/filter tools.
+- Removed empty sidebar section labels such as “General” when no items are visible.
+- Cleaned Doctor sidebar so it only shows allowed modules.
+
+**Verification**
+- Ran `npm run build` after major updates.
+- Builds passed successfully.
+- Existing Vite large chunk warning remains.
+- No authentication, backend API, database schema, SMS workflow, inventory logic, incident workflow, or role permission rules were changed.

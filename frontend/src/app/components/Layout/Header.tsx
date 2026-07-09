@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Bell, ChevronRight, CalendarClock } from 'lucide-react';
+import { ArrowLeft, Bell, ChevronRight, CalendarClock, Search } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { canAccessPath, getStoredUser, getUserInitial, isSystemAdminRole } from '../../../lib/auth/roleAccess';
 import { notificationsAPI } from '../../../lib/services/api';
@@ -23,7 +23,10 @@ export function Header({ title, breadcrumbs = [] }: HeaderProps) {
   const location = useLocation();
   const currentUser = getStoredUser();
   const isIncidentFormPage = location.pathname === '/incidents/new' || /^\/incidents\/[^/]+\/edit$/.test(location.pathname);
-  const canViewScheduleAlerts = canAccessPath(currentUser?.role, '/notifications') && !isSystemAdminRole(currentUser?.role);
+  const canAccessNotifications = canAccessPath(currentUser?.role, '/notifications');
+  const canViewScheduleAlerts = canAccessNotifications && !isSystemAdminRole(currentUser?.role);
+  const pagesWithModuleSearch = ['/incidents', '/patients', '/pep-schedule', '/inventory', '/notifications', '/users', '/audit-logs'];
+  const showGlobalSearch = !pagesWithModuleSearch.includes(location.pathname);
   const [todaySchedules, setTodaySchedules] = useState<TodayScheduleAlert[]>([]);
   const [isAlertOpen, setIsAlertOpen] = useState(false);
   const [alertsLoading, setAlertsLoading] = useState(false);
@@ -85,64 +88,80 @@ export function Header({ title, breadcrumbs = [] }: HeaderProps) {
             </button>
           )}
 
-          {canViewScheduleAlerts && (
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setIsAlertOpen((value) => !value)}
-                className={'relative flex h-9 w-9 items-center justify-center rounded-full border bg-card shadow-sm transition-colors ' + (todayScheduleCount > 0 ? 'border-destructive/35 bg-destructive-bg hover:bg-destructive-bg' : 'border-border hover:border-primary/40 hover:bg-primary-bg')}
-                aria-label="Open schedule notifications"
-              >
-                <Bell className={'w-4 h-4 ' + (todayScheduleCount > 0 ? 'text-destructive' : 'text-muted-foreground')} />
-                {todayScheduleCount > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 min-w-5 h-5 px-1 rounded-full bg-destructive text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-background">
-                    {todayScheduleCount > 9 ? '9+' : todayScheduleCount}
-                  </span>
-                )}
-              </button>
+          {showGlobalSearch && (
+            <div className="relative hidden md:block">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="search"
+                aria-label="Search BITEMAP"
+                placeholder="Search BITEMAP..."
+                className="h-9 w-56 rounded-full border border-input bg-input-background pl-9 pr-3 text-sm shadow-sm transition-colors focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/20 lg:w-72"
+              />
+            </div>
+          )}
 
-              {isAlertOpen && (
-                <div className="absolute right-0 top-11 z-50 w-80 overflow-hidden rounded-2xl border border-border bg-card shadow-xl shadow-slate-900/15">
-                  <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">Today's PEP Schedules</p>
-                      <p className="text-xs text-muted-foreground">
-                        {todayScheduleCount > 0 ? todayScheduleCount + ' patient' + (todayScheduleCount !== 1 ? 's' : '') + ' due today' : 'No schedules due today'}
-                      </p>
-                    </div>
-                    <CalendarClock className="w-4 h-4 text-primary shrink-0" />
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsAlertOpen((value) => !value)}
+              className={'relative flex h-9 w-9 items-center justify-center rounded-full border bg-card shadow-sm transition-colors ' + (todayScheduleCount > 0 ? 'border-destructive/35 bg-destructive-bg hover:bg-destructive-bg' : 'border-border hover:border-primary/40 hover:bg-primary-bg')}
+              aria-label="Open notifications"
+            >
+              <Bell className={'w-4 h-4 ' + (todayScheduleCount > 0 ? 'text-destructive' : 'text-muted-foreground')} />
+              {todayScheduleCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-5 h-5 px-1 rounded-full bg-destructive text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-background">
+                  {todayScheduleCount > 9 ? '9+' : todayScheduleCount}
+                </span>
+              )}
+            </button>
+
+            {isAlertOpen && (
+              <div className="absolute right-0 top-11 z-50 w-80 overflow-hidden rounded-2xl border border-border bg-card shadow-xl shadow-slate-900/15">
+                <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{canViewScheduleAlerts ? "Today's PEP Schedules" : 'Notifications'}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {canViewScheduleAlerts
+                        ? todayScheduleCount > 0 ? todayScheduleCount + ' patient' + (todayScheduleCount !== 1 ? 's' : '') + ' due today' : 'No schedules due today'
+                        : 'No quick alerts for your role.'}
+                    </p>
                   </div>
+                  <CalendarClock className="w-4 h-4 text-primary shrink-0" />
+                </div>
 
-                  <div className="max-h-72 overflow-y-auto">
-                    {alertsLoading ? (
-                      <p className="px-4 py-5 text-sm text-muted-foreground text-center">Checking today schedules...</p>
-                    ) : todayScheduleCount === 0 ? (
-                      <p className="px-4 py-5 text-sm text-muted-foreground text-center">No PEP schedules for today.</p>
-                    ) : todaySchedules.slice(0, 6).map((schedule) => (
-                      <button
-                        type="button"
-                        key={schedule.id}
-                        onClick={() => {
-                          setIsAlertOpen(false);
-                          navigate('/pep-schedule');
-                        }}
-                        className="w-full text-left px-4 py-3 border-b border-border last:border-0 hover:bg-muted/40 transition-colors"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-foreground truncate">{schedule.patient_name || 'Unknown Patient'}</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              Day {schedule.dose_day ?? '-'} dose - {schedule.barangay || 'Unknown barangay'}
-                            </p>
-                          </div>
-                          <span className="rounded-full bg-warning-bg px-2 py-0.5 text-[10px] font-semibold text-warning shrink-0">
-                            {schedule.status || 'Pending'}
-                          </span>
+                <div className="max-h-72 overflow-y-auto">
+                  {!canViewScheduleAlerts ? (
+                    <p className="px-4 py-5 text-sm text-muted-foreground text-center">No quick alerts available.</p>
+                  ) : alertsLoading ? (
+                    <p className="px-4 py-5 text-sm text-muted-foreground text-center">Checking today schedules...</p>
+                  ) : todayScheduleCount === 0 ? (
+                    <p className="px-4 py-5 text-sm text-muted-foreground text-center">No PEP schedules for today.</p>
+                  ) : todaySchedules.slice(0, 6).map((schedule) => (
+                    <button
+                      type="button"
+                      key={schedule.id}
+                      onClick={() => {
+                        setIsAlertOpen(false);
+                        navigate('/pep-schedule');
+                      }}
+                      className="w-full text-left px-4 py-3 border-b border-border last:border-0 hover:bg-muted/40 transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-foreground truncate">{schedule.patient_name || 'Unknown Patient'}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Day {schedule.dose_day ?? '-'} dose - {schedule.barangay || 'Unknown barangay'}
+                          </p>
                         </div>
-                      </button>
-                    ))}
-                  </div>
+                        <span className="rounded-full bg-warning-bg px-2 py-0.5 text-[10px] font-semibold text-warning shrink-0">
+                          {schedule.status || 'Pending'}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
 
+                {canAccessNotifications && (
                   <Link
                     to="/notifications"
                     onClick={() => setIsAlertOpen(false)}
@@ -150,10 +169,10 @@ export function Header({ title, breadcrumbs = [] }: HeaderProps) {
                   >
                     Open Notifications
                   </Link>
-                </div>
-              )}
-            </div>
-          )}
+                )}
+              </div>
+            )}
+          </div>
 
           <div
             className="flex h-9 w-9 cursor-default items-center justify-center rounded-2xl text-sm font-bold text-white shadow-sm shadow-emerald-900/20"

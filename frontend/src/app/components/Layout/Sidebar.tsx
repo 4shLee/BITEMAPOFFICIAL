@@ -125,27 +125,31 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
-        <div>
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest px-4 mb-1.5">
-            Menu
-          </p>
-          <ul className="space-y-0.5">
-            {visibleMainNav.map(item => (
-              <li key={item.path}><NavItem {...item} /></li>
-            ))}
-          </ul>
-        </div>
+        {visibleMainNav.length > 0 && (
+          <div>
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest px-4 mb-1.5">
+              Menu
+            </p>
+            <ul className="space-y-0.5">
+              {visibleMainNav.map(item => (
+                <li key={item.path}><NavItem {...item} /></li>
+              ))}
+            </ul>
+          </div>
+        )}
 
-        <div>
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest px-4 mb-1.5">
-            General
-          </p>
-          <ul className="space-y-0.5">
-            {visibleSystemNav.map(item => (
-              <li key={item.path}><NavItem {...item} /></li>
-            ))}
-          </ul>
-        </div>
+        {visibleSystemNav.length > 0 && (
+          <div>
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest px-4 mb-1.5">
+              General
+            </p>
+            <ul className="space-y-0.5">
+              {visibleSystemNav.map(item => (
+                <li key={item.path}><NavItem {...item} /></li>
+              ))}
+            </ul>
+          </div>
+        )}
       </nav>
 
       <div className="mx-3 mb-3 rounded-3xl p-4 text-white shadow-lg shadow-emerald-900/15" style={{ background: 'radial-gradient(circle at top right, rgba(52, 211, 153, 0.55), transparent 35%), linear-gradient(135deg, #078C55 0%, #05603A 100%)' }}>
