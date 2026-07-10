@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import {
   Users, Syringe, Clock, MapPin, AlertTriangle,
   ChevronRight, RefreshCw, CalendarDays, Package,
-  Bell, ClipboardPlus, UserCheck
+  Bell, ClipboardPlus, UserCheck, ShieldAlert,
+  Database, MessageSquare, ServerCog, Settings2, Activity, UserCog
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -11,10 +12,10 @@ import {
 import { Header } from '../components/Layout/Header';
 import { Badge } from '../components/UI/Badge';
 import { AlertBanner } from '../components/UI/AlertBanner';
-import { dashboardAPI } from '../../lib/services/api';
+import { auditLogsAPI, dashboardAPI, settingsAPI, usersAPI } from '../../lib/services/api';
 import { LoadingSpinner } from '../components/UI/LoadingSpinner';
 import { toast } from 'sonner';
-import { canPerformAction, getStoredUser, normalizeRoleKey } from '../../lib/auth/roleAccess';
+import { canPerformAction, getRoleLabel, getStoredUser, normalizeRoleKey } from '../../lib/auth/roleAccess';
 
 // ─── Chart & static data ───────────────────────────────────────────────────
 
@@ -869,7 +870,243 @@ function ClinicAdminDashboard({
   );
 }
 
+function SystemMetricCard({ title, value, helper, icon: Icon, tone }: {
+  title: string;
+  value: number | string;
+  helper: string;
+  icon: any;
+  tone: 'emerald' | 'teal' | 'amber' | 'rose' | 'slate';
+}) {
+  const toneClass = {
+    emerald: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+    teal: 'bg-teal-50 text-teal-700 border-teal-100',
+    amber: 'bg-amber-50 text-amber-700 border-amber-100',
+    rose: 'bg-rose-50 text-rose-700 border-rose-100',
+    slate: 'bg-slate-50 text-slate-700 border-slate-100',
+  }[tone];
+
+  return (
+    <div className="rounded-3xl border border-emerald-900/5 bg-white p-5 shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-[13px] font-semibold text-slate-600">{title}</p>
+          <p className="mt-2 text-[30px] font-bold leading-none tracking-tight text-slate-950 tabular-nums">{value}</p>
+        </div>
+        <div className={'flex h-11 w-11 items-center justify-center rounded-2xl border shadow-sm ' + toneClass}>
+          <Icon className="h-5 w-5" />
+        </div>
+      </div>
+      <p className="mt-3 text-[12px] leading-snug text-slate-500">{helper}</p>
+    </div>
+  );
+}
+
+function SystemPanel({ title, helper, children }: { title: string; helper?: string; children: ReactNode }) {
+  return (
+    <div className="overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
+      <div className="border-b border-slate-100 px-6 py-4">
+        <h2 className="text-[16px] font-bold text-slate-950">{title}</h2>
+        {helper && <p className="mt-0.5 text-[12px] text-slate-500">{helper}</p>}
+      </div>
+      <div className="p-5">{children}</div>
+    </div>
+  );
+}
+
+function SystemAdminDashboard({
+  users,
+  auditLogs,
+  auditSummary,
+  settings,
+  lastUpdated,
+}: {
+  users: any[];
+  auditLogs: any[];
+  auditSummary: { total: number; today: number; critical: number };
+  settings: any[];
+  lastUpdated: string;
+}) {
+  const getApprovalStatus = (user: any) => user.approval_status || user.approvalStatus || 'approved';
+  const activeUsers = users.filter((user) => user.status === 'Active' && getApprovalStatus(user) === 'approved').length;
+  const pendingUsers = users.filter((user) => getApprovalStatus(user) === 'pending').length;
+  const deactivatedAccounts = users.filter((user) => user.status !== 'Active').length;
+  const failedLoginAttempts = auditLogs.filter((log) => {
+    const haystack = [log.action, log.module, log.description].filter(Boolean).join(' ').toLowerCase();
+    return haystack.includes('failed') || haystack.includes('invalid') || haystack.includes('suspicious');
+  }).length;
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const failedToday = auditLogs.filter((log) => {
+    const timestamp = String(log.timestamp || log.created_at || '');
+    const haystack = [log.action, log.module, log.description].filter(Boolean).join(' ').toLowerCase();
+    return timestamp.startsWith(todayKey) && (haystack.includes('failed') || haystack.includes('invalid') || haystack.includes('suspicious'));
+  }).length;
+  const settingMap = new Map(settings.map((setting) => [setting.setting_key, setting.setting_value]));
+  const smsEnabled = settingMap.get('sms_reminders_enabled');
+  const roleOrder = [
+    { key: 'system_admin', label: 'System Admin' },
+    { key: 'clinic_admin', label: 'Clinic Admin' },
+    { key: 'doctor', label: 'Doctor' },
+    { key: 'nurse_vaccinator', label: 'Nurse/Vaccinator' },
+  ];
+  const roleDistribution = roleOrder.map((role) => ({
+    ...role,
+    count: users.filter((user) => normalizeRoleKey(user.role) === role.key).length,
+  }));
+  const maxRoleCount = Math.max(1, ...roleDistribution.map((role) => role.count));
+  const recentActivity = auditLogs.slice(0, 5);
+  const statusRows = [
+    { label: 'Database status', value: users.length || auditLogs.length ? 'Connected' : 'No signal', tone: users.length || auditLogs.length ? 'success' : 'neutral' },
+    { label: 'SMS service status', value: smsEnabled === 'true' ? 'Enabled' : smsEnabled === 'false' ? 'Disabled' : 'Not configured', tone: smsEnabled === 'true' ? 'success' : smsEnabled === 'false' ? 'warning' : 'neutral' },
+    { label: 'Queue worker status', value: 'No monitor configured', tone: 'neutral' },
+    { label: 'Last successful system check', value: users.length || auditLogs.length || settings.length ? lastUpdated : 'No source available', tone: users.length || auditLogs.length || settings.length ? 'success' : 'neutral' },
+  ];
+  const securityRows = [
+    { label: 'Active sessions', value: 'No source', helper: 'Session monitoring endpoint not available.' },
+    { label: 'Failed login attempts today', value: failedToday, helper: failedToday ? 'Review authentication logs.' : 'No failed attempts found in audit logs.' },
+    { label: 'Deactivated accounts', value: deactivatedAccounts, helper: 'Based on user account status.' },
+    { label: 'Critical audit events', value: auditSummary.critical || 0, helper: 'From audit log summary.' },
+  ];
+
+  return (
+    <div className="flex-1 min-w-0 bg-[#f3f7f5]" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+      <Header title="System Administrator Dashboard" breadcrumbs={['System', 'Dashboard']} />
+
+      <div className="space-y-5 p-6">
+        <div className="rounded-3xl bg-gradient-to-r from-emerald-800 to-teal-700 px-6 py-4 text-white shadow-[0_18px_45px_rgba(4,120,87,0.18)]">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[26px] font-bold leading-tight">Platform Administration</p>
+              <p className="mt-1 text-[13px] text-emerald-50/90">Security, access control, audit activity, and system configuration only.</p>
+            </div>
+            <div className="flex items-center gap-1.5 rounded-2xl bg-white/12 px-3 py-2 text-[12px] font-semibold text-emerald-50">
+              <RefreshCw className="h-3 w-3" />
+              <span>Updated {lastUpdated}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <SystemMetricCard title="Total Users" value={users.length} helper="All platform and clinic accounts." icon={Users} tone="emerald" />
+          <SystemMetricCard title="Active Users" value={activeUsers} helper="Approved active accounts." icon={UserCheck} tone="teal" />
+          <SystemMetricCard title="Pending Account Requests" value={pendingUsers} helper="Awaiting administrator review." icon={UserCog} tone="amber" />
+          <SystemMetricCard title="Failed / Suspicious Logins" value={failedLoginAttempts} helper={failedLoginAttempts ? 'Detected in audit logs.' : 'No matching audit entries.'} icon={ShieldAlert} tone={failedLoginAttempts ? 'rose' : 'slate'} />
+          <SystemMetricCard title="System Notifications" value="No source" helper="No system-notification metric endpoint yet." icon={Bell} tone="slate" />
+        </div>
+
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
+          <div className="xl:col-span-2">
+            <SystemPanel title="Recent System Activity" helper="Latest 5 audit log entries.">
+              {recentActivity.length === 0 ? (
+                <p className="py-8 text-center text-sm text-slate-500">No audit activity available.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-slate-50 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                        <th className="px-4 py-2.5 text-left">Timestamp</th>
+                        <th className="px-4 py-2.5 text-left">User</th>
+                        <th className="px-4 py-2.5 text-left">Role</th>
+                        <th className="px-4 py-2.5 text-left">Action</th>
+                        <th className="px-4 py-2.5 text-left">Module</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {recentActivity.map((log) => (
+                        <tr key={log.id} className="hover:bg-emerald-50/40">
+                          <td className="whitespace-nowrap px-4 py-3 text-[12px] text-slate-500">{log.timestamp ? new Date(log.timestamp).toLocaleString() : '-'}</td>
+                          <td className="px-4 py-3 text-[13px] font-semibold text-slate-900">{log.user_name || 'System'}</td>
+                          <td className="px-4 py-3 text-[12px] text-slate-500">{getRoleLabel(log.user_role)}</td>
+                          <td className="px-4 py-3 text-[12px] font-semibold text-slate-700">{log.action || '-'}</td>
+                          <td className="px-4 py-3 text-[12px] text-slate-500">{log.module || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </SystemPanel>
+          </div>
+
+          <SystemPanel title="User Distribution by Role" helper="Current account mix.">
+            <div className="space-y-4">
+              {roleDistribution.map((role) => (
+                <div key={role.key}>
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <span className="text-[13px] font-semibold text-slate-800">{role.label}</span>
+                    <span className="text-[12px] font-bold text-slate-500 tabular-nums">{role.count}</span>
+                  </div>
+                  <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
+                    <div className="h-full rounded-full bg-emerald-600" style={{ width: `${Math.max(4, (role.count / maxRoleCount) * 100)}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </SystemPanel>
+        </div>
+
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
+          <SystemPanel title="System Status" helper="Live checks where sources exist.">
+            <div className="space-y-3">
+              {statusRows.map((row) => (
+                <div key={row.label} className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    {row.label.includes('Database') ? <Database className="h-4 w-4 text-emerald-700" /> : row.label.includes('SMS') ? <MessageSquare className="h-4 w-4 text-emerald-700" /> : row.label.includes('Queue') ? <ServerCog className="h-4 w-4 text-slate-400" /> : <Activity className="h-4 w-4 text-emerald-700" />}
+                    <span className="text-[13px] font-semibold text-slate-700">{row.label}</span>
+                  </div>
+                  <span className={'rounded-full px-2 py-1 text-[11px] font-bold ' + (row.tone === 'success' ? 'bg-emerald-50 text-emerald-700' : row.tone === 'warning' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500')}>
+                    {row.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </SystemPanel>
+
+          <SystemPanel title="Security Overview" helper="Account and audit security signals.">
+            <div className="grid grid-cols-1 gap-3">
+              {securityRows.map((row) => (
+                <div key={row.label} className="rounded-2xl bg-slate-50 px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[13px] font-semibold text-slate-700">{row.label}</p>
+                    <p className="text-[18px] font-bold text-slate-950 tabular-nums">{row.value}</p>
+                  </div>
+                  <p className="mt-1 text-[11px] text-slate-500">{row.helper}</p>
+                </div>
+              ))}
+            </div>
+          </SystemPanel>
+
+          <SystemPanel title="Quick Actions" helper="Platform administration shortcuts.">
+            <div className="grid grid-cols-1 gap-3">
+              {[
+                { href: '/users', label: 'Review pending users', icon: UserCog },
+                { href: '/audit-logs', label: 'View audit logs', icon: ClipboardPlus },
+                { href: '/settings', label: 'Open system settings', icon: Settings2 },
+                { href: '/notifications', label: 'View system notifications', icon: Bell },
+              ].map((action) => {
+                const Icon = action.icon;
+                return (
+                  <a key={action.href} href={action.href} className="flex items-center justify-between rounded-2xl border border-slate-100 bg-white px-4 py-3 text-[13px] font-bold text-slate-700 shadow-sm transition-colors hover:bg-emerald-50 hover:text-emerald-800">
+                    <span className="flex items-center gap-3">
+                      <Icon className="h-4 w-4 text-emerald-700" />
+                      {action.label}
+                    </span>
+                    <ChevronRight className="h-4 w-4 text-slate-400" />
+                  </a>
+                );
+              })}
+            </div>
+          </SystemPanel>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Dashboard() {
+  const currentUser = getStoredUser();
+  const currentRole = normalizeRoleKey(currentUser?.role);
+  const isSystemAdminDashboard = currentRole === 'system_admin';
+  const isNurseDashboard = currentRole === 'nurse_vaccinator';
   const [stats, setStats] = useState({
     totalCases: 0,
     activeCases: 0,
@@ -881,11 +1118,47 @@ export function Dashboard() {
   const [lowStockItems, setLowStockItems] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [barangayFilter, setBarangayFilter] = useState<'top5' | 'all'>('top5');
+  const [systemUsers, setSystemUsers] = useState<any[]>([]);
+  const [systemAuditLogs, setSystemAuditLogs] = useState<any[]>([]);
+  const [systemAuditSummary, setSystemAuditSummary] = useState({ total: 0, today: 0, critical: 0 });
+  const [systemSettings, setSystemSettings] = useState<any[]>([]);
 
-  useEffect(() => { loadDashboardData(); }, []);
+  useEffect(() => { loadDashboardData(); }, [isSystemAdminDashboard]);
 
   const loadDashboardData = async () => {
     try {
+      setIsLoading(true);
+
+      if (isSystemAdminDashboard) {
+        const [usersResult, auditResult, settingsResult] = await Promise.all([
+          usersAPI.getAll(),
+          auditLogsAPI.getAll(),
+          settingsAPI.getAll().catch(() => ({ success: false, data: [] })),
+        ]);
+
+        if (usersResult.success) {
+          setSystemUsers(usersResult.data || []);
+        } else {
+          setSystemUsers([]);
+        }
+
+        if (auditResult.success) {
+          setSystemAuditLogs(auditResult.data || []);
+          setSystemAuditSummary(auditResult.summary || { total: 0, today: 0, critical: 0 });
+        } else {
+          setSystemAuditLogs([]);
+          setSystemAuditSummary({ total: 0, today: 0, critical: 0 });
+        }
+
+        if (settingsResult.success) {
+          setSystemSettings(settingsResult.data || []);
+        } else {
+          setSystemSettings([]);
+        }
+
+        return;
+      }
+
       const result = await dashboardAPI.getStats();
       if (result.success) {
         setStats(result.stats);
@@ -911,12 +1184,22 @@ export function Dashboard() {
   const complianceRate  = Math.round((vaccinationComplianceData[0].value / totalCompliance) * 100);
   const visibleBarangays = barangayFilter === 'top5' ? barangayCasesData.slice(0, 5) : barangayCasesData;
   const lastUpdated = new Date().toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-  const currentUser = getStoredUser();
-  const isNurseDashboard = normalizeRoleKey(currentUser?.role) === 'nurse_vaccinator';
   const canCreateIncident = canPerformAction(currentUser?.role, 'incidents.create');
 
   if (isLoading) {
     return <div className="flex-1 flex items-center justify-center"><LoadingSpinner /></div>;
+  }
+
+  if (isSystemAdminDashboard) {
+    return (
+      <SystemAdminDashboard
+        users={systemUsers}
+        auditLogs={systemAuditLogs}
+        auditSummary={systemAuditSummary}
+        settings={systemSettings}
+        lastUpdated={lastUpdated}
+      />
+    );
   }
 
   if (isNurseDashboard) {

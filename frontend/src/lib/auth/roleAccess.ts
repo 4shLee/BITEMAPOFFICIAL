@@ -49,6 +49,7 @@ export const ASSIGNABLE_ROLES = [
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
   system_admin: [
+    '/dashboard',
     '/users',
     '/settings',
     '/audit-logs',
