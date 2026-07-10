@@ -11,6 +11,8 @@ import { InventoryFormModal } from '../components/Inventory/InventoryFormModal';
 import { StockAdjustmentModal } from '../components/Inventory/StockAdjustmentModal';
 import { InventoryBatchModal } from '../components/Inventory/InventoryBatchModal';
 
+const INVENTORY_ITEMS_PER_PAGE = 10;
+
 export function Inventory() {
   const currentUser = getStoredUser();
   const canCreateInventory = canPerformAction(currentUser?.role, 'inventory.create');
@@ -24,6 +26,7 @@ export function Inventory() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [typeFilter, setTypeFilter] = useState('All');
+  const [currentPage, setCurrentPage] = useState(1);
   const [showFormModal, setShowFormModal] = useState(false);
   const [showAdjustModal, setShowAdjustModal] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
@@ -158,6 +161,17 @@ export function Inventory() {
       (typeFilter === 'All' || item.item_type === typeFilter)
     );
   });
+  const totalPages = Math.max(1, Math.ceil(filteredInventory.length / INVENTORY_ITEMS_PER_PAGE));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const pageStartIndex = (safeCurrentPage - 1) * INVENTORY_ITEMS_PER_PAGE;
+  const pageEndIndex = Math.min(pageStartIndex + INVENTORY_ITEMS_PER_PAGE, filteredInventory.length);
+  const paginatedInventory = filteredInventory.slice(pageStartIndex, pageEndIndex);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   return (
     <div className="min-h-screen flex-1 bg-background">
@@ -200,16 +214,33 @@ export function Inventory() {
                 <input
                   type="search"
                   value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
+                  onChange={(event) => {
+                    setSearchTerm(event.target.value);
+                    setCurrentPage(1);
+                  }}
                   placeholder="Search inventory"
                   className="h-10 w-full rounded-full border border-input bg-input-background pl-9 pr-3 text-sm shadow-sm focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/20 sm:w-56"
                 />
               </div>
-              <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} className="h-10 rounded-full border border-input bg-input-background px-3 text-sm shadow-sm focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/20">
+              <select
+                value={typeFilter}
+                onChange={(event) => {
+                  setTypeFilter(event.target.value);
+                  setCurrentPage(1);
+                }}
+                className="h-10 rounded-full border border-input bg-input-background px-3 text-sm shadow-sm focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/20"
+              >
                 <option value="All">All Types</option>
                 {itemTypes.map((type) => <option key={type} value={type}>{type}</option>)}
               </select>
-              <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="h-10 rounded-full border border-input bg-input-background px-3 text-sm shadow-sm focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/20">
+              <select
+                value={statusFilter}
+                onChange={(event) => {
+                  setStatusFilter(event.target.value);
+                  setCurrentPage(1);
+                }}
+                className="h-10 rounded-full border border-input bg-input-background px-3 text-sm shadow-sm focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/20"
+              >
                 <option value="All">All Status</option>
                 <option value="OK">OK</option>
                 <option value="Low Stock">Low Stock</option>
@@ -252,11 +283,11 @@ export function Inventory() {
                 ) : filteredInventory.length === 0 ? (
                   <tr>
                     <td colSpan={inventoryColumnCount} className="px-6 py-10 text-center text-sm text-muted-foreground">
-                      No inventory items found
+                      No inventory items found.
                     </td>
                   </tr>
                 ) : (
-                  filteredInventory.map((item) => {
+                  paginatedInventory.map((item) => {
                     const status = getStockStatus(item);
                     const nearestExpiry = item.nearest_expiry_date || item.expiry_date;
                     const daysUntilExpiry = getDaysUntilExpiry(nearestExpiry);
@@ -350,6 +381,41 @@ export function Inventory() {
                 )}
               </tbody>
             </table>
+          </div>
+
+          <div className="flex flex-col gap-3 border-t border-border px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+            {loading ? (
+              <p className="text-sm text-muted-foreground">Loading inventory...</p>
+            ) : filteredInventory.length > 0 ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Showing {pageStartIndex + 1}-{pageEndIndex} of {filteredInventory.length} item{filteredInventory.length !== 1 ? 's' : ''}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                    disabled={safeCurrentPage === 1}
+                  >
+                    Previous
+                  </Button>
+                  <span className="rounded-full border border-border bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
+                    Page {safeCurrentPage} of {totalPages}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                    disabled={safeCurrentPage === totalPages}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </>
+            ) : null}
           </div>
         </div>
       </div>
