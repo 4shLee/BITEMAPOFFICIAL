@@ -301,19 +301,22 @@ export const reportsAPI = {
 
 // ============ AUDIT LOGS API ============
 export const auditLogsAPI = {
-  async getAll(filters: Record<string, string> = {}) {
+  async getAll(filters: Record<string, string | number> = {}) {
     const query = new URLSearchParams();
 
     Object.entries(filters).forEach(([key, value]) => {
-      if (value && value !== 'All') query.set(key, value);
+      if (value && value !== 'All') query.set(key, String(value));
     });
 
     const suffix = query.toString() ? '?' + query.toString() : '';
     return apiRequest('/audit-logs' + suffix);
   },
 
-  async download(filters: Record<string, string> = {}, format: 'PDF' | 'Excel' = 'PDF') {
-    const query = new URLSearchParams({ ...filters, format });
+  async download(filters: Record<string, string | number> = {}, format: 'PDF' | 'Excel' = 'PDF') {
+    const query = new URLSearchParams();
+    Object.entries({ ...filters, format }).forEach(([key, value]) => {
+      if (value && value !== 'All') query.set(key, String(value));
+    });
     const headers: HeadersInit = {
       'Accept': format === 'Excel' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf',
     };

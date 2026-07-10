@@ -766,17 +766,32 @@ class BitemapApiController extends Controller
     {
         $filters = $this->auditLogFilters($request);
         $query = $this->auditLogQuery($filters);
-        $logs = $query->latest('id')->limit(500)->get();
+        $total = (clone $query)->count();
+        $todayCount = (clone $query)->whereDate('created_at', today())->count();
+        $hasActionType = Schema::hasColumn('audit_logs', 'action_type');
+        $criticalQuery = clone $query;
+        $criticalCount = $hasActionType
+            ? $criticalQuery->whereIn('action_type', ['Delete record', 'Approve user', 'Reject user', 'Update role'])->count()
+            : $criticalQuery->whereIn('action', ['Delete record', 'Approve user', 'Reject user', 'Update role'])->count();
+        $paginator = (clone $query)
+            ->latest('id')
+            ->paginate($filters['per_page'], ['*'], 'page', $filters['page']);
 
         return response()->json([
             'success' => true,
-            'data' => $logs->map(fn (AuditLog $log) => $this->auditLogPayload($log))->values(),
+            'data' => collect($paginator->items())->map(fn (AuditLog $log) => $this->auditLogPayload($log))->values(),
+            'pagination' => [
+                'current_page' => $paginator->currentPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+                'last_page' => $paginator->lastPage(),
+                'from' => $paginator->firstItem(),
+                'to' => $paginator->lastItem(),
+            ],
             'summary' => [
-                'total' => $logs->count(),
-                'today' => AuditLog::whereDate('created_at', today())->count(),
-                'critical' => Schema::hasColumn('audit_logs', 'action_type')
-                    ? AuditLog::whereIn('action_type', ['Delete record', 'Approve user', 'Reject user', 'Update role'])->count()
-                    : AuditLog::whereIn('action', ['Delete record', 'Approve user', 'Reject user', 'Update role'])->count(),
+                'total' => $total,
+                'today' => $todayCount,
+                'critical' => $criticalCount,
             ],
         ]);
     }
@@ -785,7 +800,7 @@ class BitemapApiController extends Controller
     {
         $filters = $this->auditLogFilters($request);
         $format = $filters['format'];
-        $logs = $this->auditLogQuery($filters)->latest('id')->limit(2000)->get();
+        $logs = $this->auditLogQuery($filters)->latest('id')->get();
         $report = $this->auditLogReport($logs, $filters);
         $config = [
             'date_from' => $filters['date_from'],
@@ -2187,6 +2202,8 @@ class BitemapApiController extends Controller
             'module' => ['nullable', 'string', 'max:100'],
             'action' => ['nullable', 'string', 'max:100'],
             'format' => ['nullable', Rule::in(['PDF', 'Excel'])],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', Rule::in([10, 15, 25, 50])],
         ]);
 
         return [
@@ -2198,6 +2215,8 @@ class BitemapApiController extends Controller
             'module' => $data['module'] ?? 'All',
             'action' => $data['action'] ?? 'All',
             'format' => $data['format'] ?? 'PDF',
+            'page' => $data['page'] ?? 1,
+            'per_page' => $data['per_page'] ?? 10,
         ];
     }
 
@@ -2277,7 +2296,7 @@ class BitemapApiController extends Controller
 
         return [
             'id' => $log->id,
-            'timestamp' => optional($log->created_at)->format('Y-m-d H:i:s'),
+            'timestamp' => optional($log->created_at)->timezone('Asia/Manila')->format('Y-m-d H:i:s'),
             'user_id' => $log->user_id,
             'user_name' => $log->user_name ?: ($user?->name ?? 'System'),
             'user_role' => $log->user_role ?: ($user?->role ?? 'System'),

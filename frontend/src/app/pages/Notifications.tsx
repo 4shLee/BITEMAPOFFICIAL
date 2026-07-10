@@ -649,7 +649,7 @@ export function Notifications() {
       setError(null);
 
       if (isSystemAdmin) {
-        const auditResponse = await auditLogsAPI.getAll();
+        const auditResponse = await auditLogsAPI.getAll({ per_page: 50 });
         setSystemNotifications(buildSystemNotifications(auditResponse.data || []));
         setNotifications([]);
         setUpcomingReminders([]);
