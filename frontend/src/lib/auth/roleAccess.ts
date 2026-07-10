@@ -66,6 +66,7 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     '/reports',
     '/notifications',
     '/users',
+    '/settings',
   ],
   doctor: [
     '/dashboard',
@@ -104,7 +105,7 @@ const ACTION_PERMISSIONS: Record<PermissionAction, string[]> = {
   'notifications.send': ['clinic_admin', 'nurse_vaccinator'],
   'reports.view': ['clinic_admin', 'doctor'],
   'audit_logs.view': ['system_admin'],
-  'settings.configure': ['system_admin'],
+  'settings.configure': ['system_admin', 'clinic_admin'],
   'users.manage': ['system_admin', 'clinic_admin'],
   'users.assign_roles': ['system_admin', 'clinic_admin'],
   'users.activate_deactivate': ['system_admin', 'clinic_admin'],

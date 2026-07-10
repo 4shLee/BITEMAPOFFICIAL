@@ -62,8 +62,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/users/{user}/approve', [BitemapApiController::class, 'approveUser'])->middleware('role:system_admin,clinic_admin');
     Route::put('/users/{user}/reject', [BitemapApiController::class, 'rejectUser'])->middleware('role:system_admin,clinic_admin');
 
-    Route::get('/settings', [BitemapApiController::class, 'settings'])->middleware('role:system_admin');
-    Route::put('/settings/{key}', [BitemapApiController::class, 'updateSetting'])->middleware('role:system_admin');
+    Route::get('/settings', [BitemapApiController::class, 'settings'])->middleware('role:system_admin,clinic_admin');
+    Route::post('/settings/sms-credentials', [BitemapApiController::class, 'updateSmsCredentials'])->middleware('role:system_admin');
+    Route::post('/settings/test-sms', [BitemapApiController::class, 'testSms'])->middleware('role:system_admin');
+    Route::put('/settings/{key}', [BitemapApiController::class, 'updateSetting'])->middleware('role:system_admin,clinic_admin');
 
     Route::get('/notifications', [BitemapApiController::class, 'notifications'])
         ->middleware('role:clinic_admin,nurse_vaccinator');

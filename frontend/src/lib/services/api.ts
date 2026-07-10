@@ -349,6 +349,20 @@ export const settingsAPI = {
       method: 'PUT',
       body: JSON.stringify({ value }),
     });
+  },
+
+  async updateSmsCredentials(credentials: { account_sid: string; auth_token: string; from_number: string }) {
+    return apiRequest('/settings/sms-credentials', {
+      method: 'POST',
+      body: JSON.stringify(credentials),
+    });
+  },
+
+  async testSms(payload: { phone: string; message: string }) {
+    return apiRequest('/settings/test-sms', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   }
 };
 

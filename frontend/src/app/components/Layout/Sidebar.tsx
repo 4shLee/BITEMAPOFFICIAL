@@ -70,9 +70,15 @@ export function Sidebar() {
   const visibleMainNav = mainNav.filter((item) => canAccessPath(currentUser?.role, item.path));
   const visibleSystemNav = systemNav
     .filter((item) => canAccessPath(currentUser?.role, item.path))
-    .map((item) => (item.path === '/notifications' && isSystemAdminRole(currentUser?.role)
-      ? { ...item, label: 'System Notifications' }
-      : item));
+    .map((item) => {
+      if (item.path === '/notifications' && isSystemAdminRole(currentUser?.role)) {
+        return { ...item, label: 'System Notifications' };
+      }
+      if (item.path === '/settings' && !isSystemAdminRole(currentUser?.role)) {
+        return { ...item, label: 'Clinic Settings' };
+      }
+      return item;
+    });
 
   const handleLogout = () => {
     localStorage.removeItem('bitemap_access_token');

@@ -25,7 +25,7 @@ export function Header({ title, breadcrumbs = [] }: HeaderProps) {
   const isIncidentFormPage = location.pathname === '/incidents/new' || /^\/incidents\/[^/]+\/edit$/.test(location.pathname);
   const canAccessNotifications = canAccessPath(currentUser?.role, '/notifications');
   const canViewScheduleAlerts = canAccessNotifications && !isSystemAdminRole(currentUser?.role);
-  const pagesWithModuleSearch = ['/incidents', '/patients', '/pep-schedule', '/inventory', '/notifications', '/users', '/audit-logs'];
+  const pagesWithModuleSearch = ['/incidents', '/patients', '/pep-schedule', '/inventory', '/notifications', '/users', '/audit-logs', '/settings'];
   const showGlobalSearch = !pagesWithModuleSearch.includes(location.pathname);
   const [todaySchedules, setTodaySchedules] = useState<TodayScheduleAlert[]>([]);
   const [isAlertOpen, setIsAlertOpen] = useState(false);

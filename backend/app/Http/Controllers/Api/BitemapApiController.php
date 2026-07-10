@@ -681,23 +681,88 @@ class BitemapApiController extends Controller
 
     public function settings(): JsonResponse
     {
+        $keys = $this->allowedSettingKeysForRole(request()->user()?->role);
+
         return response()->json([
             'success' => true,
-            'data' => Setting::orderBy('setting_key')->get(),
+            'data' => Setting::whereIn('setting_key', $keys)->orderBy('setting_key')->get(),
+            'meta' => [
+                'sms_credentials_configured' => $this->smsCredentialsConfigured(),
+            ],
         ]);
     }
 
     public function updateSetting(Request $request, string $key): JsonResponse
     {
+        abort_unless(in_array($key, $this->allowedSettingKeysForRole($request->user()?->role), true), 403, 'This setting is not available for your role.');
+
         $data = $request->validate(['value' => ['required']]);
         $setting = Setting::updateOrCreate(
             ['setting_key' => $key],
-            ['setting_value' => (string) $data['value']]
+            [
+                'setting_value' => (string) $data['value'],
+                'updated_by' => $request->user()?->id,
+            ]
         );
 
         $this->writeAudit($request, 'Edit record', 'Settings', $setting->id, 'Updated setting '.$key.'.');
 
         return response()->json(['success' => true, 'data' => $setting]);
+    }
+
+    public function updateSmsCredentials(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'account_sid' => ['required', 'string', 'max:255'],
+            'auth_token' => ['required', 'string', 'max:255'],
+            'from_number' => ['required', 'string', 'max:30'],
+        ]);
+
+        foreach ([
+            'twilio_account_sid' => $data['account_sid'],
+            'twilio_auth_token' => $data['auth_token'],
+            'twilio_from_number' => $data['from_number'],
+        ] as $key => $value) {
+            Setting::updateOrCreate(
+                ['setting_key' => $key],
+                [
+                    'setting_value' => $value,
+                    'updated_by' => $request->user()?->id,
+                ]
+            );
+        }
+
+        $this->writeAudit($request, 'Edit record', 'Settings', null, 'Updated SMS service credentials.');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'SMS credentials updated.',
+            'meta' => [
+                'sms_credentials_configured' => $this->smsCredentialsConfigured(),
+            ],
+        ]);
+    }
+
+    public function testSms(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'phone' => ['required', 'regex:/^(09|\+639)\d{9}$/'],
+            'message' => ['required', 'string', 'max:320'],
+        ]);
+
+        $phone = str_starts_with($data['phone'], '09') ? '+63'.substr($data['phone'], 1) : $data['phone'];
+        [$status, $deliveryResponse] = $this->sendSmsThroughGateway($phone, $data['message']);
+
+        $this->writeAudit($request, 'Send SMS', 'Settings', null, 'Sent test SMS to '.$phone.' marked as '.$status.'.');
+
+        return response()->json([
+            'success' => $status !== 'Failed',
+            'message' => 'Test SMS '.$status.'.',
+            'data' => [
+                'status' => $status,
+                'delivery_response' => $deliveryResponse,
+            ],
+        ], $status === 'Failed' ? 422 : 200);
     }
 
     public function todayScheduleAlerts(): JsonResponse
@@ -2190,6 +2255,54 @@ class BitemapApiController extends Controller
         ]);
     }
 
+    private function allowedSettingKeysForRole(?string $role): array
+    {
+        return match ($role) {
+            'system_admin' => [
+                'sms_provider',
+                'sms_sender_id',
+                'retry_failed_sms_enabled',
+                'max_sms_retry_attempts',
+                'strong_passwords_required',
+                'session_timeout_minutes',
+                'max_failed_login_attempts',
+                'account_lock_minutes',
+                'force_password_change_approved_users',
+                'security_alerts_enabled',
+                'sms_service_failure_alerts_enabled',
+                'queue_failure_alerts_enabled',
+                'system_failure_alerts_enabled',
+            ],
+            'clinic_admin' => [
+                'clinic_name',
+                'contact_email',
+                'contact_number',
+                'clinic_address',
+                'system_timezone',
+                'system_language',
+                'sms_reminders_enabled',
+                'reminder_days_before',
+                'low_stock_alert_enabled',
+                'expiring_batch_alert_enabled',
+            ],
+            default => [],
+        };
+    }
+
+    private function smsCredentialsConfigured(): bool
+    {
+        return ! blank($this->settingValue('twilio_account_sid', config('services.twilio.sid')))
+            && ! blank($this->settingValue('twilio_auth_token', config('services.twilio.token')))
+            && ! blank($this->settingValue('twilio_from_number', config('services.twilio.from')));
+    }
+
+    private function settingValue(string $key, mixed $fallback = null): mixed
+    {
+        $value = Setting::where('setting_key', $key)->value('setting_value');
+
+        return blank($value) ? $fallback : $value;
+    }
+
 
     private function auditLogFilters(Request $request): array
     {
@@ -2380,9 +2493,9 @@ class BitemapApiController extends Controller
 
     private function sendSmsThroughGateway(string $recipient, string $message): array
     {
-        $sid = config('services.twilio.sid');
-        $token = config('services.twilio.token');
-        $from = config('services.twilio.from');
+        $sid = $this->settingValue('twilio_account_sid', config('services.twilio.sid'));
+        $token = $this->settingValue('twilio_auth_token', config('services.twilio.token'));
+        $from = $this->settingValue('twilio_from_number', config('services.twilio.from'));
 
         if (blank($sid) || blank($token) || blank($from)) {
             return ['Pending', 'Twilio is not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_FROM_NUMBER.'];
