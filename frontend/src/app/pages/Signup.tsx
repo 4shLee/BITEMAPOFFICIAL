@@ -6,13 +6,14 @@ import { authAPI } from '../../lib/services/api';
 import { ASSIGNABLE_ROLES } from '../../lib/auth/roleAccess';
 
 const REQUESTABLE_ROLES = ASSIGNABLE_ROLES;
+const CLINIC_REQUESTABLE_ROLES = REQUESTABLE_ROLES.filter((role) => role.value !== 'system_admin');
 
 export function Signup() {
   const [form, setForm] = useState({
     fullName: '',
     email: '',
     phone: '',
-    role: 'nurse_vaccinator',
+    role: '',
     password: '',
     confirmPassword: '',
   });
@@ -163,9 +164,11 @@ export function Signup() {
                       <select
                         value={form.role}
                         onChange={(e) => setForm({ ...form, role: e.target.value })}
+                        required
                         className="w-full px-3.5 py-2.5 text-sm bg-input-background border border-input rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
                       >
-                        {REQUESTABLE_ROLES.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
+                        <option value="" disabled>Select requested role</option>
+                        {CLINIC_REQUESTABLE_ROLES.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
                       </select>
                     </div>
 

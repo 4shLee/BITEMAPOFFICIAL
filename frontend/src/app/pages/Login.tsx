@@ -1,21 +1,98 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router";
-import { Eye, EyeOff, Globe2, Lock, ArrowRight, Mail, ShieldAlert, Zap, UserPlus, X, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ChevronDown, Eye, EyeOff, Globe2, Lock, Mail, ShieldAlert, ShieldCheck, Zap, UserPlus } from "lucide-react";
 import { authAPI } from "../../lib/services/api";
 import { ASSIGNABLE_ROLES, getDefaultPathForRole, getStoredUser, hasAuthSession } from "../../lib/auth/roleAccess";
 import { toast } from "sonner";
 
 const DEMO_MODE = false;
-const REQUESTABLE_ROLES = ASSIGNABLE_ROLES;
+const REQUESTABLE_ROLES = ASSIGNABLE_ROLES.filter((role) => role.value !== 'system_admin');
 
 const initialRequestForm = {
   fullName: "",
   email: "",
   phone: "",
-  role: "nurse_vaccinator",
+  role: "",
   password: "",
   confirmPassword: "",
 };
+
+function RequestedRoleDropdown({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const selectedRole = REQUESTABLE_ROLES.find((role) => role.value === value);
+
+  useEffect(() => {
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!dropdownRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
+
+  return (
+    <div ref={dropdownRef} className="relative">
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
+        className={'flex w-full items-center justify-between rounded-xl border px-3.5 py-2.5 text-left text-sm shadow-sm shadow-slate-900/5 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20 ' + (open ? 'border-teal-600 bg-white ring-2 ring-teal-500/20' : 'border-slate-200 bg-slate-50/70')}
+      >
+        <span className={selectedRole ? 'font-medium text-slate-900' : 'text-slate-400'}>
+          {selectedRole?.label || 'Select requested role'}
+        </span>
+        <ChevronDown className={'h-4 w-4 text-slate-400 transition-transform ' + (open ? 'rotate-180 text-teal-700' : '')} />
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          className="absolute left-0 right-0 top-[calc(100%+6px)] z-30 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl shadow-teal-950/12"
+        >
+          {REQUESTABLE_ROLES.map((role) => {
+            const selected = role.value === value;
+
+            return (
+              <button
+                key={role.value}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                onClick={() => {
+                  onChange(role.value);
+                  setOpen(false);
+                }}
+                className={'flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-semibold transition-colors ' + (selected ? 'bg-teal-50 text-teal-800' : 'text-slate-700 hover:bg-emerald-50 hover:text-teal-800')}
+              >
+                {role.label}
+                {selected && <Check className="h-4 w-4" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function Login() {
   const navigate = useNavigate();
@@ -57,6 +134,11 @@ export function Login() {
   const handleRequestSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
 
+    if (!requestForm.role) {
+      toast.error("Please select a requested role.");
+      return;
+    }
+
     if (requestForm.password.length < 8) {
       toast.error("Password must be at least 8 characters.");
       return;
@@ -93,6 +175,7 @@ export function Login() {
     setShowRequestModal(false);
     setRequestSubmitted(false);
     setShowRequestPassword(false);
+    setRequestForm(initialRequestForm);
   };
 
   const handleDemoAccess = () => {
@@ -198,212 +281,79 @@ export function Login() {
             </p>
           </div>
 
-          <div className="mb-4 text-center">
-            <div className="mx-auto mb-2 h-1 w-11 rounded-full bg-teal-200" />
-            <h2 className="text-[23px] font-extrabold leading-tight text-slate-900 sm:text-[25px]">Sign In</h2>
-            <p className="mt-1 text-[13px] font-semibold text-slate-500">Authorized Staff Login</p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <div>
-              <label htmlFor="username" className="sr-only">
-                Email
-              </label>
-              <div className="relative">
-                <div className="absolute left-0 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-teal-50 text-teal-700">
-                  <Mail className="h-4 w-4" />
-                </div>
-                <input
-                  id="username"
-                  type="text"
-                  autoComplete="username"
-                  placeholder="Email address"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  required
-                  className="h-11 w-full rounded-full border border-slate-200 bg-white/90 pl-14 pr-5 text-[14px] font-medium text-slate-900 shadow-sm shadow-slate-900/5 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
-                />
+          {requestSubmitted ? (
+            <div className="text-center">
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-50 text-teal-700">
+                <ShieldCheck className="h-7 w-7" />
               </div>
-            </div>
-
-            <div>
-              <label htmlFor="password" className="sr-only">
-                Password
-              </label>
-              <div className="relative">
-                <div className="absolute left-0 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-teal-50 text-teal-700">
-                  <Lock className="h-4 w-4" />
-                </div>
-                <input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="current-password"
-                  placeholder="Password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="h-11 w-full rounded-full border border-slate-200 bg-white/90 pl-14 pr-12 text-[14px] font-medium text-slate-900 shadow-sm shadow-slate-900/5 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
-                />
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  onClick={() => setShowPassword((value) => !value)}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                  className="absolute inset-y-0 right-5 flex items-center text-slate-500 transition-colors hover:text-slate-800"
-                >
-                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                </button>
-              </div>
-            </div>
-
-            {DEMO_MODE && (
-              <div className="mt-1 rounded-xl border border-primary/25 bg-primary-bg px-4 py-3">
-                <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold text-primary">
-                  <Zap className="w-3 h-3" /> Demo Mode - No credentials required
-                </p>
-                <button
-                  type="button"
-                  onClick={handleDemoAccess}
-                  className="w-full rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-1"
-                >
-                  Enter Demo Dashboard
-                </button>
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="relative h-12 w-full rounded-full border border-transparent bg-gradient-to-r from-teal-800 to-teal-600 text-[15px] font-extrabold text-white shadow-lg shadow-teal-900/20 transition-colors hover:from-teal-900 hover:to-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500/35 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isLoading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <span className="w-4 h-4 border-2 border-white/35 border-t-white rounded-full animate-spin" />
-                  Signing in...
-                </span>
-              ) : (
-                <>
-                  Sign In
-                  <ArrowRight className="absolute right-5 top-1/2 h-5 w-5 -translate-y-1/2" />
-                </>
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowRequestModal(true)}
-              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border border-teal-700/55 bg-white px-4 text-[14px] font-extrabold text-teal-800 transition-colors hover:border-teal-700 hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-teal-500/25 focus:ring-offset-2"
-            >
-              <UserPlus className="h-5 w-5" />
-              Request Account Approval
-            </button>
-          </form>
-
-          <div className="mt-4 flex items-center justify-center gap-2.5 rounded-2xl border border-rose-200/80 bg-rose-50/80 px-4 py-2.5">
-            <ShieldAlert className="h-4 w-4 shrink-0 text-rose-600" />
-            <p className="text-center text-[13px] font-semibold leading-snug text-rose-700">
-              Access is restricted to authorized clinic personnel only.
-            </p>
-          </div>
-
-          <p className="mx-auto mt-2 text-center text-[13px] font-medium leading-snug text-slate-500">
-            Access depends on your assigned role.
-          </p>
-        </section>
-      </main>
-
-      {showRequestModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl border border-border bg-card shadow-xl">
-            <div className="flex items-center justify-between border-b border-border px-6 py-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-bg text-primary">
-                  <UserPlus className="w-5 h-5" />
-                </div>
-                <div>
-                  <h2 className="text-base font-semibold text-foreground">Request Account Approval</h2>
-                  <p className="text-xs text-muted-foreground">For ABC staff account registration</p>
-                </div>
-              </div>
+              <h2 className="text-[23px] font-extrabold leading-tight text-slate-900 sm:text-[25px]">Request Submitted</h2>
+              <p className="mx-auto mt-2 max-w-[360px] text-sm leading-relaxed text-slate-500">
+                Your account request is now pending administrator approval. You can sign in after the administrator approves it.
+              </p>
               <button
                 type="button"
                 onClick={closeRequestModal}
-                className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                aria-label="Close account request form"
+                className="mt-6 inline-flex h-11 w-full items-center justify-center rounded-full bg-teal-700 px-4 text-sm font-bold text-white transition-colors hover:bg-teal-800"
               >
-                <X className="w-4 h-4" />
+                Back to Sign In
               </button>
             </div>
-
-            {requestSubmitted ? (
-              <div className="px-8 py-10 text-center">
-                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-success-bg text-success">
-                  <ShieldCheck className="w-7 h-7" />
-                </div>
-                <h3 className="mb-2 text-lg font-semibold text-foreground">Request Submitted</h3>
-                <p className="mb-6 text-sm leading-relaxed text-muted-foreground">
-                  Your account request is now pending System Administrator approval. You can sign in after the administrator approves it.
-                </p>
-                <button
-                  type="button"
-                  onClick={closeRequestModal}
-                  className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary-dark transition-colors"
-                >
-                  Return to Login
-                </button>
+          ) : showRequestModal ? (
+            <>
+              <div className="mb-4 text-center">
+                <div className="mx-auto mb-2 h-1 w-11 rounded-full bg-teal-200" />
+                <h2 className="text-[23px] font-extrabold leading-tight text-slate-900 sm:text-[25px]">Request Account Approval</h2>
+                <p className="mt-1 text-[13px] font-semibold text-slate-500">For authorized clinic personnel</p>
               </div>
-            ) : (
-              <form onSubmit={handleRequestSubmit} className="space-y-4 px-6 py-5">
+
+              <form onSubmit={handleRequestSubmit} className="space-y-3">
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">Full Name</label>
+                  <label className="mb-1.5 block text-sm font-semibold text-slate-800">Full Name</label>
                   <input
                     type="text"
                     value={requestForm.fullName}
                     onChange={(e) => setRequestForm({ ...requestForm, fullName: e.target.value })}
                     required
                     placeholder="Enter your full name"
-                    className="w-full rounded-lg border border-input bg-input-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    className="w-full rounded-xl border border-slate-200 bg-white/90 px-3.5 py-2.5 text-sm text-slate-900 shadow-sm shadow-slate-900/5 placeholder:text-slate-400 focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                   />
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-1.5">Email</label>
+                    <label className="mb-1.5 block text-sm font-semibold text-slate-800">Email</label>
                     <input
                       type="email"
                       value={requestForm.email}
                       onChange={(e) => setRequestForm({ ...requestForm, email: e.target.value })}
                       required
-                      placeholder="you@bitemap.local"
-                      className="w-full rounded-lg border border-input bg-input-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      placeholder="Enter email address"
+                      className="w-full rounded-xl border border-slate-200 bg-white/90 px-3.5 py-2.5 text-sm text-slate-900 shadow-sm shadow-slate-900/5 placeholder:text-slate-400 focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-1.5">Phone</label>
+                    <label className="mb-1.5 block text-sm font-semibold text-slate-800">Phone</label>
                     <input
                       type="tel"
                       value={requestForm.phone}
                       onChange={(e) => setRequestForm({ ...requestForm, phone: e.target.value })}
-                      placeholder="09xx xxx xxxx"
-                      className="w-full rounded-lg border border-input bg-input-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      placeholder="09XXXXXXXXX"
+                      className="w-full rounded-xl border border-slate-200 bg-white/90 px-3.5 py-2.5 text-sm text-slate-900 shadow-sm shadow-slate-900/5 placeholder:text-slate-400 focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">Requested Role</label>
-                  <select
+                  <label className="mb-1.5 block text-sm font-semibold text-slate-800">Requested Role</label>
+                  <RequestedRoleDropdown
                     value={requestForm.role}
-                    onChange={(e) => setRequestForm({ ...requestForm, role: e.target.value })}
-                    className="w-full rounded-lg border border-input bg-input-background px-3.5 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  >
-                    {REQUESTABLE_ROLES.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
-                  </select>
+                    onChange={(role) => setRequestForm({ ...requestForm, role })}
+                  />
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-1.5">Password</label>
+                    <label className="mb-1.5 block text-sm font-semibold text-slate-800">Password</label>
                     <div className="relative">
                       <input
                         type={showRequestPassword ? "text" : "password"}
@@ -412,20 +362,20 @@ export function Login() {
                         required
                         minLength={8}
                         placeholder="At least 8 characters"
-                        className="w-full rounded-lg border border-input bg-input-background px-3.5 py-2.5 pr-10 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        className="w-full rounded-xl border border-slate-200 bg-white/90 px-3.5 py-2.5 pr-10 text-sm text-slate-900 shadow-sm shadow-slate-900/5 placeholder:text-slate-400 focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                       />
                       <button
                         type="button"
                         onClick={() => setShowRequestPassword((value) => !value)}
-                        className="absolute inset-y-0 right-3 flex items-center text-muted-foreground hover:text-foreground transition-colors"
+                        className="absolute inset-y-0 right-3 flex items-center text-slate-400 transition-colors hover:text-teal-800"
                         aria-label={showRequestPassword ? "Hide password" : "Show password"}
                       >
-                        {showRequestPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        {showRequestPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-1.5">Confirm Password</label>
+                    <label className="mb-1.5 block text-sm font-semibold text-slate-800">Confirm Password</label>
                     <input
                       type={showRequestPassword ? "text" : "password"}
                       value={requestForm.confirmPassword}
@@ -433,38 +383,153 @@ export function Login() {
                       required
                       minLength={8}
                       placeholder="Repeat password"
-                      className="w-full rounded-lg border border-input bg-input-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      className="w-full rounded-xl border border-slate-200 bg-white/90 px-3.5 py-2.5 text-sm text-slate-900 shadow-sm shadow-slate-900/5 placeholder:text-slate-400 focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                     />
                   </div>
                 </div>
 
-                <div className="rounded-lg border border-warning/25 bg-warning-bg px-4 py-3">
-                  <p className="text-xs leading-relaxed text-warning">
-                    Account access remains blocked until a System Administrator approves this request.
+                <div className="rounded-xl border border-amber-200/80 bg-amber-50 px-4 py-2.5">
+                  <p className="text-xs leading-relaxed text-amber-700">
+                    Account access remains blocked until an administrator approves this request.
                   </p>
                 </div>
 
-                <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <button
                     type="button"
                     onClick={closeRequestModal}
-                    className="rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-teal-700/35 bg-white px-4 text-sm font-bold text-teal-800 transition-colors hover:bg-teal-50"
                   >
-                    Cancel
+                    <ArrowLeft className="h-4 w-4" />
+                    Back to Sign In
                   </button>
                   <button
                     type="submit"
                     disabled={isRequestSubmitting}
-                    className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
+                    className="inline-flex h-11 items-center justify-center rounded-full bg-teal-700 px-4 text-sm font-bold text-white transition-colors hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {isRequestSubmitting ? "Submitting..." : "Submit Account Request"}
+                    {isRequestSubmitting ? "Submitting..." : "Submit Request"}
                   </button>
                 </div>
               </form>
-            )}
-          </div>
-        </div>
-      )}
+            </>
+          ) : (
+            <>
+              <div className="mb-4 text-center">
+                <div className="mx-auto mb-2 h-1 w-11 rounded-full bg-teal-200" />
+                <h2 className="text-[23px] font-extrabold leading-tight text-slate-900 sm:text-[25px]">Sign In</h2>
+                <p className="mt-1 text-[13px] font-semibold text-slate-500">Authorized Staff Login</p>
+              </div>
+
+              <form onSubmit={handleSubmit} className="space-y-3">
+                <div>
+                  <label htmlFor="username" className="sr-only">
+                    Email
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-0 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-teal-50 text-teal-700">
+                      <Mail className="h-4 w-4" />
+                    </div>
+                    <input
+                      id="username"
+                      type="text"
+                      autoComplete="username"
+                      placeholder="Email address"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      required
+                      className="h-11 w-full rounded-full border border-slate-200 bg-white/90 pl-14 pr-5 text-[14px] font-medium text-slate-900 shadow-sm shadow-slate-900/5 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="password" className="sr-only">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-0 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-teal-50 text-teal-700">
+                      <Lock className="h-4 w-4" />
+                    </div>
+                    <input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      autoComplete="current-password"
+                      placeholder="Password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      className="h-11 w-full rounded-full border border-slate-200 bg-white/90 pl-14 pr-12 text-[14px] font-medium text-slate-900 shadow-sm shadow-slate-900/5 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                    />
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      onClick={() => setShowPassword((value) => !value)}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      className="absolute inset-y-0 right-5 flex items-center text-slate-500 transition-colors hover:text-slate-800"
+                    >
+                      {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
+                  </div>
+                </div>
+
+                {DEMO_MODE && (
+                  <div className="mt-1 rounded-xl border border-primary/25 bg-primary-bg px-4 py-3">
+                    <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold text-primary">
+                      <Zap className="w-3 h-3" /> Demo Mode - No credentials required
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleDemoAccess}
+                      className="w-full rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-1"
+                    >
+                      Enter Demo Dashboard
+                    </button>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="relative h-12 w-full rounded-full border border-transparent bg-gradient-to-r from-teal-800 to-teal-600 text-[15px] font-extrabold text-white shadow-lg shadow-teal-900/20 transition-colors hover:from-teal-900 hover:to-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500/35 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isLoading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/35 border-t-white" />
+                      Signing in...
+                    </span>
+                  ) : (
+                    <>
+                      Sign In
+                      <ArrowRight className="absolute right-5 top-1/2 h-5 w-5 -translate-y-1/2" />
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowRequestModal(true)}
+                  className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border border-teal-700/55 bg-white px-4 text-[14px] font-extrabold text-teal-800 transition-colors hover:border-teal-700 hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-teal-500/25 focus:ring-offset-2"
+                >
+                  <UserPlus className="h-5 w-5" />
+                  Request Account Approval
+                </button>
+              </form>
+
+              <div className="mt-4 flex items-center justify-center gap-2.5 rounded-2xl border border-rose-200/80 bg-rose-50/80 px-4 py-2.5">
+                <ShieldAlert className="h-4 w-4 shrink-0 text-rose-600" />
+                <p className="text-center text-[13px] font-semibold leading-snug text-rose-700">
+                  Access is restricted to authorized clinic personnel only.
+                </p>
+              </div>
+
+              <p className="mx-auto mt-2 text-center text-[13px] font-medium leading-snug text-slate-500">
+                Access depends on your assigned role.
+              </p>
+            </>
+          )}
+        </section>
+      </main>
 
       <footer className="relative z-10 border-t border-transparent bg-transparent">
         <div className="max-w-7xl mx-auto px-6 py-2.5">

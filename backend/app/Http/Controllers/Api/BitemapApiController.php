@@ -36,6 +36,7 @@ class BitemapApiController extends Controller
     ];
 
     private const USER_ROLE_OPTIONS = ['system_admin', 'clinic_admin', 'Clinic Admin', 'doctor', 'Doctor', 'Health Officer', 'nurse_vaccinator', 'Nurse/Vaccinator', 'Nurse', 'Vaccinator', 'nurse', 'vaccinator'];
+    private const PUBLIC_SIGNUP_ROLE_OPTIONS = ['clinic_admin', 'Clinic Admin', 'doctor', 'Doctor', 'Health Officer', 'nurse_vaccinator', 'Nurse/Vaccinator', 'Nurse', 'Vaccinator', 'nurse', 'vaccinator'];
 
     private const DIGOS_BARANGAY_COORDINATES = [
         'Aplaya' => ['lat' => 6.7600, 'lng' => 125.3425],
@@ -129,7 +130,7 @@ class BitemapApiController extends Controller
             'email' => ['required', 'email', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8'],
             'fullName' => ['required', 'string', 'max:255'],
-            'role' => ['required', Rule::in(self::USER_ROLE_OPTIONS)],
+            'role' => ['required', Rule::in(self::PUBLIC_SIGNUP_ROLE_OPTIONS)],
             'phone' => ['nullable', 'string', 'max:30'],
         ]);
 
