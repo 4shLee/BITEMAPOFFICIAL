@@ -1240,3 +1240,44 @@ The Incident Management module is now more consistent, clinic-friendly, and alig
 - Builds passed successfully.
 - Existing Vite large chunk warning remains.
 - No authentication, backend API, database schema, SMS workflow, inventory logic, incident workflow, or role permission rules were changed.
+
+
+**July 10, 2026** 
+
+**System Administrator**
+**Dashboard**
+- Created a dedicated System Administrator Dashboard focused on platform administration only.
+- Added platform metrics for users, account requests, suspicious login activity, system notifications, audit activity, user distribution, system status, security overview, and quick admin actions.
+- Removed clinical, patient, inventory, GIS, vaccination, and incident analytics from the System Admin dashboard.
+
+**System Notifications**
+- Redesigned System Notifications as a platform-alert module.
+- Added summary cards, filters, severity indicators, notification list/table, status actions, details modal, and pagination.
+- Ensured System Notifications does not show patient SMS reminders.
+
+**Audit Log / System Activity**
+- Added server-side pagination with 10 entries per page by default.
+- Added page-size options, numbered pagination, debounced search, clear filters, sticky table header, and compact footer.
+- Improved action labels and Asia/Manila timestamp display.
+- Removed large bottom summary cards to reduce page length.
+- Ensured PDF/Excel exports respect active filters and export all filtered records.
+
+**System Settings**
+- Rebuilt settings ownership for System Admin.
+- System Admin now manages only platform-level settings:
+  - SMS service configuration
+  - SMS credential status and secure credential update modal
+  - Test SMS modal
+  - Security policies
+  - Platform alert settings
+- Removed clinic profile, reminder lead time, inventory alert preferences, and clinic operational settings from System Admin.
+- Removed email/SMTP settings and government-specific placeholders.
+- Hid global search on the Settings page.
+
+**User Management**
+- Hid System Admin accounts from Clinic Admin User Management.
+- Updated Clinic Admin stats to count clinic-level staff only.
+- Protected Clinic Admin from promoting users to System Admin.
+- Added role-safe edit modal behavior and user table pagination.
+- Protected self-deactivation.
+
