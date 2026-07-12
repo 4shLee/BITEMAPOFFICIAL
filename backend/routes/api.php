@@ -11,6 +11,7 @@ Route::get('/barangays', [BitemapApiController::class, 'barangays']);
 Route::get('/public/statistics', [BitemapApiController::class, 'publicStatistics']);
 Route::get('/public/heatmap', [BitemapApiController::class, 'publicHeatmap']);
 Route::get('/public/barangay-stats', [BitemapApiController::class, 'publicBarangayStats']);
+Route::get('/public/clinics', [BitemapApiController::class, 'publicClinics'])->middleware('throttle:60,1');
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/auth/session', [BitemapApiController::class, 'session']);

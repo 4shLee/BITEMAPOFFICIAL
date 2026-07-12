@@ -4,6 +4,8 @@ import { ArrowLeft, ArrowRight, Check, ChevronDown, Eye, EyeOff, Globe2, Lock, M
 import { authAPI } from "../../lib/services/api";
 import { ASSIGNABLE_ROLES, getDefaultPathForRole, getStoredUser, hasAuthSession } from "../../lib/auth/roleAccess";
 import { toast } from "sonner";
+import { AnimatedGISBackground } from "../components/Brand/AnimatedGISBackground";
+import { BITEMAP_FONT_FAMILY, BITEMAP_LOGO_SRC } from "../components/Brand/brand";
 
 const DEMO_MODE = false;
 const REQUESTABLE_ROLES = ASSIGNABLE_ROLES.filter((role) => role.value !== 'system_admin');
@@ -185,65 +187,18 @@ export function Login() {
 
   return (
     <div
-      className="min-h-screen flex flex-col bg-slate-50 bg-cover bg-center bg-no-repeat"
+      className="relative isolate flex min-h-screen flex-col overflow-hidden bg-slate-50"
       style={{
-        fontFamily: "'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-        backgroundImage: "url('/images/login-bg.png')",
+        fontFamily: BITEMAP_FONT_FAMILY,
       }}
     >
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+      <AnimatedGISBackground />
 
-        @keyframes loginGlowShift {
-          0%, 100% { transform: translate3d(-3%, -2%, 0) scale(1); opacity: 0.42; }
-          50% { transform: translate3d(4%, 3%, 0) scale(1.06); opacity: 0.62; }
-        }
-
-        @keyframes loginWaveDrift {
-          0% { transform: translate3d(-4%, 0, 0); }
-          100% { transform: translate3d(4%, -1%, 0); }
-        }
-
-        @keyframes loginDotFloat {
-          0%, 100% { transform: translate3d(0, 0, 0); opacity: 0.18; }
-          50% { transform: translate3d(18px, -14px, 0); opacity: 0.28; }
-        }
-
-        .login-animated-glow {
-          background:
-            radial-gradient(circle at 35% 35%, rgba(255,255,255,0.34), transparent 30%),
-            radial-gradient(circle at 72% 60%, rgba(20,184,166,0.24), transparent 34%);
-          animation: loginGlowShift 18s ease-in-out infinite;
-        }
-
-        .login-animated-wave {
-          background:
-            linear-gradient(112deg, transparent 0%, rgba(255,255,255,0.22) 45%, transparent 72%),
-            repeating-linear-gradient(100deg, rgba(255,255,255,0.13) 0 1px, transparent 1px 14px);
-          clip-path: ellipse(78% 34% at 50% 100%);
-          animation: loginWaveDrift 22s ease-in-out infinite alternate;
-        }
-
-        .login-animated-dots {
-          background-image: radial-gradient(circle, rgba(255,255,255,0.58) 1px, transparent 1.5px);
-          background-size: 28px 28px;
-          mask-image: linear-gradient(115deg, transparent 0%, black 38%, black 72%, transparent 100%);
-          animation: loginDotFloat 16s ease-in-out infinite;
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-          .login-animated-glow,
-          .login-animated-wave,
-          .login-animated-dots {
-            animation: none;
-          }
-        }
-      `}</style>
       <header className="relative z-10 border-b border-slate-200/70 bg-white">
         <div className="mx-auto max-w-7xl px-5 py-2 sm:px-8">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <img src="/images/bitemap-logo.png" alt="BITEMAP logo" className="h-10 w-10 object-contain sm:h-12 sm:w-12" />
+              <img src={BITEMAP_LOGO_SRC} alt="BITEMAP logo" className="h-10 w-10 object-contain sm:h-12 sm:w-12" />
               <div>
                 <h1 className="text-[21px] font-extrabold leading-tight text-teal-800 sm:text-[23px]">BITEMAP</h1>
                 <p className="hidden text-[13px] font-medium leading-tight text-slate-500 sm:block">Animal Bite Incident Tracking and Vaccination Monitoring</p>
@@ -262,18 +217,12 @@ export function Login() {
       </header>
 
       <main
-        className="relative flex min-h-[calc(100vh-108px)] flex-1 items-center justify-center overflow-hidden bg-cover bg-center bg-no-repeat px-4 py-3 sm:py-4"
-        style={{ backgroundImage: "url('/images/login-bg.png')" }}
+        className="relative z-10 flex min-h-[calc(100vh-108px)] flex-1 items-center justify-center px-4 py-3 sm:py-4"
       >
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/8 via-teal-50/4 to-teal-950/12" />
-        <div className="login-animated-glow pointer-events-none absolute inset-0" />
-        <div className="login-animated-dots pointer-events-none absolute left-0 top-[18%] h-[44%] w-[58%] opacity-60" />
-        <div className="login-animated-wave pointer-events-none absolute inset-x-[-8%] bottom-[-10%] h-[34%] opacity-45" />
-
         <section className="relative w-full max-w-[480px] rounded-[28px] border border-white/85 bg-white/95 px-6 py-5 shadow-[0_22px_70px_rgba(15,118,110,0.24)] backdrop-blur-md sm:px-8 sm:py-6">
           <div className="mb-4 text-center">
             <div className="mx-auto mb-2 flex h-16 w-16 items-center justify-center rounded-full bg-teal-50 shadow-inner shadow-teal-900/5">
-              <img src="/images/bitemap-logo.png" alt="BITEMAP logo" className="h-12 w-12 object-contain" />
+              <img src={BITEMAP_LOGO_SRC} alt="BITEMAP logo" className="h-12 w-12 object-contain" />
             </div>
             <p className="text-[30px] font-extrabold leading-tight text-teal-800 sm:text-[34px]">BITEMAP</p>
             <p className="mx-auto mt-1.5 max-w-[390px] text-[13px] font-medium leading-relaxed text-slate-600">

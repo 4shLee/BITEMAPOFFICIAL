@@ -1,178 +1,305 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import { ArrowLeft, MapPin, AlertCircle } from 'lucide-react';
-import { Badge } from '../components/UI/Badge';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import {
+  Activity,
+  ArrowLeft,
+  BarChart3,
+  CalendarDays,
+  CheckCircle2,
+  ChevronDown,
+  Info,
+  LockKeyhole,
+  MapPin,
+  PawPrint,
+  RefreshCw,
+  RotateCcw,
+  ShieldCheck,
+  TrendingUp,
+} from 'lucide-react';
+import { publicAPI } from '../../lib/services/api';
+import { AnimatedGISBackground } from '../components/Brand/AnimatedGISBackground';
+import { BITEMAP_FONT_FAMILY, BITEMAP_LOGO_SRC } from '../components/Brand/brand';
+
+type RiskLevel = 'LOW' | 'MODERATE' | 'HIGH' | 'SUPPRESSED' | 'NO DATA';
+
+type PublicBarangayAggregate = {
+  barangay_name: string;
+  incident_count: number | null;
+  count_label: string;
+  suppressed: boolean;
+  risk_level: RiskLevel;
+  incident_rate_per_1000: number | null;
+  most_common_animal: string | null;
+  comparison_to_city_average: number | null;
+};
+
+type PublicHeatmapResponse = {
+  success: boolean;
+  error?: string;
+  reporting_period?: { year: number; month_start: number; month_end: number; label: string };
+  classification_basis?: string;
+  summary?: {
+    total_incidents: number | null;
+    total_incidents_label: string;
+    barangays_with_recorded_incidents: number;
+    highest_reported_barangay: string | null;
+    pep_completion_rate: number | null;
+    city_average_incidents: number | null;
+  };
+  data?: PublicBarangayAggregate[];
+};
+
+type Filters = {
+  year: string;
+  monthStart: string;
+  monthEnd: string;
+  riskLevel: string;
+  animalType: string;
+};
+
+const now = new Date();
+const currentYear = now.getFullYear();
+const currentMonth = now.getMonth() + 1;
+const initialFilters: Filters = {
+  year: String(currentYear),
+  monthStart: '1',
+  monthEnd: String(currentMonth),
+  riskLevel: 'All',
+  animalType: 'All',
+};
+
+const DIGOS_CENTER: [number, number] = [6.7497, 125.3572];
+const DIGOS_BOUNDS: [[number, number], [number, number]] = [[6.63, 125.25], [6.88, 125.48]];
+
+// Broad area centers are intentionally maintained separately from incident data.
+// They identify barangay-scale map areas and are not derived from patient coordinates.
+const GENERALIZED_BARANGAY_CENTERS: Record<string, [number, number]> = {
+  Aplaya: [6.766, 125.384],
+  'San Jose': [6.724, 125.342],
+  Dawis: [6.747, 125.382],
+  'Zone 1': [6.751, 125.356],
+  'Zone 2': [6.741, 125.363],
+  Mahayahay: [6.769, 125.345],
+  Balabag: [6.793, 125.326],
+  Tiguman: [6.694, 125.321],
+};
+
+const RISK_STYLES: Record<RiskLevel, { color: string; label: string }> = {
+  LOW: { color: '#6FCFA9', label: 'Low' },
+  MODERATE: { color: '#E7B85C', label: 'Moderate' },
+  HIGH: { color: '#D97868', label: 'High' },
+  SUPPRESSED: { color: '#94A3B8', label: 'Suppressed' },
+  'NO DATA': { color: '#CBD5E1', label: 'No data' },
+};
+
+const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+function escapeHtml(value: string | number) {
+  return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+function LoadingCard() {
+  return <div className="animate-pulse rounded-2xl border border-slate-200 bg-white p-4"><div className="mb-4 h-9 w-9 rounded-xl bg-slate-200" /><div className="mb-2 h-6 w-24 rounded bg-slate-200" /><div className="h-3 w-36 max-w-full rounded bg-slate-100" /></div>;
+}
+
+function FilterSelect({ label, value, onChange, children }: { label: string; value: string; onChange: (value: string) => void; children: React.ReactNode }) {
+  return (
+    <label className="block min-w-0">
+      <span className="mb-1.5 block text-[11px] font-extrabold uppercase tracking-wide text-slate-500">{label}</span>
+      <span className="relative block">
+        <select value={value} onChange={(event) => onChange(event.target.value)} className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-3 pr-9 text-sm font-bold text-slate-700 outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-500/15">
+          {children}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      </span>
+    </label>
+  );
+}
 
 export function PublicHeatmap() {
-  const [selectedBarangay, setSelectedBarangay] = useState<string | null>('Aplaya');
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const aggregateLayerRef = useRef<L.LayerGroup | null>(null);
+  const [filters, setFilters] = useState<Filters>(initialFilters);
+  const [response, setResponse] = useState<PublicHeatmapResponse | null>(null);
+  const [selectedBarangay, setSelectedBarangay] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [retryKey, setRetryKey] = useState(0);
 
-  const barangayData = [
-    { name: 'Aplaya', incidents: 23, color: '#D85A30', riskLevel: 'High', population: 12500 },
-    { name: 'San Jose', incidents: 18, color: '#BA7517', riskLevel: 'Medium', population: 10200 },
-    { name: 'Dawis', incidents: 12, color: '#BA7517', riskLevel: 'Medium', population: 8900 },
-    { name: 'Zone 1', incidents: 8, color: '#5DCAA5', riskLevel: 'Low', population: 5600 },
-    { name: 'Zone 2', incidents: 5, color: '#5DCAA5', riskLevel: 'Low', population: 4800 },
-    { name: 'Mahayahay', incidents: 15, color: '#BA7517', riskLevel: 'Medium', population: 9300 },
-    { name: 'Balabag', incidents: 7, color: '#5DCAA5', riskLevel: 'Low', population: 6200 },
-    { name: 'Tiguman', incidents: 10, color: '#5DCAA5', riskLevel: 'Low', population: 7100 },
-  ];
+  const loadAggregates = useCallback(async () => {
+    setIsLoading(true);
+    setError('');
+    try {
+      const result = await publicAPI.getHeatmap({
+        year: filters.year,
+        month_start: filters.monthStart,
+        month_end: filters.monthEnd,
+        risk_level: filters.riskLevel,
+        animal_type: filters.animalType,
+      }) as PublicHeatmapResponse;
 
-  const selectedData = barangayData.find(b => b.name === selectedBarangay);
+      if (!result.success) throw new Error('Public map request failed.');
+      setResponse(result);
+      setSelectedBarangay((current) => current && result.data?.some((item) => item.barangay_name === current) ? current : null);
+    } catch {
+      setResponse(null);
+      setSelectedBarangay(null);
+      setError('Unable to load map data. Public statistics are temporarily unavailable. Please try again later.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [filters, retryKey]);
+
+  useEffect(() => { loadAggregates(); }, [loadAggregates]);
+
+  useEffect(() => {
+    if (!mapContainerRef.current || mapRef.current) return;
+    const map = L.map(mapContainerRef.current, {
+      center: DIGOS_CENTER,
+      zoom: 13,
+      minZoom: 11,
+      maxZoom: 16,
+      maxBounds: L.latLngBounds(DIGOS_BOUNDS),
+      maxBoundsViscosity: 0.9,
+      zoomControl: true,
+    });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '&copy; OpenStreetMap contributors',
+    }).addTo(map);
+    aggregateLayerRef.current = L.layerGroup().addTo(map);
+    mapRef.current = map;
+    window.setTimeout(() => map.invalidateSize(), 0);
+
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => map.invalidateSize());
+    observer?.observe(mapContainerRef.current);
+    return () => {
+      observer?.disconnect();
+      map.remove();
+      mapRef.current = null;
+      aggregateLayerRef.current = null;
+    };
+  }, []);
+
+  const visibleData = response?.data ?? [];
+
+  useEffect(() => {
+    const layer = aggregateLayerRef.current;
+    if (!layer) return;
+    layer.clearLayers();
+
+    visibleData.forEach((item) => {
+      const center = GENERALIZED_BARANGAY_CENTERS[item.barangay_name];
+      if (!center) return;
+      const selected = item.barangay_name === selectedBarangay;
+      const style = RISK_STYLES[item.risk_level] || RISK_STYLES['NO DATA'];
+      const circle = L.circle(center, {
+        radius: selected ? 1250 : 1050,
+        color: selected ? '#0F766E' : '#FFFFFF',
+        weight: selected ? 4 : 2,
+        fillColor: style.color,
+        fillOpacity: item.risk_level === 'NO DATA' ? 0.42 : 0.64,
+      });
+      circle.bindTooltip(`<strong>${escapeHtml(item.barangay_name)}</strong><br>${escapeHtml(item.count_label)}<br>${escapeHtml(style.label)}`, { sticky: true, direction: 'top' });
+      circle.on('click', () => setSelectedBarangay(item.barangay_name));
+      circle.addTo(layer);
+    });
+  }, [visibleData, selectedBarangay]);
+
+  const selected = useMemo(() => visibleData.find((item) => item.barangay_name === selectedBarangay) ?? null, [visibleData, selectedBarangay]);
+  const selectedYearMaxMonth = Number(filters.year) === currentYear ? currentMonth : 12;
+  const startMonthOptions = months.slice(0, Math.max(1, selectedYearMaxMonth - 2));
+  const endMonthOptions = months.slice(Number(filters.monthStart) + 1, selectedYearMaxMonth);
+
+  const updateFilter = (key: keyof Filters, value: string) => {
+    setFilters((current) => {
+      const next = { ...current, [key]: value };
+      if (key === 'year') {
+        const maxMonth = Number(value) === currentYear ? currentMonth : 12;
+        next.monthStart = '1';
+        next.monthEnd = String(maxMonth);
+      }
+      if (key === 'monthStart' && Number(next.monthEnd) < Number(value) + 2) next.monthEnd = String(Number(value) + 2);
+      return next;
+    });
+  };
+
+  const summary = response?.summary;
+  const hasRecordedData = Boolean(summary && summary.barangays_with_recorded_incidents > 0);
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="bg-card border-b border-border sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Link
-                to="/public"
-                className="p-2 hover:bg-muted rounded-lg transition-colors"
-              >
-                <ArrowLeft className="w-5 h-5 text-foreground" />
-              </Link>
-              <div>
-                <h1 className="text-xl font-semibold text-foreground">Incident Heatmap</h1>
-                <p className="text-xs text-muted-foreground">Digos City Animal Bite Incidents - 2026</p>
-              </div>
-            </div>
+    <div className="min-h-screen overflow-x-hidden bg-slate-50 text-slate-900" style={{ fontFamily: BITEMAP_FONT_FAMILY }}>
+      <header className="sticky top-0 z-[1000] border-b border-slate-200/80 bg-white/95 shadow-sm backdrop-blur-md">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-2.5 sm:px-6 lg:px-8">
+          <Link to="/public" className="flex min-w-0 items-center gap-3" aria-label="BITEMAP Public Portal home">
+            <img src={BITEMAP_LOGO_SRC} alt="BITEMAP logo" className="h-11 w-11 shrink-0 object-contain sm:h-12 sm:w-12" />
+            <div className="min-w-0"><p className="truncate text-[17px] font-extrabold leading-tight text-teal-800 sm:text-xl">BITEMAP Public Portal</p><p className="hidden truncate text-xs font-medium text-slate-500 md:block">Animal Bite Incident Tracking and Vaccination Monitoring</p></div>
+          </Link>
+          <div className="flex shrink-0 items-center gap-2">
+            <Link to="/public" className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-xs font-extrabold text-slate-700 hover:bg-slate-50 sm:px-4"><ArrowLeft className="h-4 w-4" /><span className="hidden sm:inline">Public Portal</span></Link>
+            <Link to="/login" className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-teal-700/40 bg-white px-3 text-xs font-extrabold text-teal-800 hover:bg-teal-50 sm:px-4"><LockKeyhole className="h-4 w-4" /><span className="hidden md:inline">Authorized Staff Login</span><span className="md:hidden">Staff</span></Link>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        <div className="bg-warning-bg border border-warning/20 rounded-lg p-4 mb-6">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-medium text-warning mb-1">Public Information Notice</p>
-              <p className="text-sm text-warning">
-                This map shows aggregate incident data for public awareness. Individual patient information is protected and not displayed.
-              </p>
-            </div>
+      <main>
+        <section className="relative isolate overflow-hidden">
+          <AnimatedGISBackground tintClassName="bg-gradient-to-r from-teal-950/72 via-teal-900/52 to-teal-800/32" />
+          <div className="relative z-10 mx-auto max-w-7xl px-4 py-10 text-white sm:px-6 sm:py-12 lg:px-8">
+            <div className="max-w-3xl"><div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/25 bg-teal-950/20 px-3 py-1.5 text-xs font-bold text-teal-50"><ShieldCheck className="h-3.5 w-3.5" /> Public view — privacy-safe aggregation</div><h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl">Animal Bite Incident Heatmap</h1><p className="mt-3 max-w-2xl text-sm font-medium leading-relaxed text-teal-50/90 sm:text-base">Explore aggregated barangay-level animal bite incident patterns for the selected reporting period.</p></div>
           </div>
-        </div>
+        </section>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          <div className="lg:col-span-3">
-            <div className="bg-card border border-border rounded-lg overflow-hidden">
-              <div className="px-6 py-4 border-b border-border">
-                <h2 className="text-base font-medium text-foreground">Barangay Incident Density Map</h2>
-                <p className="text-sm text-muted-foreground mt-1">Click on a barangay to view detailed statistics</p>
-              </div>
+        <div className="mx-auto max-w-7xl px-4 py-7 sm:px-6 lg:px-8">
+          <div className="mb-6 flex items-start gap-3 rounded-2xl border border-teal-200/80 bg-teal-50 px-4 py-3.5 text-teal-900"><Info className="mt-0.5 h-5 w-5 shrink-0 text-teal-700" /><div><p className="text-sm font-extrabold">Barangay-level aggregated data only.</p><p className="mt-0.5 text-sm leading-relaxed text-teal-800">Exact incident locations and personal patient information are not displayed.</p></div></div>
 
-              <div className="h-[600px] bg-muted flex items-center justify-center relative p-8">
-                <MapPin className="w-16 h-16 text-muted-foreground absolute" />
-                <p className="text-sm text-muted-foreground absolute top-4 left-4">Interactive Digos City Map</p>
+          <section aria-label="Public map filters" className="mb-5 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm shadow-teal-950/5">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[0.8fr_1fr_1fr_1fr_1fr_auto] lg:items-end">
+              <FilterSelect label="Reporting year" value={filters.year} onChange={(value) => updateFilter('year', value)}>{[0,1,2,3,4,5].map((offset) => <option key={currentYear-offset} value={currentYear-offset}>{currentYear-offset}</option>)}</FilterSelect>
+              <FilterSelect label="From month" value={filters.monthStart} onChange={(value) => updateFilter('monthStart', value)}>{startMonthOptions.map((month, index) => <option key={month} value={index+1}>{month}</option>)}</FilterSelect>
+              <FilterSelect label="To month" value={filters.monthEnd} onChange={(value) => updateFilter('monthEnd', value)}>{endMonthOptions.map((month, index) => { const value = Number(filters.monthStart)+2+index; return <option key={month} value={value}>{month}</option>; })}</FilterSelect>
+              <FilterSelect label="Risk level" value={filters.riskLevel} onChange={(value) => updateFilter('riskLevel', value)}><option value="All">All classifications</option><option value="LOW">Low</option><option value="MODERATE">Moderate</option><option value="HIGH">High</option></FilterSelect>
+              <FilterSelect label="Animal type" value={filters.animalType} onChange={(value) => updateFilter('animalType', value)}><option value="All">All animals</option><option value="Dog">Dog</option><option value="Cat">Cat</option><option value="Other">Other</option></FilterSelect>
+              <button type="button" onClick={() => setFilters(initialFilters)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-extrabold text-slate-700 hover:bg-slate-100"><RotateCcw className="h-4 w-4" /> Reset</button>
+            </div>
+            <p className="mt-3 flex items-center gap-2 text-xs font-medium text-slate-500"><CalendarDays className="h-4 w-4 text-teal-600" /> Public reporting ranges are limited to broad periods of at least three months.</p>
+          </section>
 
-                <div className="absolute inset-8 grid grid-cols-4 gap-2">
-                  {barangayData.map((barangay) => (
-                    <button
-                      key={barangay.name}
-                      onClick={() => setSelectedBarangay(barangay.name)}
-                      className={`rounded-lg transition-all flex flex-col items-center justify-center text-white font-medium text-sm hover:opacity-90 p-4 ${
-                        selectedBarangay === barangay.name ? 'ring-4 ring-primary ring-offset-2' : ''
-                      }`}
-                      style={{ backgroundColor: barangay.color }}
-                    >
-                      <span className="mb-1">{barangay.name}</span>
-                      <span className="text-xs opacity-90">{barangay.incidents} cases</span>
-                    </button>
-                  ))}
+          <section aria-labelledby="map-summary-title" className="mb-5">
+            <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between"><h2 id="map-summary-title" className="text-lg font-extrabold text-slate-900">Aggregated public summary</h2><p className="text-sm font-bold text-teal-700">{response?.reporting_period?.label || `${months[Number(filters.monthStart)-1]}–${months[Number(filters.monthEnd)-1]} ${filters.year}`}</p></div>
+            {isLoading ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><LoadingCard /><LoadingCard /><LoadingCard /><LoadingCard /></div> : error ? <div className="rounded-2xl border border-rose-200 bg-white p-5"><div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center"><div><p className="font-extrabold text-slate-900">Unable to load aggregated map data</p><p className="mt-1 text-sm text-slate-600">{error}</p></div><button type="button" onClick={() => setRetryKey((key) => key + 1)} className="inline-flex h-10 items-center gap-2 rounded-full bg-teal-700 px-5 text-sm font-extrabold text-white hover:bg-teal-800"><RefreshCw className="h-4 w-4" /> Retry</button></div></div> : !hasRecordedData ? <div className="rounded-2xl border border-slate-200 bg-white p-7 text-center"><Activity className="mx-auto h-7 w-7 text-teal-600" /><p className="mt-2 font-extrabold">No data available</p><p className="mt-1 text-sm text-slate-500">No aggregated records are available for the selected broad reporting period.</p></div> : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{[
+              ['Total Recorded Incidents', summary?.total_incidents_label || 'No data', Activity],
+              ['Barangays with Recorded Incidents', String(summary?.barangays_with_recorded_incidents ?? 0), MapPin],
+              ['Highest Reported Barangay', summary?.highest_reported_barangay || 'Not available', TrendingUp],
+              ['PEP Completion Rate', summary?.pep_completion_rate == null ? 'Not available' : `${summary.pep_completion_rate}%`, CheckCircle2],
+            ].map(([label, value, Icon]) => <article key={String(label)} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-teal-950/5"><div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-teal-50 text-teal-700"><Icon className="h-4 w-4" /></div><p className="text-xl font-extrabold text-teal-900">{String(value)}</p><h3 className="mt-1 text-xs font-bold leading-relaxed text-slate-500">{String(label)}</h3></article>)}</div>}
+          </section>
+
+          <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(280px,1fr)]">
+            <section className="min-w-0 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-lg shadow-teal-950/5" aria-labelledby="map-title">
+              <div className="flex flex-col gap-2 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><div><h2 id="map-title" className="font-extrabold text-slate-900">Digos City Barangay Map</h2><p className="mt-0.5 text-xs text-slate-500">Broad area circles represent aggregated barangay totals, never individual incidents.</p></div><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">Read-only public map</span></div>
+              <div className="relative h-[480px] sm:h-[560px] lg:h-[620px]">
+                <div ref={mapContainerRef} className="absolute inset-0 h-full w-full" aria-label="Interactive aggregated barangay incident map" />
+                {isLoading && <div className="absolute inset-0 z-[500] flex items-center justify-center bg-white/70 backdrop-blur-[1px]"><div className="rounded-2xl bg-white px-5 py-3 text-sm font-bold text-teal-800 shadow-lg">Updating aggregated map…</div></div>}
+                {error && <div className="absolute inset-0 z-[500] flex items-center justify-center bg-white/75 p-5"><div className="max-w-sm rounded-2xl border border-rose-200 bg-white p-5 text-center shadow-lg"><p className="font-extrabold text-slate-900">Map data unavailable</p><p className="mt-1 text-sm text-slate-500">Use Retry above to request the aggregated data again.</p></div></div>}
+                <div className="absolute bottom-7 left-3 z-[450] max-w-[230px] rounded-2xl border border-white/70 bg-white/95 p-3 shadow-lg backdrop-blur-sm sm:left-4">
+                  <p className="text-xs font-extrabold text-slate-800">Case-count classification</p><div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2">{(['LOW','MODERATE','HIGH','NO DATA'] as RiskLevel[]).map((risk) => <div key={risk} className="flex items-center gap-2"><span className="h-3 w-3 rounded-full" style={{ backgroundColor: RISK_STYLES[risk].color }} /><span className="text-[11px] font-bold text-slate-600">{RISK_STYLES[risk].label}</span></div>)}</div><p className="mt-2 border-t border-slate-100 pt-2 text-[10px] leading-relaxed text-slate-500">Low 5–10 · Moderate 11–20 · High 21+ · Counts below 5 suppressed</p>
                 </div>
               </div>
+            </section>
 
-              <div className="px-6 py-4 border-t border-border">
-                <div className="flex items-center gap-6">
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded bg-[#5DCAA5]"></div>
-                    <span className="text-xs text-muted-foreground">Low Risk (0-10 cases)</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded bg-[#BA7517]"></div>
-                    <span className="text-xs text-muted-foreground">Medium Risk (11-20 cases)</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded bg-[#D85A30]"></div>
-                    <span className="text-xs text-muted-foreground">High Risk (21+ cases)</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+            <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
+              <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-lg shadow-teal-950/5" aria-labelledby="selected-summary-title">
+                <h2 id="selected-summary-title" className="text-base font-extrabold text-slate-900">Selected Barangay Summary</h2>
+                {selected ? <div className="mt-5 space-y-5"><div><div className="flex items-start justify-between gap-3"><div><p className="text-xl font-extrabold text-teal-900">{selected.barangay_name}</p><p className="mt-1 text-sm font-bold text-slate-500">{selected.count_label}</p></div><span className="rounded-full px-3 py-1 text-xs font-extrabold text-white" style={{ backgroundColor: RISK_STYLES[selected.risk_level].color }}>{RISK_STYLES[selected.risk_level].label}</span></div></div><div className="grid grid-cols-2 gap-3"><div className="rounded-2xl bg-slate-50 p-3"><p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400">Incident rate</p><p className="mt-1 text-sm font-extrabold text-slate-900">{selected.incident_rate_per_1000 == null ? 'Not available' : `${selected.incident_rate_per_1000} per 1,000`}</p></div><div className="rounded-2xl bg-slate-50 p-3"><p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400">Top animal</p><p className="mt-1 text-sm font-extrabold text-slate-900">{selected.most_common_animal || 'Not available'}</p></div></div><div className="space-y-3 border-t border-slate-100 pt-4"><div className="flex items-center justify-between gap-3 text-sm"><span className="text-slate-500">Risk level</span><strong>{RISK_STYLES[selected.risk_level].label}</strong></div><div className="flex items-center justify-between gap-3 text-sm"><span className="text-slate-500">City comparison</span><strong>{selected.comparison_to_city_average == null ? 'Not available' : `${Math.abs(selected.comparison_to_city_average)} ${selected.comparison_to_city_average >= 0 ? 'above' : 'below'} average`}</strong></div><div className="flex items-center justify-between gap-3 text-sm"><span className="text-slate-500">Reporting period</span><strong className="text-right">{response?.reporting_period?.label}</strong></div></div>{selected.suppressed && <div className="rounded-2xl bg-slate-100 p-3 text-xs font-semibold leading-relaxed text-slate-600">This barangay’s exact value and derived statistics are hidden because the filtered count is below five.</div>}</div> : <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-8 text-center"><MapPin className="mx-auto h-7 w-7 text-teal-600" /><p className="mx-auto mt-3 max-w-56 text-sm font-semibold leading-relaxed text-slate-600">Select a barangay on the map to view its aggregated statistics.</p></div>}
+              </section>
 
-          {selectedData && (
-            <div className="space-y-6">
-              <div className="bg-card border border-border rounded-lg p-6">
-                <h2 className="text-lg font-semibold text-foreground mb-1">{selectedData.name}</h2>
-                <p className="text-sm text-muted-foreground mb-4">Barangay Statistics</p>
-
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex items-baseline gap-2 mb-1">
-                      <span className="text-3xl font-semibold text-foreground">{selectedData.incidents}</span>
-                      <span className="text-sm text-muted-foreground">cases</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">Total incidents in 2026</p>
-                  </div>
-
-                  <div className="pt-4 border-t border-border">
-                    <p className="text-xs text-muted-foreground mb-2">Risk Level</p>
-                    <Badge variant={
-                      selectedData.riskLevel === 'High' ? 'danger' :
-                      selectedData.riskLevel === 'Medium' ? 'warning' : 'success'
-                    }>
-                      {selectedData.riskLevel} Risk
-                    </Badge>
-                  </div>
-
-                  <div className="pt-4 border-t border-border">
-                    <p className="text-xs text-muted-foreground mb-2">Population</p>
-                    <p className="text-sm font-medium text-foreground">{selectedData.population.toLocaleString()} residents</p>
-                  </div>
-
-                  <div className="pt-4 border-t border-border">
-                    <p className="text-xs text-muted-foreground mb-2">Incident Rate</p>
-                    <p className="text-sm font-medium text-foreground">
-                      {((selectedData.incidents / selectedData.population) * 1000).toFixed(2)} per 1,000 residents
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-primary-bg border border-primary/20 rounded-lg p-6">
-                <h3 className="text-sm font-semibold text-primary mb-3">Prevention Tips</h3>
-                <ul className="text-sm text-primary space-y-2">
-                  <li>• Avoid approaching stray animals</li>
-                  <li>• Keep pets vaccinated</li>
-                  <li>• Report aggressive animals to authorities</li>
-                  <li>• Teach children animal safety</li>
-                </ul>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="mt-8 grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div className="bg-card border border-border rounded-lg p-6">
-            <p className="text-xs text-muted-foreground mb-2">Total Cases (City-wide)</p>
-            <p className="text-2xl font-semibold text-foreground">98</p>
-            <p className="text-xs text-muted-foreground mt-1">Year to date</p>
-          </div>
-          <div className="bg-card border border-border rounded-lg p-6">
-            <p className="text-xs text-muted-foreground mb-2">Most Common Animal</p>
-            <p className="text-2xl font-semibold text-foreground">Dog</p>
-            <p className="text-xs text-muted-foreground mt-1">85% of cases</p>
-          </div>
-          <div className="bg-card border border-border rounded-lg p-6">
-            <p className="text-xs text-muted-foreground mb-2">Peak Month</p>
-            <p className="text-2xl font-semibold text-foreground">April</p>
-            <p className="text-xs text-muted-foreground mt-1">28 incidents</p>
-          </div>
-          <div className="bg-card border border-border rounded-lg p-6">
-            <p className="text-xs text-muted-foreground mb-2">Vaccination Coverage</p>
-            <p className="text-2xl font-semibold text-success">76.5%</p>
-            <p className="text-xs text-muted-foreground mt-1">Completed PEP</p>
+              <section className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5"><div className="flex items-center gap-2 text-emerald-900"><PawPrint className="h-5 w-5" /><h2 className="font-extrabold">Prevention Reminder</h2></div><ul className="mt-4 space-y-2.5 text-sm leading-relaxed text-emerald-900/80"><li>• Avoid unfamiliar or aggressive animals.</li><li>• Keep pets vaccinated.</li><li>• Supervise children around animals.</li><li>• Seek medical assessment after a bite or scratch.</li></ul></section>
+              <section className="rounded-3xl border border-slate-200 bg-white p-5"><div className="flex items-start gap-3"><BarChart3 className="mt-0.5 h-5 w-5 shrink-0 text-teal-700" /><div><h2 className="font-extrabold text-slate-900">How classification works</h2><p className="mt-2 text-xs leading-relaxed text-slate-500">{response?.classification_basis || 'Classification is based on broad case-count thresholds. Exact values below five are suppressed.'}</p></div></div></section>
+            </aside>
           </div>
         </div>
       </main>

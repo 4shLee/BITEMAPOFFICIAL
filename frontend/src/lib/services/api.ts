@@ -40,6 +40,14 @@ async function apiRequest(endpoint: string, options: RequestInit = {}, requiresA
   return data;
 }
 
+async function publicApiRequest(endpoint: string) {
+  try {
+    return await apiRequest(endpoint, {}, false);
+  } catch {
+    throw new Error('Public data is temporarily unavailable.');
+  }
+}
+
 // ============ AUTHENTICATION API ============
 export const authAPI = {
   async signUp(email: string, password: string, fullName: string, role: string, phone?: string) {
@@ -398,10 +406,21 @@ export const barangaysAPI = {
   }
 };
 
+export const gisAPI = {
+  async getHeatmap(params: Record<string, string> = {}) {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value && value !== 'All') query.set(key, value);
+    });
+    const suffix = query.toString() ? '?' + query.toString() : '';
+    return apiRequest('/gis/heatmap' + suffix);
+  }
+};
+
 // ============ PUBLIC API (No Auth) ============
 export const publicAPI = {
   async getStatistics() {
-    return apiRequest('/public/statistics', {}, false);
+    return publicApiRequest('/public/statistics');
   },
 
   async getHeatmap(params: Record<string, string> = {}) {
@@ -414,10 +433,14 @@ export const publicAPI = {
     });
 
     const suffix = query.toString() ? '?' + query.toString() : '';
-    return apiRequest('/public/heatmap' + suffix, {}, false);
+    return publicApiRequest('/public/heatmap' + suffix);
   },
 
   async getBarangayStats() {
-    return apiRequest('/public/barangay-stats', {}, false);
+    return publicApiRequest('/public/barangay-stats');
+  },
+
+  async getClinics() {
+    return publicApiRequest('/public/clinics');
   }
 };

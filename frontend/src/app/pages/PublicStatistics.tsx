@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { ArrowLeft, TrendingUp, Users, Calendar } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Calendar, RefreshCw, TrendingUp, Users } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, LineChart, Line } from 'recharts';
 import { useState, useEffect } from 'react';
 import { publicAPI } from '../../lib/services/api';
@@ -62,17 +62,24 @@ export function PublicStatistics() {
   const [stats, setStats] = useState<PublicStats>(defaultStats);
   const [barangayStats, setBarangayStats] = useState<Record<string, number>>({});
   const [isLoading, setIsLoading] = useState(true);
+  const [statsError, setStatsError] = useState('');
 
   useEffect(() => {
     loadData();
   }, []);
 
   const loadData = async () => {
+    setIsLoading(true);
+    setStatsError('');
     try {
       const [statsResult, barangayResult] = await Promise.all([
         publicAPI.getStatistics(),
         publicAPI.getBarangayStats()
       ]);
+
+      if (!statsResult.success || !barangayResult.success) {
+        throw new Error('Public statistics request failed.');
+      }
 
       if (statsResult.success) {
         setStats({
@@ -96,8 +103,10 @@ export function PublicStatistics() {
       if (barangayResult.success) {
         setBarangayStats(barangayResult.data ?? {});
       }
-    } catch (error) {
-      console.error('Error loading public statistics:', error);
+    } catch {
+      setStats(defaultStats);
+      setBarangayStats({});
+      setStatsError('Public statistics are temporarily unavailable. Please try again later.');
     } finally {
       setIsLoading(false);
     }
@@ -132,6 +141,30 @@ export function PublicStatistics() {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <LoadingSpinner />
+      </div>
+    );
+  }
+
+  if (statsError) {
+    return (
+      <div className="min-h-screen bg-background">
+        <header className="bg-card border-b border-border">
+          <div className="max-w-7xl mx-auto px-6 py-4">
+            <Link to="/public" className="inline-flex items-center gap-2 text-sm font-semibold text-primary">
+              <ArrowLeft className="h-4 w-4" /> Back to Public Portal
+            </Link>
+          </div>
+        </header>
+        <main className="mx-auto flex min-h-[60vh] max-w-xl items-center px-6 py-12">
+          <div className="w-full rounded-2xl border border-rose-200 bg-white p-7 text-center shadow-sm">
+            <AlertCircle className="mx-auto h-8 w-8 text-rose-600" />
+            <h1 className="mt-3 text-xl font-semibold text-foreground">Unable to load public statistics</h1>
+            <p className="mt-2 text-sm text-muted-foreground">{statsError}</p>
+            <button type="button" onClick={loadData} className="mt-5 inline-flex h-11 items-center gap-2 rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground">
+              <RefreshCw className="h-4 w-4" /> Retry
+            </button>
+          </div>
+        </main>
       </div>
     );
   }

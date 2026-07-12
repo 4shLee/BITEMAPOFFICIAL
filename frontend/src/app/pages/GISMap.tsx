@@ -5,7 +5,7 @@ import { Header } from '../components/Layout/Header';
 import { Input } from '../components/UI/Input';
 import { Select } from '../components/UI/Select';
 import { Badge } from '../components/UI/Badge';
-import { publicAPI } from '../../lib/services/api';
+import { gisAPI } from '../../lib/services/api';
 
 declare global {
   interface Window {
@@ -143,7 +143,7 @@ export function GISMap() {
       setError(null);
 
       try {
-        const response = await publicAPI.getHeatmap({
+        const response = await gisAPI.getHeatmap({
           date_from: dateFrom,
           date_to: dateTo,
           animal_type: animalType,

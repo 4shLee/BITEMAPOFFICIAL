@@ -1281,3 +1281,182 @@ The Incident Management module is now more consistent, clinic-friendly, and alig
 - Added role-safe edit modal behavior and user table pagination.
 - Protected self-deactivation.
 
+
+**July 12, 2026** 
+
+## 1. Staff Login Page
+
+- Preserved the existing BITEMAP logo, GIS healthcare background, login form, authentication logic, header, footer, and responsive layout.
+- Added a slow full-background pan and zoom animation.
+- Ensured the entire background moves, including the GIS network design on the left.
+- Added subtle floating particles, pulsing network nodes, and calm wave movement.
+- Kept all animation layers behind the login card.
+- Added `prefers-reduced-motion` support.
+- Increased the animation speed slightly based on feedback.
+- Verified that the login card remains stable and that no page overflow occurs.
+
+## 2. Shared BITEMAP Visual System
+
+- Extracted the finalized logo path, background path, typography, and animated GIS layers into shared reusable files.
+- Created a shared animated background component used by both the Login Page and Public Portal.
+- Centralized the animation keyframes, particles, network nodes, wave effects, and reduced-motion behavior.
+- Eliminated duplicate background declarations and established one source of truth for the BITEMAP visual identity.
+
+## 3. Public Portal Landing Page
+
+- Redesigned the page to match the finalized Staff Login visual identity.
+- Added the shared BITEMAP logo, Manrope typography, teal and emerald palette, animated GIS background, rounded cards, and subtle shadows.
+- Replaced “Health Worker Login” with “Authorized Staff Login.”
+- Added a sticky, translucent public header.
+- Added a new hero section with:
+  - “Track Animal Bite Trends. Find Help Faster.”
+  - Incident Map and Clinic Directory buttons
+  - Public-data privacy notice
+- Refined the hero into an open, cinematic, centered layout without a large glass container.
+- Added public summary cards with:
+  - Skeleton loading
+  - Empty state
+  - Safe error state
+  - Retry action
+  - Active reporting period
+- Added redesigned feature cards for:
+  - Incident Heatmap
+  - Statistics and Trends
+  - Vaccination Clinics
+- Added updated animal-bite safety guidance.
+- Added “How BITEMAP Helps,” FAQ, clinic-directory preview, privacy notice, medical disclaimer, and structured footer.
+- Verified desktop, tablet, and mobile responsiveness with no horizontal overflow.
+
+## 4. Public Incident Heatmap Page
+
+- Replaced the temporary colored rectangular tiles with an actual Leaflet and OpenStreetMap interface.
+- Matched the page visually with the redesigned Public Portal.
+- Added a shared public header and animated GIS introduction banner.
+- Added broad reporting filters for:
+  - Year
+  - Month range
+  - Risk classification
+  - Animal type
+- Prevented public reporting periods from being narrowed below three months.
+- Added summary cards for:
+  - Total recorded incidents
+  - Barangays with recorded incidents
+  - Highest reported barangay
+  - PEP completion rate
+- Added skeleton, empty, filtered-empty, safe error, and Retry states.
+- Added a desktop side panel and mobile bottom panel for selected barangay summaries.
+- Added incident rate, city comparison, risk level, common animal, reporting period, legend, and prevention guidance.
+- Used broad barangay-area centers instead of individual incident coordinates.
+- Added the visible privacy notice:
+
+  “Barangay-level aggregated data only. Exact incident locations and personal patient information are not displayed.”
+
+## 5. Public Heatmap Data Privacy and Security
+
+- Identified that the original public heatmap endpoint exposed individual latitude and longitude values.
+- Replaced the public response with server-side barangay aggregation.
+- Removed patient-level coordinates, record IDs, timestamps, addresses, patient details, and treatment records from the public response.
+- Added suppression for barangay results containing fewer than five incidents.
+- Suppressed associated rates, animal summaries, and comparisons for small result groups.
+- Added broad-filter validation to reduce re-identification risks.
+- Added rate limiting to public map and statistics endpoints.
+- Separated the public heatmap endpoint from the authenticated staff GIS endpoint.
+- Ensured the Staff GIS page uses an authenticated `/gis/heatmap` endpoint.
+
+## 6. Public API Error Handling
+
+- Fixed the issue where public pages displayed raw Laravel and database exceptions.
+- Prevented public exposure of:
+  - SQLSTATE messages
+  - Database host and port
+  - Database names
+  - SQL queries
+  - Stack traces
+  - File paths
+  - Internal API details
+- Added safe public messages:
+  - “Unable to load map data.”
+  - “Public statistics are temporarily unavailable. Please try again later.”
+- Preserved Retry actions.
+- Added Laravel application logging for complete server-side exceptions.
+- Added sanitized JSON error envelopes with non-sensitive error codes.
+- Added a global Laravel fallback for unhandled public API exceptions.
+- Set `APP_DEBUG=false` in the active and example backend environments.
+- Applied sanitized handling to the Public Portal, Public Heatmap, Public Statistics, and Public Clinics APIs.
+
+## 7. Public Statistics Page
+
+- Added a dedicated safe error state.
+- Added a Retry button.
+- Prevented backend exception text from reaching the page or browser console.
+- Reset statistics safely when loading fails.
+- Preserved the existing public statistics route and data integration.
+
+## 8. Public Vaccination Clinics Page
+
+- Removed all fictional and government-specific clinic records.
+- Removed fake:
+  - Phone numbers
+  - `.gov.ph` email addresses
+  - Distances
+  - Operating schedules
+  - Service availability
+  - Free-treatment statements
+  - No-appointment claims
+- Redesigned the page to match the Public Portal and Heatmap design system.
+- Added:
+  - Shared BITEMAP header
+  - Animated GIS hero
+  - Neutral treatment guidance
+  - Leaflet/OpenStreetMap clinic map
+  - Search field
+  - Barangay filter
+  - Treatment-service filter
+  - Immunoglobulin filter
+  - Open-now filter
+  - Reset action
+- Added synchronized clinic-card and map-marker selection.
+- Added conditional actions:
+  - View on Map only when coordinates exist
+  - Directions only when coordinates exist
+  - Call Clinic only when a valid public number exists
+- Added a responsive clinic-details modal.
+- Added “Before Visiting” guidance.
+- Added loading, empty, filtered-empty, safe error, and Retry states.
+- Verified that the page does not calculate or display fake distances.
+
+## 9. Public Clinic Directory Backend
+
+- Added a dedicated `GET /api/public/clinics` endpoint.
+- Added rate limiting.
+- Restricted the response to allowlisted public clinic information.
+- Made public clinic publishing explicitly opt-in through `clinic_public_listing_enabled`.
+- Disabled public clinic publishing by default.
+- Returned optional information only when stored:
+  - Clinic name and type
+  - General address and barangay
+  - Public contact details
+  - Operating hours
+  - Reported services
+  - Public coordinates
+  - Public notes
+  - Verification and update dates
+- Added a sanitized clinic-directory error response:
+
+  “Unable to load clinic information. Please try again later.”
+
+## 10. Validation and Testing
+
+- Successfully completed frontend production builds after the changes.
+- Verified Login, Public Portal, Heatmap, and Clinics pages in the browser.
+- Confirmed responsive behavior at desktop, tablet, and 390-pixel mobile widths.
+- Confirmed that animated layers remain behind page content.
+- Confirmed that pages do not produce horizontal overflow.
+- Confirmed that public error pages do not reveal SQL, database, stack-trace, or file-path information.
+- Confirmed that the new public clinic endpoint is registered.
+- PHP syntax validation passed for the modified Laravel files.
+- The complete Laravel test suite could not run successfully because the local PHP installation lacks the required SQLite and OpenSSL extensions. These were environment failures rather than application assertion failures.
+
+## Overall Progress
+
+The BITEMAP public-facing experience now follows a unified healthcare-GIS visual identity across the Staff Login, Public Portal, Incident Heatmap, Statistics, and Clinic Directory. Public data access has also been strengthened through aggregation, small-count suppression, endpoint separation, rate limiting, sanitized errors, and removal of fictional or unverified public content.

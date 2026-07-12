@@ -15,6 +15,7 @@ class SettingSeeder extends Seeder
             'clinic_address' => '',
             'contact_email' => '',
             'contact_number' => '',
+            'clinic_public_listing_enabled' => 'false',
             'system_timezone' => 'Asia/Manila',
             'system_language' => 'en',
             'sms_reminders_enabled' => 'true',

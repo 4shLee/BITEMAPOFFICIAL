@@ -21,6 +21,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -28,6 +29,7 @@ use Illuminate\Validation\Rule;
 class BitemapApiController extends Controller
 {
     private const DIGOS_CENTER = ['lat' => 6.7497, 'lng' => 125.3572];
+
     private const DIGOS_BOUNDS = [
         'south' => 6.63,
         'west' => 125.25,
@@ -36,6 +38,7 @@ class BitemapApiController extends Controller
     ];
 
     private const USER_ROLE_OPTIONS = ['system_admin', 'clinic_admin', 'Clinic Admin', 'doctor', 'Doctor', 'Health Officer', 'nurse_vaccinator', 'Nurse/Vaccinator', 'Nurse', 'Vaccinator', 'nurse', 'vaccinator'];
+
     private const PUBLIC_SIGNUP_ROLE_OPTIONS = ['clinic_admin', 'Clinic Admin', 'doctor', 'Doctor', 'Health Officer', 'nurse_vaccinator', 'Nurse/Vaccinator', 'Nurse', 'Vaccinator', 'nurse', 'vaccinator'];
 
     private const DIGOS_BARANGAY_COORDINATES = [
@@ -66,6 +69,7 @@ class BitemapApiController extends Controller
         'Zone 2' => ['lat' => 6.7500, 'lng' => 125.3675],
         'Zone 3' => ['lat' => 6.7480, 'lng' => 125.3800],
     ];
+
     public function signIn(Request $request): JsonResponse
     {
         $credentials = $request->validate([
@@ -925,7 +929,6 @@ class BitemapApiController extends Controller
         }
     }
 
-
     public function reportSummary(Request $request): JsonResponse
     {
         $config = $this->reportConfig($request);
@@ -1251,8 +1254,6 @@ class BitemapApiController extends Controller
         ];
     }
 
-
-
     private function reportExcelContent(array $report, array $config): array
     {
         if (! class_exists(\ZipArchive::class)) {
@@ -1270,7 +1271,7 @@ class BitemapApiController extends Controller
         }
 
         $tempPath = tempnam($tempDir, 'bitemap_report_');
-        $zip = new \ZipArchive();
+        $zip = new \ZipArchive;
 
         if ($tempPath === false || $zip->open($tempPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
             return [
@@ -1450,6 +1451,7 @@ class BitemapApiController extends Controller
     private function xlsxRow(int $rowNumber, array $cells, ?int $height = null): string
     {
         $heightAttribute = $height ? ' ht="'.$height.'" customHeight="1"' : '';
+
         return '<row r="'.$rowNumber.'"'.$heightAttribute.'>'.implode('', $cells).'</row>';
     }
 
@@ -1463,6 +1465,7 @@ class BitemapApiController extends Controller
         }
 
         $text = htmlspecialchars((string) $value, ENT_QUOTES | ENT_XML1, 'UTF-8');
+
         return '<c r="'.$reference.'" t="inlineStr"'.$styleAttribute.'><is><t>'.$text.'</t></is></c>';
     }
 
@@ -1474,6 +1477,7 @@ class BitemapApiController extends Controller
             $name = chr(65 + ($column % 26)).$name;
             $column = intdiv($column, 26);
         }
+
         return $name;
     }
 
@@ -1763,6 +1767,7 @@ class BitemapApiController extends Controller
         }
 
         $scale = $contentWidth / array_sum($widths);
+
         return array_map(fn ($width) => $width * $scale, $widths);
     }
 
@@ -1812,7 +1817,7 @@ class BitemapApiController extends Controller
         foreach ($streams as $index => $stream) {
             $contentObject = $contentObjectNumbers[$index];
             $objects[] = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 '.$pageWidth.' '.$pageHeight.'] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents '.$contentObject.' 0 R >>';
-            $objects[] = '<< /Length '.strlen($stream).' >>' . "\nstream\n" . $stream . "\nendstream";
+            $objects[] = '<< /Length '.strlen($stream).' >>'."\nstream\n".$stream."\nendstream";
         }
 
         $pdf = "%PDF-1.4\n";
@@ -1889,182 +1894,292 @@ class BitemapApiController extends Controller
 
     public function publicStatistics(): JsonResponse
     {
-        $year = (int) now()->year;
-        $currentMonth = (int) now()->month;
-        $incidents = Incident::with(['barangay', 'patient'])
-            ->whereYear('incident_date', $year)
-            ->get();
+        try {
+            $year = (int) now()->year;
+            $currentMonth = (int) now()->month;
+            $incidents = Incident::with(['barangay', 'patient'])
+                ->whereYear('incident_date', $year)
+                ->get();
 
-        $incidentIds = $incidents->pluck('id');
-        $pepSchedules = PepSchedule::whereIn('incident_id', $incidentIds)->get();
-        $totalDoses = $pepSchedules->count();
-        $completedDoses = $pepSchedules->where('status', 'Done')->count();
-        $vaccinationRate = $totalDoses > 0 ? round(($completedDoses / $totalDoses) * 100, 1) : 0;
-        $animalCounts = $incidents
-            ->groupBy(fn (Incident $incident) => $incident->animal_type ?: 'Unknown')
-            ->map(fn ($group) => $group->count())
-            ->sortDesc();
-        $barangayCounts = $incidents
-            ->filter(fn (Incident $incident) => $incident->barangay_id !== null)
-            ->groupBy(fn (Incident $incident) => $incident->barangay?->name ?? 'Unknown')
-            ->map(fn ($group) => $group->count())
-            ->sortDesc();
+            $incidentIds = $incidents->pluck('id');
+            $pepSchedules = PepSchedule::whereIn('incident_id', $incidentIds)->get();
+            $totalDoses = $pepSchedules->count();
+            $completedDoses = $pepSchedules->where('status', 'Done')->count();
+            $vaccinationRate = $totalDoses > 0 ? round(($completedDoses / $totalDoses) * 100, 1) : 0;
+            $animalCounts = $incidents
+                ->groupBy(fn (Incident $incident) => $incident->animal_type ?: 'Unknown')
+                ->map(fn ($group) => $group->count())
+                ->sortDesc();
+            $barangayCounts = $incidents
+                ->filter(fn (Incident $incident) => $incident->barangay_id !== null)
+                ->groupBy(fn (Incident $incident) => $incident->barangay?->name ?? 'Unknown')
+                ->map(fn ($group) => $group->count())
+                ->sortDesc();
 
-        $monthlyCases = collect(range(1, $currentMonth))
-            ->map(fn (int $month) => [
-                'month' => Carbon::create($year, $month, 1)->format('M'),
-                'cases' => $incidents
-                    ->filter(fn (Incident $incident) => optional($incident->incident_date)->month === $month)
-                    ->count(),
-            ])
-            ->values();
+            $monthlyCases = collect(range(1, $currentMonth))
+                ->map(fn (int $month) => [
+                    'month' => Carbon::create($year, $month, 1)->format('M'),
+                    'cases' => $incidents
+                        ->filter(fn (Incident $incident) => optional($incident->incident_date)->month === $month)
+                        ->count(),
+                ])
+                ->values();
 
-        $ageGroups = [
-            ['group' => '0-17', 'min' => 0, 'max' => 17],
-            ['group' => '18-35', 'min' => 18, 'max' => 35],
-            ['group' => '36-50', 'min' => 36, 'max' => 50],
-            ['group' => '51+', 'min' => 51, 'max' => null],
-        ];
+            $ageGroups = [
+                ['group' => '0-17', 'min' => 0, 'max' => 17],
+                ['group' => '18-35', 'min' => 18, 'max' => 35],
+                ['group' => '36-50', 'min' => 36, 'max' => 50],
+                ['group' => '51+', 'min' => 51, 'max' => null],
+            ];
 
-        $ageGroupDistribution = collect($ageGroups)
-            ->map(fn (array $range) => [
-                'group' => $range['group'],
-                'cases' => $incidents
-                    ->filter(function (Incident $incident) use ($range): bool {
-                        $age = $incident->patient?->age;
+            $ageGroupDistribution = collect($ageGroups)
+                ->map(fn (array $range) => [
+                    'group' => $range['group'],
+                    'cases' => $incidents
+                        ->filter(function (Incident $incident) use ($range): bool {
+                            $age = $incident->patient?->age;
 
-                        if ($age === null) {
-                            return false;
-                        }
+                            if ($age === null) {
+                                return false;
+                            }
 
-                        return $age >= $range['min'] && ($range['max'] === null || $age <= $range['max']);
-                    })
-                    ->count(),
-            ])
-            ->values();
+                            return $age >= $range['min'] && ($range['max'] === null || $age <= $range['max']);
+                        })
+                        ->count(),
+                ])
+                ->values();
 
-        return response()->json([
-            'success' => true,
-            'year' => $year,
-            'totalCases' => $incidents->count(),
-            'activeCases' => $incidents->where('status', 'Active')->count(),
-            'completedVaccinations' => $incidents->where('status', 'Completed')->count(),
-            'completedDoses' => $completedDoses,
-            'pendingDoses' => $pepSchedules->whereIn('status', ['Pending', 'Upcoming'])->count(),
-            'vaccinationRate' => $vaccinationRate,
-            'highRiskBarangays' => $barangayCounts->filter(fn (int $count) => $count >= 21)->count(),
-            'averageCasesPerMonth' => $currentMonth > 0 ? round($incidents->count() / $currentMonth, 1) : 0,
-            'topBarangay' => $barangayCounts->keys()->first() ?? 'N/A',
-            'topAnimalType' => $animalCounts->keys()->first() ?? 'N/A',
-            'monthlyCases' => $monthlyCases,
-            'animalTypeDistribution' => $animalCounts
-                ->map(fn (int $count, string $animal) => ['name' => $animal, 'value' => $count])
-                ->values(),
-            'ageGroupDistribution' => $ageGroupDistribution,
-        ]);
+            return response()->json([
+                'success' => true,
+                'year' => $year,
+                'totalCases' => $incidents->count(),
+                'activeCases' => $incidents->where('status', 'Active')->count(),
+                'completedVaccinations' => $incidents->where('status', 'Completed')->count(),
+                'completedDoses' => $completedDoses,
+                'pendingDoses' => $pepSchedules->whereIn('status', ['Pending', 'Upcoming'])->count(),
+                'vaccinationRate' => $vaccinationRate,
+                'highRiskBarangays' => $barangayCounts->filter(fn (int $count) => $count >= 21)->count(),
+                'averageCasesPerMonth' => $currentMonth > 0 ? round($incidents->count() / $currentMonth, 1) : 0,
+                'topBarangay' => $barangayCounts->keys()->first() ?? 'N/A',
+                'topAnimalType' => $animalCounts->keys()->first() ?? 'N/A',
+                'monthlyCases' => $monthlyCases,
+                'animalTypeDistribution' => $animalCounts
+                    ->map(fn (int $count, string $animal) => ['name' => $animal, 'value' => $count])
+                    ->values(),
+                'ageGroupDistribution' => $ageGroupDistribution,
+            ]);
+        } catch (\Throwable $exception) {
+            return $this->publicApiFailure(
+                $exception,
+                'Public statistics are temporarily unavailable. Please try again later.',
+                'PUBLIC_STATISTICS_UNAVAILABLE'
+            );
+        }
     }
 
     public function publicHeatmap(Request $request): JsonResponse
     {
-        $filters = $request->validate([
-            'date_from' => ['nullable', 'date'],
-            'date_to' => ['nullable', 'date'],
-            'animal_type' => ['nullable', 'string'],
-            'who_category' => ['nullable', 'string'],
-        ]);
+        try {
+            $filters = $request->validate([
+                'date_from' => ['nullable', 'date'],
+                'date_to' => ['nullable', 'date'],
+                'animal_type' => ['nullable', 'string'],
+                'who_category' => ['nullable', 'string'],
+            ]);
 
-        $query = Incident::with(['barangay', 'pepSchedules']);
+            $query = Incident::with(['barangay', 'pepSchedules']);
 
-        if (! blank($filters['date_from'] ?? null)) {
-            $query->whereDate('incident_date', '>=', $filters['date_from']);
+            if (! blank($filters['date_from'] ?? null)) {
+                $query->whereDate('incident_date', '>=', $filters['date_from']);
+            }
+
+            if (! blank($filters['date_to'] ?? null)) {
+                $query->whereDate('incident_date', '<=', $filters['date_to']);
+            }
+
+            if (! blank($filters['animal_type'] ?? null) && strtolower($filters['animal_type']) !== 'all') {
+                $query->where('animal_type', $this->normalizeAnimalType($filters['animal_type']));
+            }
+
+            if (! blank($filters['who_category'] ?? null) && strtolower($filters['who_category']) !== 'all') {
+                $query->where('who_category', $this->normalizeWhoCategory($filters['who_category']));
+            }
+
+            $incidents = $query->get()
+                ->filter(fn (Incident $incident) => $this->incidentMapLocation($incident) !== null)
+                ->values();
+
+            $data = $incidents
+                ->groupBy(fn (Incident $incident) => $incident->barangay->name)
+                ->map(function ($group, string $barangayName): array {
+                    $totalIncidents = $group->count();
+                    $pepSchedules = $group->flatMap(fn (Incident $incident) => $incident->pepSchedules);
+                    $pepScheduleCount = $pepSchedules->count();
+                    $pepDoneCount = $pepSchedules->where('status', 'Done')->count();
+                    $topAnimalType = $group
+                        ->groupBy('animal_type')
+                        ->map(fn ($animalGroup) => $animalGroup->count())
+                        ->sortDesc()
+                        ->keys()
+                        ->first() ?? 'N/A';
+                    $latestIncident = $group->sortByDesc('id')->first();
+                    $locations = $group
+                        ->map(fn (Incident $incident) => $this->incidentMapLocation($incident))
+                        ->filter()
+                        ->values();
+
+                    return [
+                        'incident_id' => $latestIncident?->id,
+                        'incident_ids' => $group->pluck('id')->values(),
+                        'barangay_name' => $barangayName,
+                        'latitude' => round((float) $locations->avg('lat'), 8),
+                        'longitude' => round((float) $locations->avg('lng'), 8),
+                        'total_incident_count' => $totalIncidents,
+                        'total_incidents' => $totalIncidents,
+                        'top_animal_type' => $topAnimalType,
+                        'pep_compliance_rate' => $pepScheduleCount > 0
+                            ? round(($pepDoneCount / $pepScheduleCount) * 100, 1)
+                            : 0,
+                        'risk_level' => $this->riskLevelForIncidentCount($totalIncidents),
+                    ];
+                })
+                ->sortByDesc('total_incident_count')
+                ->values();
+
+            $heatPoints = $data->map(fn (array $item) => [
+                'barangay_name' => $item['barangay_name'],
+                'latitude' => $item['latitude'],
+                'longitude' => $item['longitude'],
+                'intensity' => $this->heatIntensityForIncidentCount($item['total_incident_count']),
+                'total_incident_count' => $item['total_incident_count'],
+            ])->values();
+
+            return response()->json([
+                'success' => true,
+                'data' => $data,
+                'heat_points' => $heatPoints,
+                'bounds' => [
+                    'southwest' => [self::DIGOS_BOUNDS['south'], self::DIGOS_BOUNDS['west']],
+                    'northeast' => [self::DIGOS_BOUNDS['north'], self::DIGOS_BOUNDS['east']],
+                ],
+                'center' => [self::DIGOS_CENTER['lat'], self::DIGOS_CENTER['lng']],
+                'zoom' => 13,
+                'generated_at' => now()->toDateTimeString(),
+            ]);
+        } catch (\Throwable $exception) {
+            return $this->publicApiFailure($exception, 'Unable to load map data.', 'PUBLIC_MAP_UNAVAILABLE');
         }
-
-        if (! blank($filters['date_to'] ?? null)) {
-            $query->whereDate('incident_date', '<=', $filters['date_to']);
-        }
-
-        if (! blank($filters['animal_type'] ?? null) && strtolower($filters['animal_type']) !== 'all') {
-            $query->where('animal_type', $this->normalizeAnimalType($filters['animal_type']));
-        }
-
-        if (! blank($filters['who_category'] ?? null) && strtolower($filters['who_category']) !== 'all') {
-            $query->where('who_category', $this->normalizeWhoCategory($filters['who_category']));
-        }
-
-        $incidents = $query->get()
-            ->filter(fn (Incident $incident) => $this->incidentMapLocation($incident) !== null)
-            ->values();
-
-        $data = $incidents
-            ->groupBy(fn (Incident $incident) => $incident->barangay->name)
-            ->map(function ($group, string $barangayName): array {
-                $totalIncidents = $group->count();
-                $pepSchedules = $group->flatMap(fn (Incident $incident) => $incident->pepSchedules);
-                $pepScheduleCount = $pepSchedules->count();
-                $pepDoneCount = $pepSchedules->where('status', 'Done')->count();
-                $topAnimalType = $group
-                    ->groupBy('animal_type')
-                    ->map(fn ($animalGroup) => $animalGroup->count())
-                    ->sortDesc()
-                    ->keys()
-                    ->first() ?? 'N/A';
-                $latestIncident = $group->sortByDesc('id')->first();
-                $locations = $group
-                    ->map(fn (Incident $incident) => $this->incidentMapLocation($incident))
-                    ->filter()
-                    ->values();
-
-                return [
-                    'incident_id' => $latestIncident?->id,
-                    'incident_ids' => $group->pluck('id')->values(),
-                    'barangay_name' => $barangayName,
-                    'latitude' => round((float) $locations->avg('lat'), 8),
-                    'longitude' => round((float) $locations->avg('lng'), 8),
-                    'total_incident_count' => $totalIncidents,
-                    'total_incidents' => $totalIncidents,
-                    'top_animal_type' => $topAnimalType,
-                    'pep_compliance_rate' => $pepScheduleCount > 0
-                        ? round(($pepDoneCount / $pepScheduleCount) * 100, 1)
-                        : 0,
-                    'risk_level' => $this->riskLevelForIncidentCount($totalIncidents),
-                ];
-            })
-            ->sortByDesc('total_incident_count')
-            ->values();
-
-        $heatPoints = $data->map(fn (array $item) => [
-            'barangay_name' => $item['barangay_name'],
-            'latitude' => $item['latitude'],
-            'longitude' => $item['longitude'],
-            'intensity' => $this->heatIntensityForIncidentCount($item['total_incident_count']),
-            'total_incident_count' => $item['total_incident_count'],
-        ])->values();
-
-        return response()->json([
-            'success' => true,
-            'data' => $data,
-            'heat_points' => $heatPoints,
-            'bounds' => [
-                'southwest' => [self::DIGOS_BOUNDS['south'], self::DIGOS_BOUNDS['west']],
-                'northeast' => [self::DIGOS_BOUNDS['north'], self::DIGOS_BOUNDS['east']],
-            ],
-            'center' => [self::DIGOS_CENTER['lat'], self::DIGOS_CENTER['lng']],
-            'zoom' => 13,
-            'generated_at' => now()->toDateTimeString(),
-        ]);
     }
 
     public function publicBarangayStats(): JsonResponse
     {
-        $year = (int) now()->year;
-        $stats = Barangay::withCount([
-            'incidents' => fn ($query) => $query->whereYear('incident_date', $year),
-        ])
-            ->orderByDesc('incidents_count')
-            ->get()
-            ->mapWithKeys(fn (Barangay $barangay) => [$barangay->name => $barangay->incidents_count]);
+        try {
+            $year = (int) now()->year;
+            $stats = Barangay::withCount([
+                'incidents' => fn ($query) => $query->whereYear('incident_date', $year),
+            ])
+                ->orderByDesc('incidents_count')
+                ->get()
+                ->mapWithKeys(fn (Barangay $barangay) => [$barangay->name => $barangay->incidents_count]);
 
-        return response()->json(['success' => true, 'year' => $year, 'data' => $stats]);
+            return response()->json(['success' => true, 'year' => $year, 'data' => $stats]);
+        } catch (\Throwable $exception) {
+            return $this->publicApiFailure(
+                $exception,
+                'Public statistics are temporarily unavailable. Please try again later.',
+                'PUBLIC_BARANGAY_STATISTICS_UNAVAILABLE'
+            );
+        }
+    }
+
+    public function publicClinics(): JsonResponse
+    {
+        try {
+            $keys = [
+                'clinic_public_listing_enabled',
+                'clinic_name',
+                'clinic_type',
+                'clinic_address',
+                'clinic_barangay',
+                'contact_email',
+                'contact_number',
+                'clinic_operating_hours',
+                'clinic_services',
+                'clinic_latitude',
+                'clinic_longitude',
+                'clinic_public_notes',
+                'clinic_verified_at',
+            ];
+            $settings = Setting::query()
+                ->whereIn('setting_key', $keys)
+                ->pluck('setting_value', 'setting_key');
+
+            if (! filter_var($settings->get('clinic_public_listing_enabled', false), FILTER_VALIDATE_BOOL)) {
+                return response()->json(['success' => true, 'data' => []]);
+            }
+
+            $name = trim((string) $settings->get('clinic_name', ''));
+            if ($name === '') {
+                return response()->json(['success' => true, 'data' => []]);
+            }
+
+            $servicesValue = $settings->get('clinic_services');
+            $services = [];
+            if (is_string($servicesValue) && $servicesValue !== '') {
+                $decoded = json_decode($servicesValue, true);
+                $services = is_array($decoded)
+                    ? array_values(array_filter($decoded, 'is_string'))
+                    : array_values(array_filter(array_map('trim', explode(',', $servicesValue))));
+            }
+
+            $latitude = is_numeric($settings->get('clinic_latitude')) ? (float) $settings->get('clinic_latitude') : null;
+            $longitude = is_numeric($settings->get('clinic_longitude')) ? (float) $settings->get('clinic_longitude') : null;
+            $verifiedAt = $settings->get('clinic_verified_at');
+            $lastUpdated = Setting::query()->whereIn('setting_key', $keys)->max('updated_at');
+
+            return response()->json([
+                'success' => true,
+                'data' => [[
+                    'public_id' => 'primary-clinic',
+                    'name' => $name,
+                    'clinic_type' => $settings->get('clinic_type') ?: null,
+                    'address' => $settings->get('clinic_address') ?: null,
+                    'barangay' => $settings->get('clinic_barangay') ?: null,
+                    'phone' => $settings->get('contact_number') ?: null,
+                    'public_email' => $settings->get('contact_email') ?: null,
+                    'operating_hours' => $settings->get('clinic_operating_hours') ?: null,
+                    'services' => $services,
+                    'latitude' => $latitude,
+                    'longitude' => $longitude,
+                    'public_notes' => $settings->get('clinic_public_notes') ?: null,
+                    'verified' => ! blank($verifiedAt),
+                    'last_verified_at' => $verifiedAt ?: null,
+                    'last_updated_at' => $lastUpdated ? Carbon::parse($lastUpdated)->toDateString() : null,
+                    'open_now' => null,
+                ]],
+            ]);
+        } catch (\Throwable $exception) {
+            return $this->publicApiFailure(
+                $exception,
+                'Unable to load clinic information. Please try again later.',
+                'PUBLIC_CLINIC_DIRECTORY_UNAVAILABLE'
+            );
+        }
+    }
+
+    private function publicApiFailure(\Throwable $exception, string $message, string $code): JsonResponse
+    {
+        Log::error('Public API request failed', [
+            'exception' => $exception,
+            'error_code' => $code,
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => $message,
+            'error' => $message,
+            'code' => $code,
+        ], 500);
     }
 
     public function animals(): JsonResponse
@@ -2278,6 +2393,15 @@ class BitemapApiController extends Controller
                 'contact_email',
                 'contact_number',
                 'clinic_address',
+                'clinic_public_listing_enabled',
+                'clinic_type',
+                'clinic_barangay',
+                'clinic_operating_hours',
+                'clinic_services',
+                'clinic_latitude',
+                'clinic_longitude',
+                'clinic_public_notes',
+                'clinic_verified_at',
                 'system_timezone',
                 'system_language',
                 'sms_reminders_enabled',
@@ -2302,7 +2426,6 @@ class BitemapApiController extends Controller
 
         return blank($value) ? $fallback : $value;
     }
-
 
     private function auditLogFilters(Request $request): array
     {
@@ -2691,8 +2814,6 @@ class BitemapApiController extends Controller
         ];
     }
 
-
-
     private function isClinicAdmin(?User $user): bool
     {
         return $this->canonicalUserRole($user?->role) === 'clinic_admin';
@@ -2733,7 +2854,6 @@ class BitemapApiController extends Controller
             default => $role ?? '',
         };
     }
-
 
     private function storableUserRole(?string $role): string
     {

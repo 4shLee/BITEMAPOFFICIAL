@@ -27,6 +27,34 @@ app.use(
   }),
 );
 
+const PUBLIC_RATE_LIMIT_WINDOW_MS = 60_000;
+const PUBLIC_RATE_LIMIT_MAX_REQUESTS = 60;
+const publicRequestBuckets = new Map<string, { count: number; resetAt: number }>();
+
+app.use("/make-server-e1d15c13/public/*", async (c, next) => {
+  const forwardedFor = c.req.header("x-forwarded-for")?.split(",")[0]?.trim();
+  const clientKey = forwardedFor || c.req.header("cf-connecting-ip") || "anonymous";
+  const now = Date.now();
+  const current = publicRequestBuckets.get(clientKey);
+  const bucket = !current || current.resetAt <= now
+    ? { count: 0, resetAt: now + PUBLIC_RATE_LIMIT_WINDOW_MS }
+    : current;
+
+  bucket.count += 1;
+  publicRequestBuckets.set(clientKey, bucket);
+
+  c.header("RateLimit-Limit", String(PUBLIC_RATE_LIMIT_MAX_REQUESTS));
+  c.header("RateLimit-Remaining", String(Math.max(0, PUBLIC_RATE_LIMIT_MAX_REQUESTS - bucket.count)));
+  c.header("RateLimit-Reset", String(Math.ceil(bucket.resetAt / 1000)));
+
+  if (bucket.count > PUBLIC_RATE_LIMIT_MAX_REQUESTS) {
+    c.header("Retry-After", String(Math.max(1, Math.ceil((bucket.resetAt - now) / 1000))));
+    return c.json({ success: false, error: "Too many public requests. Please try again shortly." }, 429);
+  }
+
+  await next();
+});
+
 // Helper function to get authenticated user
 async function getAuthUser(authHeader: string | null) {
   if (!authHeader) return null;
@@ -1083,89 +1111,256 @@ app.post("/make-server-e1d15c13/send-email", async (c) => {
   }
 });
 
-// ============ PUBLIC API ENDPOINTS (No Auth Required) ============
-
-// Public statistics
-app.get("/make-server-e1d15c13/public/statistics", async (c) => {
+// Authenticated staff GIS aggregation. This route is deliberately separate from
+// the public contract and cannot be requested without a valid staff session.
+app.get("/make-server-e1d15c13/gis/heatmap", async (c) => {
   try {
+    const user = await getAuthUser(c.req.header("Authorization"));
+    if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
+
     const db = supabase();
-
-    const { count: totalCases } = await db
+    let query = db
       .from("incidents")
-      .select("*", { count: "exact", head: true });
+      .select("id, incident_date, barangay_id, animal_type, who_category, status, location_lat, location_lng, barangay:barangays(name)");
+    const dateFrom = c.req.query("date_from");
+    const dateTo = c.req.query("date_to");
+    const animalType = c.req.query("animal_type");
+    const category = c.req.query("who_category");
+    if (dateFrom) query = query.gte("incident_date", dateFrom);
+    if (dateTo) query = query.lte("incident_date", dateTo);
+    if (animalType && animalType !== "All") query = query.eq("animal_type", animalType);
+    if (category && category !== "All") query = query.eq("who_category", category);
 
-    const { count: activeCases } = await db
-      .from("incidents")
-      .select("*", { count: "exact", head: true })
-      .eq("status", "Active");
-
-    const { count: completedVaccinations } = await db
-      .from("incidents")
-      .select("*", { count: "exact", head: true })
-      .eq("status", "Completed");
-
-    const { count: pendingDoses } = await db
-      .from("pep_schedule")
-      .select("*", { count: "exact", head: true })
-      .in("status", ["Pending", "Upcoming"]);
-
-    return c.json({
-      success: true,
-      totalCases: totalCases || 0,
-      activeCases: activeCases || 0,
-      completedVaccinations: completedVaccinations || 0,
-      pendingDoses: pendingDoses || 0
-    });
-  } catch (error) {
-    console.error("Public statistics error:", error);
-    return c.json({ success: false, error: error.message }, 500);
-  }
-});
-
-// Public heatmap data
-app.get("/make-server-e1d15c13/public/heatmap", async (c) => {
-  try {
-    const { data, error } = await supabase()
-      .from("incidents")
-      .select("location_lat, location_lng, who_category")
-      .not("location_lat", "is", null)
-      .not("location_lng", "is", null);
-
+    const { data: incidents, error } = await query;
     if (error) throw error;
 
-    return c.json({ success: true, data });
+    const groups = new Map<string, any>();
+    (incidents || []).forEach((incident: any) => {
+      if (!incident.barangay_id) return;
+      const current = groups.get(incident.barangay_id) || {
+        barangay_name: incident.barangay?.name || "Unknown",
+        ids: [], count: 0, completed: 0, latitudeTotal: 0, longitudeTotal: 0, coordinateCount: 0,
+        animals: new Map<string, number>()
+      };
+      current.ids.push(incident.id);
+      current.count += 1;
+      if (incident.status === "Completed") current.completed += 1;
+      current.animals.set(incident.animal_type, (current.animals.get(incident.animal_type) || 0) + 1);
+      if (incident.location_lat != null && incident.location_lng != null) {
+        current.latitudeTotal += Number(incident.location_lat);
+        current.longitudeTotal += Number(incident.location_lng);
+        current.coordinateCount += 1;
+      }
+      groups.set(incident.barangay_id, current);
+    });
+
+    const data = Array.from(groups.values()).filter((group) => group.coordinateCount > 0).map((group) => {
+      const topAnimal = Array.from(group.animals.entries()).sort((a: any, b: any) => b[1] - a[1])[0]?.[0] || "Not available";
+      return {
+        incident_id: null,
+        incident_ids: group.ids,
+        barangay_name: group.barangay_name,
+        latitude: group.latitudeTotal / group.coordinateCount,
+        longitude: group.longitudeTotal / group.coordinateCount,
+        total_incident_count: group.count,
+        total_incidents: group.count,
+        top_animal_type: topAnimal,
+        pep_compliance_rate: group.count ? Number(((group.completed / group.count) * 100).toFixed(1)) : 0,
+        risk_level: group.count > 20 ? "HIGH RISK" : group.count > 10 ? "MODERATE RISK" : "LOW RISK"
+      };
+    });
+    const maxCount = Math.max(1, ...data.map((item) => item.total_incident_count));
+    const heat_points = data.map((item) => ({
+      barangay_name: item.barangay_name,
+      latitude: item.latitude,
+      longitude: item.longitude,
+      intensity: item.total_incident_count / maxCount,
+      total_incident_count: item.total_incident_count
+    }));
+
+    return c.json({ success: true, data, heat_points });
   } catch (error) {
-    console.error("Public heatmap error:", error);
-    return c.json({ success: false, error: error.message }, 500);
+    console.error("Authenticated GIS heatmap error:", error);
+    return c.json({ success: false, error: "Unable to load staff GIS data." }, 500);
   }
 });
 
-// Public barangay statistics
+// ============ PRIVACY-SAFE PUBLIC API ENDPOINTS (No Auth Required) ============
+
+const PUBLIC_MINIMUM_CELL_COUNT = 5;
+const PUBLIC_ANIMAL_TYPES = new Set(["All", "Dog", "Cat", "Other"]);
+const PUBLIC_RISK_LEVELS = new Set(["All", "LOW", "MODERATE", "HIGH"]);
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+function publicRiskLevel(count: number) {
+  if (count === 0) return "NO DATA";
+  if (count < PUBLIC_MINIMUM_CELL_COUNT) return "SUPPRESSED";
+  if (count <= 10) return "LOW";
+  if (count <= 20) return "MODERATE";
+  return "HIGH";
+}
+
+function parsePublicFilters(c: any) {
+  const now = new Date();
+  const currentYear = now.getUTCFullYear();
+  const requestedYear = Number(c.req.query("year") || currentYear);
+  const year = Number.isInteger(requestedYear) && requestedYear >= currentYear - 5 && requestedYear <= currentYear
+    ? requestedYear
+    : currentYear;
+  const defaultEndMonth = year === currentYear ? now.getUTCMonth() + 1 : 12;
+  const monthStart = Number(c.req.query("month_start") || 1);
+  const monthEnd = Number(c.req.query("month_end") || defaultEndMonth);
+  const animalType = c.req.query("animal_type") || "All";
+  const riskLevel = c.req.query("risk_level") || "All";
+
+  if (!Number.isInteger(monthStart) || !Number.isInteger(monthEnd) || monthStart < 1 || monthEnd > 12 || monthEnd < monthStart) {
+    return { error: "Choose a valid broad month range." };
+  }
+
+  if (monthEnd - monthStart + 1 < 3) {
+    return { error: "Public filters require a reporting period of at least three months." };
+  }
+
+  if (!PUBLIC_ANIMAL_TYPES.has(animalType) || !PUBLIC_RISK_LEVELS.has(riskLevel)) {
+    return { error: "One or more public filters are invalid." };
+  }
+
+  return { year, monthStart, monthEnd, animalType, riskLevel };
+}
+
+async function getPublicBarangayAggregation(filters: any) {
+  const db = supabase();
+  const startDate = `${filters.year}-${String(filters.monthStart).padStart(2, "0")}-01`;
+  const endBoundary = filters.monthEnd === 12
+    ? `${filters.year + 1}-01-01`
+    : `${filters.year}-${String(filters.monthEnd + 1).padStart(2, "0")}-01`;
+
+  const [{ data: barangays, error: barangayError }, incidentResult] = await Promise.all([
+    db.from("barangays").select("id, name, population").order("name"),
+    (() => {
+      let query = db
+        .from("incidents")
+        .select("barangay_id, animal_type, status")
+        .gte("incident_date", startDate)
+        .lt("incident_date", endBoundary);
+      if (filters.animalType !== "All") query = query.eq("animal_type", filters.animalType);
+      return query;
+    })()
+  ]);
+
+  if (barangayError || incidentResult.error) throw barangayError || incidentResult.error;
+
+  const grouped = new Map<string, any>();
+  (barangays || []).forEach((barangay: any) => grouped.set(barangay.id, {
+    barangay_name: barangay.name,
+    population: Number(barangay.population || 0),
+    count: 0,
+    completed: 0,
+    animals: new Map<string, number>()
+  }));
+
+  (incidentResult.data || []).forEach((incident: any) => {
+    const group = grouped.get(incident.barangay_id);
+    if (!group) return;
+    group.count += 1;
+    if (incident.status === "Completed") group.completed += 1;
+    group.animals.set(incident.animal_type, (group.animals.get(incident.animal_type) || 0) + 1);
+  });
+
+  const rawRows = Array.from(grouped.values());
+  const cityTotal = rawRows.reduce((sum, row) => sum + row.count, 0);
+  const recordedBarangays = rawRows.filter((row) => row.count > 0).length;
+  const cityAverage = recordedBarangays > 0 ? cityTotal / recordedBarangays : 0;
+
+  let rows = rawRows.map((row) => {
+    const suppressed = row.count > 0 && row.count < PUBLIC_MINIMUM_CELL_COUNT;
+    const riskLevel = publicRiskLevel(row.count);
+    const topAnimal = !suppressed && row.count > 0
+      ? Array.from(row.animals.entries()).sort((a: any, b: any) => b[1] - a[1])[0]?.[0] || null
+      : null;
+
+    return {
+      barangay_name: row.barangay_name,
+      incident_count: suppressed ? null : row.count,
+      count_label: suppressed ? "Fewer than 5 incidents" : row.count === 0 ? "No recorded data" : `${row.count} incidents`,
+      suppressed,
+      risk_level: riskLevel,
+      incident_rate_per_1000: suppressed || !row.population ? null : Number(((row.count / row.population) * 1000).toFixed(2)),
+      most_common_animal: topAnimal,
+      comparison_to_city_average: suppressed || row.count === 0 ? null : Number((row.count - cityAverage).toFixed(1))
+    };
+  });
+
+  if (filters.riskLevel !== "All") rows = rows.filter((row) => row.risk_level === filters.riskLevel);
+
+  const reportLabel = `${MONTH_NAMES[filters.monthStart - 1]}–${MONTH_NAMES[filters.monthEnd - 1]} ${filters.year}`;
+  const highest = rawRows.filter((row) => row.count >= PUBLIC_MINIMUM_CELL_COUNT).sort((a, b) => b.count - a.count)[0];
+
+  return {
+    reporting_period: {
+      year: filters.year,
+      month_start: filters.monthStart,
+      month_end: filters.monthEnd,
+      label: reportLabel
+    },
+    classification_basis: "Case count: Low 5–10, Moderate 11–20, High 21+. Counts below 5 are suppressed.",
+    summary: {
+      total_incidents: cityTotal >= PUBLIC_MINIMUM_CELL_COUNT ? cityTotal : null,
+      total_incidents_label: cityTotal > 0 && cityTotal < PUBLIC_MINIMUM_CELL_COUNT ? "Fewer than 5 incidents" : `${cityTotal} incidents`,
+      barangays_with_recorded_incidents: recordedBarangays,
+      highest_reported_barangay: highest?.barangay_name || null,
+      pep_completion_rate: cityTotal >= PUBLIC_MINIMUM_CELL_COUNT ? Number(((rawRows.reduce((sum, row) => sum + row.completed, 0) / cityTotal) * 100).toFixed(1)) : null,
+      city_average_incidents: recordedBarangays > 0 ? Number(cityAverage.toFixed(1)) : null
+    },
+    data: rows
+  };
+}
+
+app.get("/make-server-e1d15c13/public/heatmap", async (c) => {
+  try {
+    const filters = parsePublicFilters(c);
+    if (filters.error) return c.json({ success: false, error: filters.error }, 400);
+    const aggregate = await getPublicBarangayAggregation(filters);
+    c.header("Cache-Control", "public, max-age=60");
+    return c.json({ success: true, ...aggregate });
+  } catch (error) {
+    console.error("Public heatmap aggregation error:", error);
+    return c.json({ success: false, error: "Aggregated public map data is temporarily unavailable." }, 500);
+  }
+});
+
+app.get("/make-server-e1d15c13/public/statistics", async (c) => {
+  try {
+    const filters = parsePublicFilters(c);
+    if (filters.error) return c.json({ success: false, error: filters.error }, 400);
+    const aggregate = await getPublicBarangayAggregation(filters);
+    c.header("Cache-Control", "public, max-age=60");
+    return c.json({
+      success: true,
+      year: aggregate.reporting_period.year,
+      reportingPeriod: aggregate.reporting_period.label,
+      totalCases: aggregate.summary.total_incidents,
+      totalCasesLabel: aggregate.summary.total_incidents_label,
+      vaccinationRate: aggregate.summary.pep_completion_rate,
+      highRiskBarangays: aggregate.data.filter((row: any) => row.risk_level === "HIGH").length
+    });
+  } catch (error) {
+    console.error("Public statistics aggregation error:", error);
+    return c.json({ success: false, error: "Aggregated public statistics are temporarily unavailable." }, 500);
+  }
+});
+
 app.get("/make-server-e1d15c13/public/barangay-stats", async (c) => {
   try {
-    const { data: incidents } = await supabase()
-      .from("incidents")
-      .select(`
-        barangay:barangays(name),
-        who_category,
-        status
-      `);
-
-    const stats = {};
-    incidents?.forEach(incident => {
-      const barangayName = incident.barangay?.name || "Unknown";
-      if (!stats[barangayName]) {
-        stats[barangayName] = { total: 0, active: 0, completed: 0 };
-      }
-      stats[barangayName].total++;
-      if (incident.status === "Active") stats[barangayName].active++;
-      if (incident.status === "Completed") stats[barangayName].completed++;
-    });
-
-    return c.json({ success: true, data: stats });
+    const filters = parsePublicFilters(c);
+    if (filters.error) return c.json({ success: false, error: filters.error }, 400);
+    const aggregate = await getPublicBarangayAggregation(filters);
+    const stats = Object.fromEntries(aggregate.data.map((row: any) => [row.barangay_name, row.incident_count]));
+    c.header("Cache-Control", "public, max-age=60");
+    return c.json({ success: true, reportingPeriod: aggregate.reporting_period.label, data: stats });
   } catch (error) {
-    console.error("Public barangay stats error:", error);
-    return c.json({ success: false, error: error.message }, 500);
+    console.error("Public barangay aggregation error:", error);
+    return c.json({ success: false, error: "Aggregated barangay statistics are temporarily unavailable." }, 500);
   }
 });
 
