@@ -30,6 +30,8 @@ class BitemapApiController extends Controller
 {
     private const DIGOS_CENTER = ['lat' => 6.7497, 'lng' => 125.3572];
 
+    private const PEP_DOSE_DAY_OFFSETS = [0, 3, 7, 14, 28];
+
     private const DIGOS_BOUNDS = [
         'south' => 6.63,
         'west' => 125.25,
@@ -317,9 +319,14 @@ class BitemapApiController extends Controller
 
     public function updateIncident(Request $request, Incident $incident): JsonResponse
     {
-        $patient = $this->resolveIncidentPatient($request, $incident->patient);
-        $incident->update($this->incidentData($request, $patient));
-        $this->createPepScheduleForIncident($incident->fresh());
+        DB::transaction(function () use ($request, $incident): void {
+            $patient = $this->resolveIncidentPatient($request, $incident->patient);
+            $incidentData = $this->incidentData($request, $patient);
+            $incidentDateChanged = $incident->incident_date?->toDateString() !== $incidentData['incident_date'];
+
+            $incident->update($incidentData);
+            $this->syncPepScheduleForIncident($incident->fresh(), $incidentDateChanged);
+        });
 
         return response()->json([
             'success' => true,
@@ -2256,7 +2263,7 @@ class BitemapApiController extends Controller
     private function incidentData(Request $request, Patient $patient): array
     {
         $validator = Validator::make($request->all(), [
-            'incident_date' => ['nullable', 'date'],
+            'incident_date' => ['required', 'date', 'before_or_equal:today'],
             'incident_time' => ['nullable'],
             'animal_type' => ['nullable', 'string'],
             'bite_location' => ['nullable', 'string', 'max:150'],
@@ -2270,11 +2277,12 @@ class BitemapApiController extends Controller
         ]);
 
         $data = $validator->validate();
+        $incidentDate = Carbon::parse($data['incident_date'])->toDateString();
 
         return [
             'patient_id' => $patient->id,
             'barangay_id' => blank($data['barangay_id'] ?? null) ? $patient->barangay_id : $data['barangay_id'],
-            'incident_date' => $data['incident_date'] ?? now()->toDateString(),
+            'incident_date' => $incidentDate,
             'incident_time' => $data['incident_time'] ?? null,
             'animal_type' => $this->normalizeAnimalType($data['animal_type'] ?? 'Dog'),
             'animal_description' => $request->input('animal_description'),
@@ -2321,16 +2329,27 @@ class BitemapApiController extends Controller
 
     private function createPepScheduleForIncident(Incident $incident): void
     {
+        $this->syncPepScheduleForIncident($incident);
+    }
+
+    private function syncPepScheduleForIncident(Incident $incident, bool $updateExisting = false): void
+    {
         $startDate = Carbon::parse($incident->incident_date);
 
-        foreach ([0, 3, 7, 14, 28] as $day) {
-            PepSchedule::firstOrCreate(
-                ['incident_id' => $incident->id, 'dose_day' => $day],
-                [
-                    'scheduled_date' => $startDate->copy()->addDays($day)->toDateString(),
-                    'status' => $day === 0 ? 'Upcoming' : 'Pending',
-                ]
-            );
+        foreach (self::PEP_DOSE_DAY_OFFSETS as $day) {
+            $schedule = PepSchedule::firstOrNew([
+                'incident_id' => $incident->id,
+                'dose_day' => $day,
+            ]);
+
+            if (! $schedule->exists) {
+                $schedule->status = $day === 0 ? 'Upcoming' : 'Pending';
+            }
+
+            if (! $schedule->exists || $updateExisting) {
+                $schedule->scheduled_date = $startDate->copy()->addDays($day)->toDateString();
+                $schedule->save();
+            }
         }
     }
 

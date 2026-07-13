@@ -1069,7 +1069,7 @@ Verification completed:
 - Confirmed Nurse/Vaccinator dashboard does not show GIS or Reports widgets.
 - Confirmed no RBAC, API, backend, database, permission, route, or authentication behavior was changed.
 
-July 5, 2026
+**July 5, 2026**
 
 ## Incident Management Progress Summary
 
@@ -1460,3 +1460,24 @@ The Incident Management module is now more consistent, clinic-friendly, and alig
 ## Overall Progress
 
 The BITEMAP public-facing experience now follows a unified healthcare-GIS visual identity across the Staff Login, Public Portal, Incident Heatmap, Statistics, and Clinic Directory. Public data access has also been strengthened through aggregation, small-count suppression, endpoint separation, rate limiting, sanitized errors, and removal of fictional or unverified public content.
+
+**July 13, 2026**
+
+## Fixed incident date synchronization across Incident Management, Patient Registry, and PEP Schedule.
+
+When the Date of Incident is updated, the system now recalculates the linked PEP schedule using Day 0, 3, 7, 14, and 28 offsets. Existing schedule records are updated without creating duplicates, while completed-dose status, administered dates, personnel, vaccine lot details, and history are preserved.
+
+Validation was added to require a valid, non-future incident date. The update is processed atomically to prevent partially saved incident or schedule data.
+
+Verification completed:
+
+- Incident Management list and details display the updated date.
+- Patient Registry displays the refreshed incident date and dose history.
+- PEP Schedule displays all recalculated dose dates.
+- No duplicate schedules were created.
+- Nurse/Vaccinator update access was confirmed.
+- Clinic Admin and Doctor viewing access was confirmed.
+- Automated regression test passed with 16 assertions.
+- Frontend production build and backend formatting checks passed.
+
+Notification synchronization was intentionally excluded and remains a separate task.
