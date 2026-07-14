@@ -87,10 +87,15 @@ export function IncidentDetail() {
   const barangayLng = incident?.barangay?.longitude ? String(incident.barangay.longitude) : '';
   const incidentLat = incident?.location_lat ? String(incident.location_lat) : '';
   const incidentLng = incident?.location_lng ? String(incident.location_lng) : '';
+  const savedLocationPrecision = readNoteValue(incident?.notes, 'Location Precision');
   const isApproximateBarangayPin = hasLocationPin && barangayLat === incidentLat && barangayLng === incidentLng;
-  const locationPinStatus = hasLocationPin
-    ? (isApproximateBarangayPin ? 'Using approximate barangay location' : 'Exact coordinates selected')
-    : 'Barangay only';
+  const locationPinStatus = savedLocationPrecision === 'Exact Pin'
+    ? 'Exact pin selected'
+    : savedLocationPrecision === 'Barangay Only'
+      ? 'Barangay only'
+      : hasLocationPin
+        ? (isApproximateBarangayPin ? 'Barangay only' : 'Exact pin selected')
+        : 'Barangay only';
   const coordinates = hasLocationPin ? 'Latitude: ' + incidentLat + ' / Longitude: ' + incidentLng : '';
   const oneLineSummary = [
     ageSex,

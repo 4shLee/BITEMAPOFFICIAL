@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { AlertCircle, CalendarDays, CheckCircle2, Crosshair, MapPin, RotateCcw } from 'lucide-react';
+import { AlertCircle, CalendarDays, CheckCircle2, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import { Header } from '../components/Layout/Header';
+import { IncidentLocationPicker } from '../components/Incidents/IncidentLocationPicker';
 import { Input } from '../components/UI/Input';
 import { Select } from '../components/UI/Select';
 import { Button } from '../components/UI/Button';
@@ -60,6 +61,36 @@ type IncidentFormData = {
   barangayId: string;
   locationLat: string;
   locationLng: string;
+  locationMode: 'none' | 'barangay' | 'exact';
+};
+
+const DIGOS_BARANGAY_COORDINATES: Record<string, { lat: number; lng: number }> = {
+  Aplaya: { lat: 6.7600, lng: 125.3425 },
+  Balabag: { lat: 6.7400, lng: 125.3575 },
+  Binaton: { lat: 6.8300, lng: 125.3700 },
+  Cogon: { lat: 6.7650, lng: 125.3875 },
+  Colorado: { lat: 6.7560, lng: 125.3150 },
+  Dawis: { lat: 6.7600, lng: 125.3725 },
+  Dulangan: { lat: 6.8100, lng: 125.3600 },
+  Goma: { lat: 6.7400, lng: 125.3200 },
+  Igpit: { lat: 6.7240, lng: 125.3480 },
+  Kapatagan: { lat: 6.8050, lng: 125.3300 },
+  Kiagot: { lat: 6.7830, lng: 125.3910 },
+  Lungag: { lat: 6.6700, lng: 125.3000 },
+  Mahayahay: { lat: 6.7400, lng: 125.3425 },
+  Matti: { lat: 6.7560, lng: 125.3340 },
+  Ruparan: { lat: 6.7800, lng: 125.3500 },
+  'San Agustin': { lat: 6.7650, lng: 125.3500 },
+  'San Jose': { lat: 6.7600, lng: 125.3575 },
+  'San Miguel': { lat: 6.7330, lng: 125.3580 },
+  'San Roque': { lat: 6.7550, lng: 125.3250 },
+  Sinawilan: { lat: 6.7750, lng: 125.4100 },
+  Soong: { lat: 6.7000, lng: 125.3200 },
+  Tiguman: { lat: 6.7400, lng: 125.3725 },
+  'Tres De Mayo': { lat: 6.7610, lng: 125.3660 },
+  'Zone 1': { lat: 6.7500, lng: 125.3525 },
+  'Zone 2': { lat: 6.7500, lng: 125.3675 },
+  'Zone 3': { lat: 6.7480, lng: 125.3800 },
 };
 
 const initialFormData: IncidentFormData = {
@@ -90,6 +121,7 @@ const initialFormData: IncidentFormData = {
   barangayId: '',
   locationLat: '',
   locationLng: '',
+  locationMode: 'none',
 };
 
 const fallbackBarangays: BarangayOption[] = [
@@ -222,12 +254,25 @@ function buildNotes(formData: IncidentFormData) {
     'Date of First Consult: ' + (formData.firstConsultDate || 'Not specified'),
     'SMS Consent: ' + (formData.smsConsent ? 'Allowed' : 'Not allowed'),
     'Preferred Reminder Channel: ' + formData.reminderChannel,
+    'Location Precision: ' + (formData.locationMode === 'exact' ? 'Exact Pin' : 'Barangay Only'),
   ].join('\n');
 }
 
 function readNoteValue(notes: string | undefined, label: string) {
   const line = (notes || '').split('\n').find((item) => item.toLowerCase().startsWith(label.toLowerCase() + ':'));
   return line ? line.split(':').slice(1).join(':').trim() : '';
+}
+
+function getBarangayCoordinates(barangay?: BarangayOption) {
+  if (!barangay) return null;
+
+  const latitude = Number(barangay.latitude);
+  const longitude = Number(barangay.longitude);
+  if (Number.isFinite(latitude) && Number.isFinite(longitude) && barangay.latitude != null && barangay.longitude != null) {
+    return { lat: latitude, lng: longitude };
+  }
+
+  return DIGOS_BARANGAY_COORDINATES[barangay.name] || null;
 }
 
 function ReadOnlyPatientItem({ label, value }: { label: string; value?: string | number | null }) {
@@ -259,6 +304,7 @@ export function IncidentReport() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedIncident, setSavedIncident] = useState<any>(null);
+  const [pendingPin, setPendingPin] = useState<{ latitude: string; longitude: string } | null>(null);
 
   useEffect(() => {
     async function loadOptions() {
@@ -294,6 +340,7 @@ export function IncidentReport() {
       try {
         setLoadingIncident(true);
         setLoadError(null);
+        setPendingPin(null);
         const response = await incidentsAPI.getById(id);
         const incident = response.data;
         const patient = incident?.patient || {};
@@ -328,6 +375,9 @@ export function IncidentReport() {
           barangayId: incident?.barangay_id ? String(incident.barangay_id) : '',
           locationLat: incident?.location_lat ? String(incident.location_lat) : '',
           locationLng: incident?.location_lng ? String(incident.location_lng) : '',
+          locationMode: readNoteValue(notes, 'Location Precision') === 'Barangay Only'
+            ? 'barangay'
+            : (incident?.location_lat && incident?.location_lng ? 'exact' : (incident?.barangay_id ? 'barangay' : 'none')),
         });
       } catch (error: any) {
         setLoadError(error.message || 'Unable to load incident report.');
@@ -447,22 +497,16 @@ export function IncidentReport() {
     setErrors((current) => ({ ...current, patientSelection: undefined }));
   };
 
-  const handleSetPin = () => {
-    if (!selectedBarangay) {
-      setErrors((current) => ({ ...current, barangayId: 'Select Barangay of Incident before using an approximate location.' }));
-      return;
-    }
-
-    const lat = selectedBarangay.latitude ? String(selectedBarangay.latitude) : '';
-    const lng = selectedBarangay.longitude ? String(selectedBarangay.longitude) : '';
-
-    if (!lat || !lng) {
-      toast.info('Barangay selected. Coordinates are optional, so this incident can be saved as barangay-only.');
-      return;
-    }
-
-    setFormData((current) => ({ ...current, locationLat: lat, locationLng: lng }));
-    toast.success('Approximate location set from the selected barangay.');
+  const handleBarangayChange = (barangayId: string) => {
+    setPendingPin(null);
+    setFormData((current) => ({
+      ...current,
+      barangayId,
+      locationLat: '',
+      locationLng: '',
+      locationMode: barangayId ? 'barangay' : 'none',
+    }));
+    setErrors((current) => ({ ...current, barangayId: undefined }));
   };
 
   const validateForm = () => {
@@ -516,6 +560,10 @@ export function IncidentReport() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (pendingPin) {
+      toast.error('Confirm or cancel the selected map pin before saving.');
+      return;
+    }
     if (!validateForm()) {
       toast.error('Please complete the required incident details.');
       return;
@@ -587,16 +635,37 @@ export function IncidentReport() {
       : [],
     [formData.incidentDate]
   );
-  const locationHelperText = 'Location is used for clinic mapping, barangay monitoring, and reports. If the exact location is unknown, selecting the barangay is enough.';
-  const selectedBarangayLat = selectedBarangay?.latitude ? String(selectedBarangay.latitude) : '';
-  const selectedBarangayLng = selectedBarangay?.longitude ? String(selectedBarangay.longitude) : '';
+  const locationHelperText = pendingPin
+    ? 'Review the selected location before confirming it as the exact incident pin.'
+    : 'Click the map to set an exact incident pin. Barangay is still required for reports and GIS analysis.';
+  const barangayCoordinates = getBarangayCoordinates(selectedBarangay);
   const hasLocationPin = Boolean(formData.locationLat && formData.locationLng);
-  const isApproximateBarangayPin = hasLocationPin
-    && selectedBarangayLat === formData.locationLat
-    && selectedBarangayLng === formData.locationLng;
-  const locationPinStatus = hasLocationPin
-    ? (isApproximateBarangayPin ? 'Using approximate barangay location' : 'Exact pin selected')
-    : (formData.barangayId ? 'Barangay only' : 'No pin selected');
+  const hasExactPin = hasLocationPin && formData.locationMode === 'exact';
+  const locationPinStatus = pendingPin ? 'Pin selected for review' : (hasExactPin ? 'Exact pin selected' : 'Barangay only');
+  const locationStatusDetail = pendingPin
+    ? 'Confirm the selected point before saving it as the exact incident pin.'
+    : hasExactPin
+      ? 'Exact incident location has been saved.'
+    : formData.barangayId
+      ? 'Using selected barangay for mapping.'
+      : 'Select a barangay to identify the incident area.';
+
+  const handleConfirmPin = () => {
+    if (!pendingPin) return;
+
+    setFormData((current) => ({
+      ...current,
+      locationLat: pendingPin.latitude,
+      locationLng: pendingPin.longitude,
+      locationMode: 'exact',
+    }));
+    setPendingPin(null);
+    toast.success('Exact incident pin confirmed.');
+  };
+
+  const handleCancelPin = () => {
+    setPendingPin(null);
+  };
 
   if (loadingIncident) {
     return (
@@ -1020,63 +1089,52 @@ export function IncidentReport() {
               label="Barangay of Incident *"
               options={barangayOptions}
               value={formData.barangayId}
-              onChange={(e) => updateField('barangayId', e.target.value)}
+              onChange={(e) => handleBarangayChange(e.target.value)}
               error={errors.barangayId}
             />
 
-            <div className="mt-4 rounded-2xl border border-dashed border-emerald-200 bg-gradient-to-br from-emerald-50 to-slate-50 p-3">
-              <div className="min-h-36 rounded-xl bg-white/80 p-4">
-                <div className="flex items-start gap-3">
-                  <div className="rounded-xl bg-emerald-100 p-2 text-emerald-700">
-                    <MapPin className="w-5 h-5" />
+            <div className="mt-4 rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-slate-50 p-3">
+              <IncidentLocationPicker
+                barangayName={selectedBarangay?.name}
+                barangayCoordinates={barangayCoordinates}
+                latitude={formData.locationLat}
+                longitude={formData.locationLng}
+                pendingLatitude={pendingPin?.latitude}
+                pendingLongitude={pendingPin?.longitude}
+                exactPin={hasExactPin}
+                onPinSelect={(latitude, longitude) => {
+                  if (!selectedBarangay) {
+                    setErrors((current) => ({ ...current, barangayId: 'Select a barangay first.' }));
+                    toast.info('Select a barangay first.');
+                    return;
+                  }
+                  setPendingPin({ latitude, longitude });
+                }}
+              />
+              <p className="mt-2 text-[11px] font-medium leading-relaxed text-slate-600">{locationHelperText}</p>
+
+              <div className="mt-3 flex items-center gap-3 rounded-xl border border-emerald-100 bg-white/85 px-3 py-2.5">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+                  <MapPin className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-bold text-slate-700">Location Status</span>
+                    <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800">
+                      {locationPinStatus}
+                    </span>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm font-bold text-foreground">Exact pin not set</p>
-                      <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-800">
-                        {locationPinStatus}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                      Use the barangay location as an approximate pin, or add an exact map pin when map selection is available.
-                    </p>
-                    {hasLocationPin ? (
-                      <div className="mt-3 grid gap-1 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-900">
-                        <span>Latitude: {formData.locationLat}</span>
-                        <span>Longitude: {formData.locationLng}</span>
-                      </div>
-                    ) : (
-                      <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
-                        {formData.barangayId ? 'Barangay only' : 'No pin selected'}
-                      </p>
-                    )}
-                  </div>
+                  <p className="mt-0.5 text-xs text-slate-600">{locationStatusDetail}</p>
                 </div>
               </div>
 
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={handleSetPin}>
-                  <Crosshair className="w-4 h-4 mr-2" />
-                  Use Barangay Location
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setFormData((current) => ({ ...current, locationLat: '', locationLng: '' }))}
-                  disabled={!formData.locationLat && !formData.locationLng}
-                >
-                  <RotateCcw className="w-4 h-4 mr-2" />
-                  Clear Pin
-                </Button>
-              </div>
+              {pendingPin && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button type="button" size="sm" onClick={handleConfirmPin}>Confirm Pin</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={handleCancelPin}>Cancel Pin</Button>
+                </div>
+              )}
 
-              <div className="mt-3 rounded-xl border border-emerald-100 bg-white/75 p-3 text-xs leading-relaxed text-slate-600">
-                <p>{locationHelperText}</p>
-                {currentRole === 'nurse_vaccinator' && (
-                  <p className="mt-1 font-medium text-slate-700">Nurse/Vaccinator can encode location but cannot access GIS analytics.</p>
-                )}
-              </div>
             </div>
           </div>
 
