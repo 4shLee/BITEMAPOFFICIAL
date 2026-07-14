@@ -46,6 +46,8 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware('role:clinic_admin,doctor,nurse_vaccinator');
     Route::put('/pep-schedule/{schedule}', [BitemapApiController::class, 'updatePepSchedule'])
         ->middleware('role:clinic_admin,nurse_vaccinator');
+    Route::put('/pep-schedule/{schedule}/reschedule', [BitemapApiController::class, 'reschedulePepSchedule'])
+        ->middleware('role:clinic_admin,nurse_vaccinator');
 
     Route::get('/inventory', [BitemapApiController::class, 'inventory'])
         ->middleware('role:clinic_admin,doctor,nurse_vaccinator');

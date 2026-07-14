@@ -378,7 +378,7 @@ class BitemapApiController extends Controller
         ]);
 
         if (($data['status'] ?? null) === 'Completed' || ($data['status'] ?? null) === 'Done') {
-            $data['status'] = $data['status'] ?? 'Completed';
+            $data['status'] = 'Done';
             $data['administered_date'] = $data['administered_date'] ?? now()->toDateString();
             $data['administered_by'] = $request->user()?->id;
         }
@@ -391,6 +391,57 @@ class BitemapApiController extends Controller
             default => 'Edit record',
         };
         $this->writeAudit($request, $action, 'PEP Schedule', $schedule->id, 'Updated PEP schedule dose day '.$schedule->dose_day.'.');
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->pepSchedulePayload($schedule->fresh(['incident.patient', 'administrator'])),
+        ]);
+    }
+
+    public function reschedulePepSchedule(Request $request, PepSchedule $schedule): JsonResponse
+    {
+        $data = $request->validate([
+            'scheduled_date' => ['required', 'date', 'after_or_equal:today'],
+            'reason' => ['required', 'string', 'max:1000'],
+        ]);
+
+        if ($schedule->administered_date || in_array($schedule->status, ['Done', 'Completed'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Completed doses cannot be rescheduled.',
+            ], 422);
+        }
+
+        if (! $schedule->scheduled_date || ! $schedule->scheduled_date->isBefore(today())) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only overdue doses can be rescheduled.',
+            ], 422);
+        }
+
+        $originalDate = $schedule->scheduled_date->toDateString();
+        $newDate = Carbon::parse($data['scheduled_date'])->toDateString();
+        $historyEntry = sprintf(
+            'Manually rescheduled from %s to %s by %s. Reason: %s',
+            $originalDate,
+            $newDate,
+            $request->user()?->name ?? $request->user()?->full_name ?? 'Authorized staff',
+            trim($data['reason'])
+        );
+
+        $schedule->update([
+            'scheduled_date' => $newDate,
+            'status' => 'Upcoming',
+            'notes' => collect([$schedule->notes, $historyEntry])->filter()->implode("\n"),
+        ]);
+
+        $this->writeAudit(
+            $request,
+            'Reschedule appointment',
+            'PEP Schedule',
+            $schedule->id,
+            'Rescheduled PEP dose day '.$schedule->dose_day.' from '.$originalDate.' to '.$newDate.'.'
+        );
 
         return response()->json([
             'success' => true,

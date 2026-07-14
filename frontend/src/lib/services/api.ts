@@ -175,6 +175,13 @@ export const pepScheduleAPI = {
       method: 'PUT',
       body: JSON.stringify(updateData),
     });
+  },
+
+  async reschedule(id: string, scheduledDate: string, reason: string) {
+    return apiRequest('/pep-schedule/' + id + '/reschedule', {
+      method: 'PUT',
+      body: JSON.stringify({ scheduled_date: scheduledDate, reason }),
+    });
   }
 };
 

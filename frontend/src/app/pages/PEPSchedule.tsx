@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
-import { Bell, CalendarDays, Check, ClipboardCheck, Clock, Edit, Eye, History, MessageSquare, Phone, ShieldCheck, Syringe, X } from 'lucide-react';
+import { Bell, CalendarDays, Check, ClipboardCheck, Clock, Edit, Eye, History, MessageSquare, Phone, RefreshCw, ShieldCheck, Syringe, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Header } from '../components/Layout/Header';
 import { Badge } from '../components/UI/Badge';
@@ -46,6 +46,11 @@ type RecordDoseForm = {
   remarks: string;
 };
 
+type RescheduleDoseForm = {
+  scheduledDate: string;
+  reason: string;
+};
+
 type InventoryBatch = {
   id: number | string;
   item_name?: string;
@@ -59,7 +64,11 @@ type InventoryBatch = {
 };
 
 function todayKey() {
-  return new Date().toISOString().split('T')[0];
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return year + '-' + month + '-' + day;
 }
 
 function dateKeyFrom(value?: string) {
@@ -71,13 +80,13 @@ function evaluateDoseStatus(item: any): DoseStatus {
   const scheduledDate = dateKeyFrom(item.scheduled_date);
   const administeredDate = dateKeyFrom(item.administered_date);
 
-  if (status === 'rescheduled') return 'rescheduled';
   if (administeredDate) return administeredDate > scheduledDate ? 'completed_late' : 'completed';
   if (status === 'done' || status === 'completed') return 'completed';
   if (status === 'missed') return 'missed';
   if (!scheduledDate) return 'pending';
   if (scheduledDate === todayKey()) return 'due_today';
   if (scheduledDate < todayKey()) return 'overdue';
+  if (status === 'rescheduled') return 'rescheduled';
   if (scheduledDate > todayKey()) return 'upcoming';
   return 'pending';
 }
@@ -213,6 +222,9 @@ export function PEPSchedule() {
     remarks: '',
   });
   const [savingDose, setSavingDose] = useState(false);
+  const [rescheduleDose, setRescheduleDose] = useState<Dose | null>(null);
+  const [rescheduleForm, setRescheduleForm] = useState<RescheduleDoseForm>({ scheduledDate: todayKey(), reason: '' });
+  const [savingReschedule, setSavingReschedule] = useState(false);
   const [inventoryItems, setInventoryItems] = useState<InventoryBatch[]>([]);
   const requestedIncidentId = useMemo(() => {
     const queryIncidentId = new URLSearchParams(location.search).get('incident_id');
@@ -273,7 +285,9 @@ export function PEPSchedule() {
   const completedLateDoses = schedule?.doses.filter((dose) => dose.status === 'completed_late').length || 0;
   const overdueDoses = schedule?.doses.filter((dose) => dose.status === 'overdue' || dose.status === 'missed').length || 0;
   const dueTodayDose = schedule?.doses.find((dose) => dose.status === 'due_today');
-  const nextDose = schedule?.doses.find((dose) => dose.status === 'due_today' || dose.status === 'overdue' || dose.status === 'rescheduled' || dose.status === 'upcoming' || dose.status === 'pending');
+  const nextDose = schedule?.doses.find((dose) => dose.status === 'due_today')
+    || schedule?.doses.find((dose) => dose.status === 'overdue' || dose.status === 'missed')
+    || schedule?.doses.find((dose) => dose.status === 'rescheduled' || dose.status === 'upcoming' || dose.status === 'pending');
   const progress = schedule?.doses.length ? Math.round((completedDoses / schedule.doses.length) * 100) : 0;
   const overallStatus = completedDoses === (schedule?.doses.length || 0)
     ? completedLateDoses > 0 ? 'Completed Late' : 'Completed'
@@ -355,6 +369,28 @@ export function PEPSchedule() {
     }
   };
 
+  const openRescheduleDose = (dose: Dose) => {
+    setRescheduleDose(dose);
+    setRescheduleForm({ scheduledDate: todayKey(), reason: '' });
+  };
+
+  const handleRescheduleDose = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!rescheduleDose) return;
+
+    try {
+      setSavingReschedule(true);
+      await pepScheduleAPI.reschedule(String(rescheduleDose.id), rescheduleForm.scheduledDate, rescheduleForm.reason);
+      toast.success('Day ' + rescheduleDose.day + ' was rescheduled. Future doses were not changed.');
+      setRescheduleDose(null);
+      loadSchedule();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to reschedule dose.');
+    } finally {
+      setSavingReschedule(false);
+    }
+  };
+
   const renderDoseAction = (dose: Dose) => {
     if (dose.status === 'completed_late') {
       return <span className="text-xs font-bold text-amber-700">Recorded Late</span>;
@@ -362,11 +398,25 @@ export function PEPSchedule() {
     if (dose.status === 'completed') {
       return <span className="text-xs font-bold text-emerald-700">Recorded</span>;
     }
-    if ((dose.status === 'due_today' || dose.status === 'overdue') && canUpdatePep) {
+    if (dose.status === 'due_today' || dose.status === 'overdue' || dose.status === 'missed') {
       return (
-        <Button type="button" size="sm" onClick={() => openRecordDose(dose)}>
-          Record Dose
-        </Button>
+        <div className="flex flex-wrap gap-1.5">
+          {canUpdatePep && (
+            <Button type="button" size="sm" onClick={() => openRecordDose(dose)}>Record Dose</Button>
+          )}
+          {canSendNotifications && (
+            <Button type="button" variant="outline" size="sm" onClick={() => handleSendReminder(dose)} disabled={!schedule?.contact_number}>
+              <MessageSquare className="h-4 w-4" />
+              Send Reminder
+            </Button>
+          )}
+          {(dose.status === 'overdue' || dose.status === 'missed') && canUpdatePep && (
+            <Button type="button" variant="outline" size="sm" onClick={() => openRescheduleDose(dose)}>
+              <RefreshCw className="h-4 w-4" />
+              Reschedule
+            </Button>
+          )}
+        </div>
       );
     }
     if (dose.status === 'upcoming' && canSendNotifications) {
@@ -452,6 +502,14 @@ export function PEPSchedule() {
                 <p className="mb-3 text-xs font-medium text-muted-foreground">
                   Dose dates are recalculated when the incident date is corrected. Completed dose records keep their administration history.
                 </p>
+                <p className="mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700">
+                  Missed doses are flagged for follow-up. Staff may record a late dose or manually reschedule according to clinic protocol.
+                </p>
+                {overdueDoses > 0 && (
+                  <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-bold text-rose-900">
+                    This patient has an overdue dose that needs follow-up.
+                  </div>
+                )}
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                   {schedule.doses.map((dose) => (
                     <div key={dose.id} className={'rounded-2xl border p-3 shadow-sm ' + statusTone(dose.status)}>
@@ -552,15 +610,21 @@ export function PEPSchedule() {
                         {(canUpdatePep || canSendNotifications) && (
                           <td className="px-3 py-3">
                             <div className="flex flex-wrap gap-2">
-                              {(dose.status === 'due_today' || dose.status === 'overdue') && canUpdatePep && (
+                              {(dose.status === 'due_today' || dose.status === 'overdue' || dose.status === 'missed') && canUpdatePep && (
                                 <Button type="button" size="sm" onClick={() => openRecordDose(dose)}>
                                   Record
                                 </Button>
                               )}
-                              {(dose.status === 'upcoming' || dose.status === 'due_today') && canSendNotifications && (
+                              {(dose.status === 'upcoming' || dose.status === 'due_today' || dose.status === 'overdue' || dose.status === 'missed') && canSendNotifications && (
                                 <Button type="button" variant="outline" size="sm" onClick={() => handleSendReminder(dose)} disabled={!schedule.contact_number}>
                                   <MessageSquare className="h-4 w-4" />
                                   SMS
+                                </Button>
+                              )}
+                              {(dose.status === 'overdue' || dose.status === 'missed') && canUpdatePep && (
+                                <Button type="button" variant="outline" size="sm" onClick={() => openRescheduleDose(dose)}>
+                                  <RefreshCw className="h-4 w-4" />
+                                  Reschedule
                                 </Button>
                               )}
                               {(dose.status === 'completed' || dose.status === 'completed_late') && canUpdatePep && (
@@ -638,6 +702,42 @@ export function PEPSchedule() {
               <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="outline" onClick={() => setRecordDose(null)} disabled={savingDose}>Cancel</Button>
                 <Button type="submit" disabled={savingDose}>{savingDose ? 'Saving...' : 'Save Dose Record'}</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {rescheduleDose && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4">
+          <div className="w-full max-w-lg rounded-2xl border border-border bg-card shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-5">
+              <div>
+                <h2 className="text-lg font-bold text-foreground">Reschedule Dose - Day {rescheduleDose.day}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Only this dose will be moved. Future dose dates will remain unchanged.</p>
+              </div>
+              <button type="button" onClick={() => setRescheduleDose(null)} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted" aria-label="Close reschedule dose modal">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <form onSubmit={handleRescheduleDose} className="space-y-4 p-6">
+              <Input label="Dose" value={'Day ' + rescheduleDose.day} disabled />
+              <Input label="Original Scheduled Date" value={formatDate(rescheduleDose.date)} disabled />
+              <Input label="New Scheduled Date" type="date" min={todayKey()} value={rescheduleForm.scheduledDate} onChange={(event) => setRescheduleForm((current) => ({ ...current, scheduledDate: event.target.value }))} required />
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-foreground">Reason for Reschedule</label>
+                <textarea
+                  value={rescheduleForm.reason}
+                  onChange={(event) => setRescheduleForm((current) => ({ ...current, reason: event.target.value }))}
+                  className="min-h-24 w-full rounded-lg border border-input bg-input-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="Enter the reason for manually rescheduling this dose"
+                  maxLength={1000}
+                  required
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setRescheduleDose(null)} disabled={savingReschedule}>Cancel</Button>
+                <Button type="submit" disabled={savingReschedule}>{savingReschedule ? 'Saving...' : 'Save Reschedule'}</Button>
               </div>
             </form>
           </div>
