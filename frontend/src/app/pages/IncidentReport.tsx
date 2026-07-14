@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { AlertCircle, CheckCircle2, Crosshair, MapPin, RotateCcw } from 'lucide-react';
+import { AlertCircle, CalendarDays, CheckCircle2, Crosshair, MapPin, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Header } from '../components/Layout/Header';
 import { Input } from '../components/UI/Input';
@@ -140,6 +140,17 @@ const categoryCards = [
 ];
 
 const todayKey = () => new Date().toISOString().split('T')[0];
+const pepDoseDayOffsets = [0, 3, 7, 14, 28];
+
+function addDaysToDateKey(dateKey: string, days: number) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  if (!year || !month || !day) return '';
+
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + days);
+
+  return date.toISOString().slice(0, 10);
+}
 
 function normalizeContact(value: string) {
   return value.replace(/[\s-]/g, '');
@@ -570,6 +581,12 @@ export function IncidentReport() {
       value: formData.smsConsent ? formData.reminderChannel + ' allowed' : 'SMS not allowed',
     },
   ];
+  const doseSchedulePreview = useMemo(
+    () => formData.incidentDate
+      ? pepDoseDayOffsets.map((day) => ({ day, date: addDaysToDateKey(formData.incidentDate, day) }))
+      : [],
+    [formData.incidentDate]
+  );
   const locationHelperText = 'Location is used for clinic mapping, barangay monitoring, and reports. If the exact location is unknown, selecting the barangay is enough.';
   const selectedBarangayLat = selectedBarangay?.latitude ? String(selectedBarangay.latitude) : '';
   const selectedBarangayLng = selectedBarangay?.longitude ? String(selectedBarangay.longitude) : '';
@@ -1063,6 +1080,30 @@ export function IncidentReport() {
             </div>
           </div>
 
+          <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+            <div className="mb-3 flex items-center gap-2">
+              <CalendarDays className="h-4 w-4 text-primary" />
+              <h3 className="text-base font-bold text-foreground">Dose Schedule</h3>
+            </div>
+            <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
+              Dose dates are recalculated when the incident date is corrected. Completed dose records keep their administration history.
+            </p>
+            {doseSchedulePreview.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-border px-3 py-4 text-center text-xs text-muted-foreground">
+                Select the Date of Incident to preview the PEP schedule.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-5 xl:grid-cols-1">
+                {doseSchedulePreview.map((dose) => (
+                  <div key={dose.day} className="flex items-center justify-between rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs">
+                    <span className="font-extrabold text-emerald-900">Day {dose.day}</span>
+                    <span className="font-semibold text-emerald-700">{dose.date}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="rounded-2xl border border-border bg-card p-4 shadow-sm xl:sticky xl:top-24">
             <div className="mb-3">
               <h3 className="text-base font-bold text-foreground">Incident Summary</h3>
@@ -1109,7 +1150,11 @@ export function IncidentReport() {
               </div>
             </div>
             <div className="mt-6 grid gap-2">
-              <Button type="button" onClick={() => navigate('/pep-schedule')} className="w-full">
+              <Button
+                type="button"
+                onClick={() => navigate('/pep-schedule?incident_id=' + encodeURIComponent(String(savedIncident.id)))}
+                className="w-full"
+              >
                 Create PEP Schedule
               </Button>
               <Button

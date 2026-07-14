@@ -325,7 +325,9 @@ class BitemapApiController extends Controller
             $incidentDateChanged = $incident->incident_date?->toDateString() !== $incidentData['incident_date'];
 
             $incident->update($incidentData);
-            $this->syncPepScheduleForIncident($incident->fresh(), $incidentDateChanged);
+            $updatedIncident = $incident->fresh();
+            $shouldRecalculateSchedule = $incidentDateChanged || $this->hasStaleStandardPepSchedule($updatedIncident);
+            $this->syncPepScheduleForIncident($updatedIncident, $shouldRecalculateSchedule);
         });
 
         return response()->json([
@@ -2351,6 +2353,32 @@ class BitemapApiController extends Controller
                 $schedule->save();
             }
         }
+    }
+
+    private function hasStaleStandardPepSchedule(Incident $incident): bool
+    {
+        $schedules = $incident->pepSchedules()
+            ->whereIn('dose_day', self::PEP_DOSE_DAY_OFFSETS)
+            ->get()
+            ->keyBy('dose_day');
+
+        if ($schedules->count() !== count(self::PEP_DOSE_DAY_OFFSETS) || ! $schedules->has(0)) {
+            return false;
+        }
+
+        $scheduleStartDate = Carbon::parse($schedules->get(0)->scheduled_date);
+        if ($scheduleStartDate->isSameDay(Carbon::parse($incident->incident_date))) {
+            return false;
+        }
+
+        foreach (self::PEP_DOSE_DAY_OFFSETS as $day) {
+            $schedule = $schedules->get($day);
+            if (! $schedule || ! Carbon::parse($schedule->scheduled_date)->isSameDay($scheduleStartDate->copy()->addDays($day))) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function storeNotificationLog(Request $request, string $channel): JsonResponse

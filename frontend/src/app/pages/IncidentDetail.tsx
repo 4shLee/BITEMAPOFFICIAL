@@ -108,6 +108,7 @@ export function IncidentDetail() {
     ['SMS Consent', readNoteValue(incident?.notes, 'SMS Consent')],
     ['Preferred Reminder Channel', readNoteValue(incident?.notes, 'Preferred Reminder Channel')],
   ];
+  const pepSchedules = [...(incident?.pep_schedules || [])].sort((a, b) => (a.dose_day ?? 0) - (b.dose_day ?? 0));
 
   return (
     <div className="flex-1 bg-[#f6f8f7] min-h-screen">
@@ -213,10 +214,10 @@ export function IncidentDetail() {
                     <h3 className="text-base font-extrabold text-foreground">PEP Schedule</h3>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {(incident.pep_schedules || []).length === 0 ? (
+                    {pepSchedules.length === 0 ? (
                       <p className="text-sm text-muted-foreground">No PEP schedule found.</p>
                     ) : (
-                      incident.pep_schedules.map((dose: any) => (
+                      pepSchedules.map((dose: any) => (
                         <div key={dose.id} className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2">
                           <p className="text-xs font-extrabold text-emerald-900">Day {dose.dose_day}</p>
                           <p className="text-xs font-semibold text-emerald-700">{dose.scheduled_date}</p>
@@ -224,7 +225,13 @@ export function IncidentDetail() {
                       ))
                     )}
                   </div>
-                  <Button type="button" variant="outline" size="sm" className="mt-3 w-full" onClick={() => navigate('/pep-schedule')}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-3 w-full"
+                    onClick={() => navigate('/pep-schedule?incident_id=' + encodeURIComponent(String(incident.id)))}
+                  >
                     Open PEP Schedule
                   </Button>
                 </div>

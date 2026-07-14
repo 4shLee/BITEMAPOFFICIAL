@@ -97,7 +97,9 @@ export function IncidentListPage() {
   };
 
   const handlePepRecommendation = (incident: any) => {
-    navigate('/pep-schedule', { state: { incidentId: incident.id, patientId: incident.patient?.id } });
+    navigate('/pep-schedule?incident_id=' + encodeURIComponent(String(incident.id)), {
+      state: { incidentId: incident.id, patientId: incident.patient?.id },
+    });
   };
 
   const filteredIncidents = incidents.filter((incident) =>

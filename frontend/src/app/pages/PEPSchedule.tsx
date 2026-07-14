@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { Bell, CalendarDays, Check, ClipboardCheck, Clock, Edit, Eye, History, MessageSquare, Phone, ShieldCheck, Syringe, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Header } from '../components/Layout/Header';
@@ -195,11 +195,13 @@ function isAvailableVaccineBatch(item: InventoryBatch) {
 
 export function PEPSchedule() {
   const navigate = useNavigate();
+  const location = useLocation();
   const currentUser = getStoredUser();
   const canUpdatePep = canPerformAction(currentUser?.role, 'pep.update');
   const canSendNotifications = canPerformAction(currentUser?.role, 'notifications.send');
   const [groups, setGroups] = useState<ScheduleGroup[]>([]);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string>('');
+  const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [recordDose, setRecordDose] = useState<Dose | null>(null);
   const [recordForm, setRecordForm] = useState<RecordDoseForm>({
@@ -212,10 +214,16 @@ export function PEPSchedule() {
   });
   const [savingDose, setSavingDose] = useState(false);
   const [inventoryItems, setInventoryItems] = useState<InventoryBatch[]>([]);
+  const requestedIncidentId = useMemo(() => {
+    const queryIncidentId = new URLSearchParams(location.search).get('incident_id');
+    const stateIncidentId = (location.state as { incidentId?: string | number } | null)?.incidentId;
+
+    return queryIncidentId || (stateIncidentId != null ? String(stateIncidentId) : '');
+  }, [location.search, location.state]);
 
   useEffect(() => {
     loadSchedule();
-  }, []);
+  }, [requestedIncidentId]);
 
   const loadSchedule = async () => {
     try {
@@ -227,7 +235,24 @@ export function PEPSchedule() {
       if (scheduleResponse.success) {
         const nextGroups = buildScheduleGroups(scheduleResponse.data || []);
         setGroups(nextGroups);
-        setSelectedIncidentId((current) => current || nextGroups[0]?.incidentId || '');
+
+        if (requestedIncidentId) {
+          const requestedGroup = nextGroups.find((group) => group.incidentId === requestedIncidentId);
+          if (requestedGroup) {
+            setSelectedIncidentId(requestedGroup.incidentId);
+            setSelectionNotice(null);
+          } else {
+            setSelectedIncidentId(nextGroups[0]?.incidentId || '');
+            setSelectionNotice('No PEP schedule found for the selected incident. Showing the first available schedule instead.');
+          }
+        } else {
+          setSelectedIncidentId((current) => (
+            current && nextGroups.some((group) => group.incidentId === current)
+              ? current
+              : nextGroups[0]?.incidentId || ''
+          ));
+          setSelectionNotice(null);
+        }
       }
       if (inventoryResponse?.success) {
         setInventoryItems(inventoryResponse.data || []);
@@ -368,6 +393,11 @@ export function PEPSchedule() {
           </div>
         ) : (
           <div className="mx-auto max-w-[1480px] space-y-4">
+            {selectionNotice && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+                {selectionNotice}
+              </div>
+            )}
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
               <main className="space-y-4">
               <div className="rounded-2xl border border-border bg-white p-4 shadow-sm">
@@ -375,7 +405,10 @@ export function PEPSchedule() {
                 <p className="mt-0.5 text-xs text-muted-foreground">Select a patient incident to view the PEP schedule.</p>
                 <select
                   value={schedule.incidentId}
-                  onChange={(event) => setSelectedIncidentId(event.target.value)}
+                  onChange={(event) => {
+                    setSelectedIncidentId(event.target.value);
+                    setSelectionNotice(null);
+                  }}
                   className="mt-3 w-full rounded-xl border border-input bg-input-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                 >
                   {groups.map((group) => (
@@ -417,7 +450,7 @@ export function PEPSchedule() {
                   <h3 className="text-base font-extrabold text-foreground">Dose Schedule</h3>
                 </div>
                 <p className="mb-3 text-xs font-medium text-muted-foreground">
-                  Original dose dates stay fixed. Manual schedule adjustment can be added later as a staff-initiated workflow.
+                  Dose dates are recalculated when the incident date is corrected. Completed dose records keep their administration history.
                 </p>
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                   {schedule.doses.map((dose) => (

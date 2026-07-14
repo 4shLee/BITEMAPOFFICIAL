@@ -63,7 +63,8 @@ class IncidentDateScheduleSyncTest extends TestCase
         ]);
 
         $response->assertOk()
-            ->assertJsonPath('data.incident_date', '2026-07-06');
+            ->assertJsonPath('data.incident_date', '2026-07-06')
+            ->assertJsonPath('data.pep_schedules.0.scheduled_date', '2026-07-06');
 
         foreach ([0 => '2026-07-06', 3 => '2026-07-09', 7 => '2026-07-13', 14 => '2026-07-20', 28 => '2026-08-03'] as $day => $date) {
             $schedule = PepSchedule::where('incident_id', $incident->id)
@@ -91,5 +92,69 @@ class IncidentDateScheduleSyncTest extends TestCase
             ['2026-07-06', '2026-07-09', '2026-07-13', '2026-07-20', '2026-08-03'],
             collect($scheduleResponse->json('data'))->pluck('scheduled_date')->all()
         );
+    }
+
+    public function test_updating_an_already_corrected_incident_repairs_a_coherent_legacy_schedule(): void
+    {
+        $user = User::factory()->create([
+            'role' => 'Nurse',
+            'is_active' => true,
+            'approval_status' => 'approved',
+        ]);
+        Sanctum::actingAs($user);
+
+        $patient = Patient::create([
+            'full_name' => 'Legacy Schedule Patient',
+            'age' => 51,
+            'sex' => 'Female',
+            'address' => 'Digos City',
+            'contact_number' => '09170000000',
+        ]);
+        $incident = Incident::create([
+            'patient_id' => $patient->id,
+            'incident_date' => '2026-07-13',
+            'animal_type' => 'Dog',
+            'bite_site' => 'Left hand',
+            'who_category' => 'III',
+            'status' => 'Active',
+        ]);
+
+        foreach ([0, 3, 7, 14, 28] as $day) {
+            PepSchedule::create([
+                'incident_id' => $incident->id,
+                'dose_day' => $day,
+                'scheduled_date' => Carbon::parse('1975-06-22')->addDays($day)->toDateString(),
+                'status' => $day === 0 ? 'Done' : 'Pending',
+                'administered_date' => $day === 0 ? '2026-07-13' : null,
+                'administered_by' => $day === 0 ? $user->id : null,
+                'vaccine_lot_number' => $day === 0 ? 'LEGACY-LOT' : null,
+            ]);
+        }
+
+        $this->putJson('/api/incidents/'.$incident->id, [
+            'patient_id' => $patient->id,
+            'incident_date' => '2026-07-13',
+            'animal_type' => 'Dog',
+            'bite_site' => 'Left hand',
+            'who_category' => 'Category III',
+            'status' => 'Active',
+        ])->assertOk()
+            ->assertJsonPath('data.pep_schedules.4.scheduled_date', '2026-08-10');
+
+        $this->assertSame(
+            ['2026-07-13', '2026-07-16', '2026-07-20', '2026-07-27', '2026-08-10'],
+            PepSchedule::where('incident_id', $incident->id)
+                ->orderBy('dose_day')
+                ->get()
+                ->map(fn (PepSchedule $schedule) => $schedule->scheduled_date->toDateString())
+                ->all()
+        );
+        $this->assertSame(5, PepSchedule::where('incident_id', $incident->id)->count());
+
+        $completedDose = PepSchedule::where('incident_id', $incident->id)->where('dose_day', 0)->firstOrFail();
+        $this->assertSame('Done', $completedDose->status);
+        $this->assertSame('2026-07-13', $completedDose->administered_date->toDateString());
+        $this->assertSame($user->id, $completedDose->administered_by);
+        $this->assertSame('LEGACY-LOT', $completedDose->vaccine_lot_number);
     }
 }
