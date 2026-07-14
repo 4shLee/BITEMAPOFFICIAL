@@ -1481,3 +1481,40 @@ Verification completed:
 - Frontend production build and backend formatting checks passed.
 
 Notification synchronization was intentionally excluded and remains a separate task.
+
+**July 14, 2026**
+
+Incident Management
+
+- Fixed Incident Date corrections so updated dates remain synchronized across Incident Management, Patient Registry, Incident Details, and PEP Schedule.
+- Preserved completed vaccination records and administration history during date recalculation.
+- Added regression coverage for incident-date and PEP schedule synchronization.
+
+PEP Schedule
+
+- Fixed “Open PEP Schedule” deep-linking so the correct patient and incident schedule is automatically selected.
+- Added proper Due Today, Overdue, and Completed Late handling.
+- Added staff actions for recording late doses, sending reminders, and manually rescheduling overdue doses.
+- Ensured rescheduling affects only the selected dose and does not automatically move future doses.
+- Added overdue follow-up messaging and updated compliance and next-dose summaries.
+- Preserved existing role permissions and schedule features.
+
+Incident Location
+
+- Replaced the location placeholder with a functional Leaflet map for New and Edit Incident Reports.
+- Barangay selection now centers the map and supports barangay-only reporting.
+- Added optional exact latitude and longitude selection through the map.
+- Added a safer pin confirmation workflow:
+  - Map clicks create a temporary review marker.
+  - Confirm Pin finalizes the coordinates.
+  - Cancel Pin removes the temporary selection.
+  - Existing confirmed pins remain unchanged until a replacement is confirmed.
+  - Changing barangay resets the pin and returns to barangay-only status.
+- Simplified the location UI and preserved location data in Incident Details, GIS Map, and reports.
+
+Verification
+
+- Frontend production builds completed successfully.
+- PHP syntax and route checks passed.
+- Regression tests passed, including incident-date synchronization, PEP overdue workflows, and location persistence.
+- New and Edit Incident Report workflows were tested in the running application.
