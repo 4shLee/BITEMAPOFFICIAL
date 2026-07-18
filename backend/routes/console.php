@@ -69,6 +69,7 @@ Artisan::command('bitemap:send-sms-reminders {--scope=today}', function () {
     $failed = 0;
     $pending = 0;
     $declined = 0;
+    $duplicates = 0;
 
     foreach ($query->get() as $schedule) {
         $patient = $schedule->incident?->patient;
@@ -79,8 +80,8 @@ Artisan::command('bitemap:send-sms-reminders {--scope=today}', function () {
             $consentValue = strtolower(trim($matches[1]));
         }
         $smsAllowed = $consentValue === null
-            ? $patient?->sms_consent !== false
-            : ! in_array($consentValue, ['declined', 'not allowed', 'no', 'false'], true);
+            ? $patient?->sms_consent === true
+            : in_array($consentValue, ['allowed', 'yes', 'true'], true) && $patient?->sms_consent === true;
 
         if (! $smsAllowed) {
             $declined++;
@@ -100,8 +101,60 @@ Artisan::command('bitemap:send-sms-reminders {--scope=today}', function () {
             default => 'Good day, '.$patient->full_name.'. This is a reminder that your anti-rabies vaccination dose is scheduled today at '.$facility.'. Please visit the center within working hours. Thank you.',
         };
 
+        $reminderType = match ($scope) {
+            'missed' => 'Missed Appointment Follow-up',
+            'upcoming' => 'Upcoming Vaccination Reminder',
+            default => 'Due Today Vaccination Reminder',
+        };
+        $scheduledDate = $schedule->scheduled_date->toDateString();
+        $reminderKey = hash('sha256', implode('|', [
+            $patient->id,
+            $schedule->incident_id,
+            $schedule->id,
+            strtolower($reminderType),
+            $scheduledDate,
+        ]));
+
+        $legacyPending = Notification::query()
+            ->whereNull('reminder_key')
+            ->where('patient_id', $patient->id)
+            ->where('incident_id', $schedule->incident_id)
+            ->where('notification_type', 'SMS')
+            ->where('recipient', $recipient)
+            ->where('message', $message)
+            ->where('status', 'Pending')
+            ->exists();
+
+        if ($legacyPending) {
+            $duplicates++;
+
+            continue;
+        }
+
+        $notification = Notification::firstOrCreate(
+            ['reminder_key' => $reminderKey],
+            [
+                'patient_id' => $patient->id,
+                'incident_id' => $schedule->incident_id,
+                'pep_schedule_id' => $schedule->id,
+                'notification_type' => 'SMS',
+                'reminder_type' => $reminderType,
+                'scheduled_date' => $scheduledDate,
+                'recipient' => $recipient,
+                'message' => $message,
+                'status' => 'Pending',
+                'delivery_response' => 'Reminder reserved for processing.',
+            ]
+        );
+
+        if (! $notification->wasRecentlyCreated) {
+            $duplicates++;
+
+            continue;
+        }
+
         $status = 'Pending';
-        $responseText = 'SMS simulation mode is active. Reminder queued locally for future dispatch.';
+        $responseText = 'SMS simulation mode is active. No real SMS was sent; the reminder is recorded for testing and review.';
 
         if ($smsServiceEnabled) {
             try {
@@ -121,12 +174,7 @@ Artisan::command('bitemap:send-sms-reminders {--scope=today}', function () {
             }
         }
 
-        Notification::create([
-            'patient_id' => $patient->id,
-            'incident_id' => $schedule->incident_id,
-            'notification_type' => 'SMS',
-            'recipient' => $recipient,
-            'message' => $message,
+        $notification->update([
             'status' => $status,
             'sent_at' => in_array($status, ['Sent', 'Delivered'], true) ? now() : null,
             'delivery_response' => $responseText,
@@ -145,13 +193,13 @@ Artisan::command('bitemap:send-sms-reminders {--scope=today}', function () {
         'action' => 'Send SMS',
         'action_type' => 'Send SMS',
         'module' => 'Notifications',
-        'details' => 'SMS reminder batch completed. Sent: '.$sent.', pending: '.$pending.', failed: '.$failed.', consent declined: '.$declined.'.',
-        'description' => 'SMS reminder batch completed. Sent: '.$sent.', pending: '.$pending.', failed: '.$failed.', consent declined: '.$declined.'.',
+        'details' => 'SMS reminder batch completed. Sent: '.$sent.', pending: '.$pending.', failed: '.$failed.', consent unavailable: '.$declined.', duplicates skipped: '.$duplicates.'.',
+        'description' => 'SMS reminder batch completed. Sent: '.$sent.', pending: '.$pending.', failed: '.$failed.', consent unavailable: '.$declined.', duplicates skipped: '.$duplicates.'.',
         'user_name' => 'System',
         'user_role' => 'System',
     ]);
 
-    $this->info('SMS reminder batch completed. Sent: '.$sent.', pending: '.$pending.', failed: '.$failed.', consent declined: '.$declined.'.');
+    $this->info('SMS reminder batch completed. Sent: '.$sent.', pending: '.$pending.', failed: '.$failed.', consent unavailable: '.$declined.', duplicates skipped: '.$duplicates.'.');
 })->purpose('Send or queue PEP SMS reminders');
 
 Schedule::command('bitemap:mark-missed-schedules')->dailyAt('00:15');

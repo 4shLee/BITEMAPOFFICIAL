@@ -391,10 +391,21 @@ export const notificationsAPI = {
     return apiRequest('/schedule-alerts/today');
   },
 
-  async sendSMS(phone: string, message: string, patientId?: string, incidentId?: string) {
+  async sendSMS(
+    phone: string,
+    message: string,
+    patientId?: string,
+    incidentId?: string,
+    reminder?: {
+      pepScheduleId?: string;
+      reminderType?: string;
+      scheduledDate?: string;
+      retryNotificationId?: string;
+    },
+  ) {
     return apiRequest('/send-sms', {
       method: 'POST',
-      body: JSON.stringify({ phone, message, patientId, incidentId }),
+      body: JSON.stringify({ phone, message, patientId, incidentId, ...reminder }),
     });
   },
 

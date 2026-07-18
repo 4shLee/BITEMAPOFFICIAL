@@ -10,7 +10,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable([
     'patient_id',
     'incident_id',
+    'pep_schedule_id',
     'notification_type',
+    'reminder_type',
+    'scheduled_date',
+    'reminder_key',
     'recipient',
     'message',
     'status',
@@ -31,10 +35,16 @@ class Notification extends Model
         return $this->belongsTo(Incident::class);
     }
 
+    public function pepSchedule(): BelongsTo
+    {
+        return $this->belongsTo(PepSchedule::class);
+    }
+
     protected function casts(): array
     {
         return [
             'sent_at' => 'datetime',
+            'scheduled_date' => 'date',
         ];
     }
 }

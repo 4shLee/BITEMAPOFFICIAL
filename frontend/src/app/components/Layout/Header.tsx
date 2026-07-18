@@ -27,6 +27,8 @@ export function Header({ title, breadcrumbs = [] }: HeaderProps) {
   const pagesWithModuleSearch = ['/incidents', '/patients', '/pep-schedule', '/inventory', '/notifications', '/users', '/audit-logs', '/settings'];
   const showGlobalSearch = !pagesWithModuleSearch.includes(location.pathname);
   const [quickAlerts, setQuickAlerts] = useState<QuickAlert[]>([]);
+  const [clinicPriorityCount, setClinicPriorityCount] = useState(0);
+  const [clinicSmsSimulation, setClinicSmsSimulation] = useState(true);
   const [isAlertOpen, setIsAlertOpen] = useState(false);
   const [alertsLoading, setAlertsLoading] = useState(false);
 
@@ -57,26 +59,31 @@ export function Header({ title, breadcrumbs = [] }: HeaderProps) {
             }));
           if (isMounted) setQuickAlerts(platformAlerts);
         } else {
-          const [scheduleResponse, notificationResponse] = await Promise.all([
-            notificationsAPI.getTodaySchedules(),
-            notificationsAPI.getAll(),
-          ]);
-          const schedules = scheduleResponse.data || [];
-          const notificationLogs = notificationResponse.data || [];
-          const dueToday = schedules.filter((item: any) => item.alert_type === 'due_today').length;
-          const overdue = schedules.filter((item: any) => item.alert_type === 'overdue').length;
-          const pending = notificationLogs.filter((item: any) => String(item.status).toLowerCase() === 'pending').length;
-          const failed = notificationLogs.filter((item: any) => String(item.status).toLowerCase() === 'failed').length;
+          const notificationResponse = await notificationsAPI.getAll();
+          const summary = notificationResponse.meta?.summary || {};
+          const priorityAlert = notificationResponse.meta?.priority_alert || {};
+          const overdue = Number(summary.overdue_patients || 0);
+          const failed = Number(summary.failed_sms || 0);
+          const dueToday = Number(summary.due_today_patients || 0);
+          const pending = Number(summary.pending_sms || 0);
           const alerts: QuickAlert[] = [];
 
           if (overdue > 0) alerts.push({ id: 'overdue', title: overdue + ' Overdue Patient' + (overdue !== 1 ? 's' : ''), detail: 'Follow-up reminders may be required.', tone: 'danger', count: overdue });
           if (failed > 0) alerts.push({ id: 'failed', title: failed + ' Failed SMS', detail: 'Review the notification history.', tone: 'danger', count: failed });
           if (dueToday > 0) alerts.push({ id: 'due-today', title: dueToday + ' Patient' + (dueToday !== 1 ? 's' : '') + ' Due Today', detail: 'Review today’s vaccination reminders.', tone: 'warning', count: dueToday });
           if (pending > 0) alerts.push({ id: 'pending', title: pending + ' Pending SMS', detail: 'SMS records are waiting for dispatch.', tone: 'info', count: pending });
-          if (isMounted) setQuickAlerts(alerts);
+          if (isMounted) {
+            setQuickAlerts(alerts);
+            setClinicPriorityCount(Number(priorityAlert.count || 0));
+            setClinicSmsSimulation(notificationResponse.meta?.sms_service?.mode !== 'enabled');
+          }
         }
       } catch {
-        if (isMounted) setQuickAlerts([]);
+        if (isMounted) {
+          setQuickAlerts([]);
+          setClinicPriorityCount(0);
+          setClinicSmsSimulation(true);
+        }
       } finally {
         if (isMounted) setAlertsLoading(false);
       }
@@ -92,7 +99,18 @@ export function Header({ title, breadcrumbs = [] }: HeaderProps) {
   }, [canAccessNotifications, isSystemAdmin]);
 
   const alertCount = quickAlerts.length;
-  const priorityCount = quickAlerts[0]?.count || 0;
+  const priorityCount = isSystemAdmin ? (quickAlerts[0]?.count || 0) : clinicPriorityCount;
+  const primaryClinicAlert = quickAlerts[0];
+  const pendingClinicAlert = quickAlerts.find((alert) => alert.id === 'pending');
+  const primaryClinicSummary = primaryClinicAlert?.id === 'overdue'
+    ? primaryClinicAlert.count + ' overdue patient' + (primaryClinicAlert.count !== 1 ? 's require' : ' requires') + ' follow-up'
+    : primaryClinicAlert?.id === 'failed'
+      ? primaryClinicAlert.count + ' failed SMS ' + (primaryClinicAlert.count !== 1 ? 'jobs require' : 'job requires') + ' review'
+      : primaryClinicAlert?.id === 'due-today'
+        ? primaryClinicAlert.count + ' patient' + (primaryClinicAlert.count !== 1 ? 's are' : ' is') + ' due today'
+        : primaryClinicAlert?.id === 'pending'
+          ? primaryClinicAlert.count + ' reminder' + (primaryClinicAlert.count !== 1 ? 's are' : ' is') + (clinicSmsSimulation ? ' queued in simulation mode' : ' pending dispatch')
+          : '';
 
   return (
     <header className="sticky top-0 z-10 border-b border-border/70 bg-background/95 px-6 py-3 backdrop-blur lg:px-8">
@@ -155,9 +173,6 @@ export function Header({ title, breadcrumbs = [] }: HeaderProps) {
                 <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-foreground">Notifications</p>
-                    <p className="text-xs text-muted-foreground">
-                      {alertCount > 0 ? alertCount + ' alert' + (alertCount !== 1 ? 's' : '') + ' require attention' : 'No unread alerts.'}
-                    </p>
                   </div>
                   {isSystemAdmin ? <ShieldAlert className="w-4 h-4 text-primary shrink-0" /> : <Clock3 className="w-4 h-4 text-primary shrink-0" />}
                 </div>
@@ -167,7 +182,7 @@ export function Header({ title, breadcrumbs = [] }: HeaderProps) {
                     <p className="px-4 py-5 text-sm text-muted-foreground text-center">Checking notifications...</p>
                   ) : quickAlerts.length === 0 ? (
                     <p className="px-4 py-5 text-sm text-muted-foreground text-center">No unread notifications.</p>
-                  ) : quickAlerts.map((alert) => (
+                  ) : isSystemAdmin ? quickAlerts.map((alert) => (
                     <button
                       type="button"
                       key={alert.id}
@@ -186,7 +201,30 @@ export function Header({ title, breadcrumbs = [] }: HeaderProps) {
                         </div>
                       </div>
                     </button>
-                  ))}
+                  )) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAlertOpen(false);
+                        navigate('/notifications');
+                      }}
+                      className="w-full px-4 py-3.5 text-left transition-colors hover:bg-muted/40"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className={'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ' + (primaryClinicAlert?.tone === 'danger' ? 'bg-destructive-bg text-destructive' : primaryClinicAlert?.tone === 'warning' ? 'bg-warning-bg text-warning' : 'bg-primary-bg text-primary')}>
+                          {primaryClinicAlert?.tone === 'danger' ? <AlertTriangle className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold leading-5 text-foreground">{primaryClinicSummary}</p>
+                          {pendingClinicAlert && primaryClinicAlert?.id !== 'pending' && (
+                            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                              {pendingClinicAlert.count} reminder{pendingClinicAlert.count !== 1 ? 's' : ''} {clinicSmsSimulation ? 'queued in simulation mode' : 'pending dispatch'}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  )}
                 </div>
 
                 {canAccessNotifications && (
