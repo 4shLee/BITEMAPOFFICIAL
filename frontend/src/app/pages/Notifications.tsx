@@ -1,14 +1,21 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router';
 import {
   AlertTriangle,
   Bell,
+  CalendarDays,
   Check,
   CheckCircle2,
+  Clock3,
   Eye,
+  History,
   Info,
   MessageSquare,
+  Phone,
   Search,
   ShieldAlert,
+  UserRound,
+  X,
 } from 'lucide-react';
 import { Header } from '../components/Layout/Header';
 import { Badge } from '../components/UI/Badge';
@@ -64,6 +71,24 @@ type UpcomingReminder = {
   contact: string;
   patientId?: string;
   incidentId?: string;
+  reminderStatus: 'Overdue' | 'Due Today' | 'Upcoming';
+};
+
+type PatientReminderGroup = {
+  key: string;
+  patient: string;
+  patientId?: string;
+  contact: string;
+  incidentId?: string;
+  overdue: UpcomingReminder[];
+  dueToday: UpcomingReminder[];
+  upcoming: UpcomingReminder[];
+};
+
+type SmsServiceState = {
+  enabled: boolean;
+  mode: 'simulation' | 'enabled';
+  provider?: string | null;
 };
 
 type SystemSeverity = 'info' | 'warning' | 'critical';
@@ -82,7 +107,7 @@ type SystemNotification = {
 };
 
 const NOTIFICATIONS_PER_PAGE = 10;
-const UPCOMING_REMINDER_LIMIT = 5;
+const UPCOMING_REMINDER_LIMIT = 8;
 const SYSTEM_NOTIFICATION_TYPES: Array<'All' | SystemNotificationType> = ['All', 'Security', 'User Access', 'System', 'SMS Service', 'Queue', 'Database'];
 const SYSTEM_SEVERITIES: Array<'All' | 'Info' | 'Warning' | 'Critical'> = ['All', 'Info', 'Warning', 'Critical'];
 const SYSTEM_STATUSES: Array<'All' | 'Unread' | 'Read' | 'Resolved'> = ['All', 'Unread', 'Read', 'Resolved'];
@@ -206,7 +231,7 @@ const buildUpcomingReminders = (rows: PepScheduleRow[]): UpcomingReminder[] => {
     .filter((row) => row.incident?.sms_consent !== false)
     .filter((row) => {
       const scheduleDate = parseDateOnly(row.scheduled_date.slice(0, 10));
-      return scheduleDate >= today && scheduleDate <= nextWeek;
+      return scheduleDate <= nextWeek;
     })
     .sort((a, b) => parseDateOnly(a.scheduled_date).getTime() - parseDateOnly(b.scheduled_date).getTime())
     .map((row) => ({
@@ -217,7 +242,65 @@ const buildUpcomingReminders = (rows: PepScheduleRow[]): UpcomingReminder[] => {
       contact: row.patient?.contact_number || '',
       patientId: row.patient?.id ? String(row.patient.id) : undefined,
       incidentId: row.incident_id ? String(row.incident_id) : undefined,
+      reminderStatus: parseDateOnly(row.scheduled_date.slice(0, 10)) < today
+        ? 'Overdue'
+        : parseDateOnly(row.scheduled_date.slice(0, 10)).getTime() === today.getTime()
+          ? 'Due Today'
+          : 'Upcoming',
     }));
+};
+
+const groupRemindersByPatient = (reminders: UpcomingReminder[]): PatientReminderGroup[] => {
+  const groups = new Map<string, PatientReminderGroup>();
+
+  reminders.forEach((reminder) => {
+    const key = reminder.patientId || reminder.patient.toLowerCase();
+    const group = groups.get(key) || {
+      key,
+      patient: reminder.patient,
+      patientId: reminder.patientId,
+      contact: reminder.contact,
+      incidentId: reminder.incidentId,
+      overdue: [],
+      dueToday: [],
+      upcoming: [],
+    };
+
+    if (reminder.reminderStatus === 'Overdue') group.overdue.push(reminder);
+    else if (reminder.reminderStatus === 'Due Today') group.dueToday.push(reminder);
+    else group.upcoming.push(reminder);
+
+    groups.set(key, group);
+  });
+
+  return Array.from(groups.values()).sort((a, b) => {
+    const priorityA = a.overdue.length > 0 ? 0 : a.dueToday.length > 0 ? 1 : 2;
+    const priorityB = b.overdue.length > 0 ? 0 : b.dueToday.length > 0 ? 1 : 2;
+    if (priorityA !== priorityB) return priorityA - priorityB;
+    const dateA = [...a.overdue, ...a.dueToday, ...a.upcoming][0]?.dueDate || '';
+    const dateB = [...b.overdue, ...b.dueToday, ...b.upcoming][0]?.dueDate || '';
+    return dateA.localeCompare(dateB);
+  });
+};
+
+const getNotificationSchedule = (notification: NotificationLog, rows: PepScheduleRow[]) => {
+  const incidentId = String(notification.incident_id || '');
+  const doseMatch = notification.message?.match(/Day\s+(\d+)/i);
+  const doseDay = doseMatch ? Number(doseMatch[1]) : null;
+  const incidentRows = rows.filter((row) => String(row.incident_id) === incidentId);
+
+  if (doseDay !== null) {
+    const exactDose = incidentRows.find((row) => Number(row.dose_day) === doseDay);
+    if (exactDose) return exactDose;
+  }
+
+  const dateMatch = notification.message?.match(/\d{4}-\d{2}-\d{2}/)?.[0];
+  if (dateMatch) {
+    const exactDate = incidentRows.find((row) => row.scheduled_date?.slice(0, 10) === dateMatch);
+    if (exactDate) return exactDate;
+  }
+
+  return incidentRows.find((row) => !['Done', 'Completed', 'Cancelled', 'Skipped'].includes(row.status)) || incidentRows[0];
 };
 
 const getSystemTimestamp = (log: any) => log.timestamp || log.created_at || log.updated_at || '';
@@ -624,16 +707,22 @@ function SystemNotificationsView({
 }
 
 export function Notifications() {
+  const navigate = useNavigate();
   const currentUser = getStoredUser();
   const isSystemAdmin = isSystemAdminRole(currentUser?.role);
   const canSendNotifications = canPerformAction(currentUser?.role, 'notifications.send');
   const [filter, setFilter] = useState<'all' | 'pending' | 'sent' | 'failed'>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [notifications, setNotifications] = useState<NotificationLog[]>([]);
+  const [scheduleRows, setScheduleRows] = useState<PepScheduleRow[]>([]);
   const [upcomingReminders, setUpcomingReminders] = useState<UpcomingReminder[]>([]);
   const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState<number | null>(null);
+  const [sending, setSending] = useState<string | null>(null);
   const [bulkSending, setBulkSending] = useState(false);
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const [bulkScope, setBulkScope] = useState<'overdue' | 'due_today' | 'both'>('both');
+  const [confirmationGroup, setConfirmationGroup] = useState<PatientReminderGroup | null>(null);
+  const [smsService, setSmsService] = useState<SmsServiceState>({ enabled: false, mode: 'simulation', provider: null });
   const [error, setError] = useState<string | null>(null);
   const [systemNotifications, setSystemNotifications] = useState<SystemNotification[]>([]);
   const [systemFilters, setSystemFilters] = useState({
@@ -654,6 +743,7 @@ export function Notifications() {
         const auditResponse = await auditLogsAPI.getAll({ per_page: 50 });
         setSystemNotifications(buildSystemNotifications(auditResponse.data || []));
         setNotifications([]);
+        setScheduleRows([]);
         setUpcomingReminders([]);
         return;
       }
@@ -664,10 +754,14 @@ export function Notifications() {
       ]);
 
       setNotifications(notificationResponse.data || []);
+      setSmsService(notificationResponse.meta?.sms_service || { enabled: false, mode: 'simulation', provider: null });
+      setScheduleRows(scheduleResponse.data || []);
       setUpcomingReminders(buildUpcomingReminders(scheduleResponse.data || []));
     } catch (loadError: any) {
       setError(loadError.message || 'Failed to load live notifications.');
       setNotifications([]);
+      setSmsService({ enabled: false, mode: 'simulation', provider: null });
+      setScheduleRows([]);
       setUpcomingReminders([]);
     } finally {
       if (showLoading) setLoading(false);
@@ -684,8 +778,6 @@ export function Notifications() {
 
   const smsNotifications = notifications.filter((notification) => normalizeNotificationType(notification) === 'SMS');
   const pendingCount = smsNotifications.filter((notification) => normalizeStatus(notification.status) === 'Pending').length;
-  const todayKey = toDateKey(new Date());
-  const todaysNotifications = smsNotifications.filter((notification) => getBestTimestamp(notification).slice(0, 10) === todayKey);
   const filterCounts = {
     all: smsNotifications.length,
     pending: pendingCount,
@@ -711,7 +803,16 @@ export function Notifications() {
   const pageStartIndex = (safeCurrentPage - 1) * NOTIFICATIONS_PER_PAGE;
   const pageEndIndex = Math.min(pageStartIndex + NOTIFICATIONS_PER_PAGE, filtered.length);
   const paginatedNotifications = filtered.slice(pageStartIndex, pageEndIndex);
-  const visibleUpcomingReminders = upcomingReminders.slice(0, UPCOMING_REMINDER_LIMIT);
+  const patientReminderGroups = groupRemindersByPatient(upcomingReminders);
+  const visiblePatientReminderGroups = patientReminderGroups.slice(0, UPCOMING_REMINDER_LIMIT);
+  const dueTodayCount = patientReminderGroups.filter((group) => group.dueToday.length > 0).length;
+  const overduePatientCount = patientReminderGroups.filter((group) => group.overdue.length > 0).length;
+  const bulkTargetCount = patientReminderGroups.filter((group) => {
+    if (!group.contact) return false;
+    if (bulkScope === 'overdue') return group.overdue.length > 0;
+    if (bulkScope === 'due_today') return group.dueToday.length > 0;
+    return group.overdue.length > 0 || group.dueToday.length > 0;
+  }).length;
   const filteredSystemNotifications = systemNotifications.filter((notification) => {
     const haystack = [
       notification.title,
@@ -756,45 +857,35 @@ export function Notifications() {
     setCurrentPage(1);
   };
 
-  const statistics = useMemo(() => ([
-    {
-      label: 'Total SMS Sent Today',
-      value: todaysNotifications.filter((notification) => normalizeStatus(notification.status) === 'Sent').length,
-      color: 'text-foreground'
-    },
-    {
-      label: 'Pending SMS',
-      value: filterCounts.pending,
-      color: 'text-warning'
-    },
-    {
-      label: 'Sent SMS',
-      value: filterCounts.sent,
-      color: 'text-foreground'
-    },
-    {
-      label: 'Failed SMS',
-      value: filterCounts.failed,
-      color: 'text-destructive'
-    },
-  ]), [smsNotifications, todayKey]);
+  const sendPatientReminder = async (group: PatientReminderGroup, scope: 'overdue' | 'due_today' | 'both' | 'all' = 'all') => {
+    const selectedDoses = scope === 'overdue'
+      ? group.overdue
+      : scope === 'due_today'
+        ? group.dueToday
+        : scope === 'both'
+          ? [...group.overdue, ...group.dueToday]
+          : [...group.overdue, ...group.dueToday, ...group.upcoming];
+    const target = selectedDoses[0];
 
-  const sendReminder = async (reminder: UpcomingReminder) => {
-    const message = 'BITEMAP Reminder: ' + reminder.patient + ', your Day ' + reminder.doseDay + ' anti-rabies vaccination is scheduled on ' + reminder.dueDate + '.';
-
-    if (!reminder.contact) {
-      toast.error('No contact number on file for ' + reminder.patient + '.');
+    if (!group.contact || !target) {
+      toast.error('No eligible reminder or contact number for ' + group.patient + '.');
       return;
     }
 
-    await notificationsAPI.sendSMS(reminder.contact, message, reminder.patientId, reminder.incidentId);
-    toast.success('SMS reminder logged for ' + reminder.patient + '.');
+    const doseSummary = selectedDoses.map((dose) => 'Day ' + dose.doseDay).join(', ');
+    const message = group.overdue.length > 0 && scope !== 'due_today'
+      ? 'BITEMAP Follow-up: ' + group.patient + ', your overdue anti-rabies vaccination dose(s) are ' + doseSummary + '. Please contact or visit the clinic.'
+      : 'BITEMAP Reminder: ' + group.patient + ', your anti-rabies vaccination dose(s) ' + doseSummary + ' require attention based on your PEP schedule.';
+
+    await notificationsAPI.sendSMS(group.contact, message, group.patientId, target.incidentId || group.incidentId);
   };
 
-  const handleSendReminder = async (reminder: UpcomingReminder) => {
+  const handleSendReminder = async (group: PatientReminderGroup) => {
     try {
-      setSending(reminder.id);
-      await sendReminder(reminder);
+      setSending(group.key);
+      const scope = group.overdue.length > 0 ? 'overdue' : group.dueToday.length > 0 ? 'due_today' : 'all';
+      await sendPatientReminder(group, scope);
+      toast.success('SMS reminder logged for ' + group.patient + '.');
       await loadLiveData(false);
     } catch (sendError: any) {
       toast.error(sendError.message || 'Failed to send reminder.');
@@ -823,19 +914,25 @@ export function Notifications() {
   };
 
   const handleBulkReminder = async () => {
-    const sendable = upcomingReminders.filter((reminder) => reminder.contact);
+    const sendable = patientReminderGroups.filter((group) => {
+      if (!group.contact) return false;
+      if (bulkScope === 'overdue') return group.overdue.length > 0;
+      if (bulkScope === 'due_today') return group.dueToday.length > 0;
+      return group.overdue.length > 0 || group.dueToday.length > 0;
+    });
 
     if (sendable.length === 0) {
-      toast.error('No upcoming reminders with contact numbers.');
+      toast.error('No eligible patients with contact numbers for the selected group.');
       return;
     }
 
     try {
       setBulkSending(true);
-      for (const reminder of sendable) {
-        await sendReminder(reminder);
+      for (const group of sendable) {
+        await sendPatientReminder(group, bulkScope);
       }
       toast.success('Bulk SMS reminders logged for ' + sendable.length + ' patient' + (sendable.length !== 1 ? 's' : '') + '.');
+      setBulkModalOpen(false);
       await loadLiveData(false);
     } catch (bulkError: any) {
       toast.error(bulkError.message || 'Failed to send bulk reminders.');
@@ -877,24 +974,69 @@ export function Notifications() {
     );
   }
 
-  return (
-    <div className="flex-1">
-      <Header title="Notifications & Reminders" breadcrumbs={['System', 'Notifications']} />
+  const dashboardCards = [
+    { label: 'Pending SMS', value: pendingCount, icon: Clock3, tone: 'border-amber-100 bg-amber-50 text-amber-700' },
+    { label: 'Patients Due Today', value: dueTodayCount, icon: CalendarDays, tone: 'border-blue-100 bg-blue-50 text-blue-700' },
+    { label: 'Overdue Patients', value: overduePatientCount, icon: AlertTriangle, tone: 'border-red-100 bg-red-50 text-red-700' },
+    smsService.enabled
+      ? { label: 'Successfully Sent SMS', value: filterCounts.sent, description: 'SMS Service Enabled' + (smsService.provider ? ' via ' + smsService.provider + '.' : '.'), icon: CheckCircle2, tone: 'border-emerald-100 bg-emerald-50 text-emerald-700' }
+      : {
+          label: 'SMS Service Status',
+          value: 'Simulation Mode',
+          description: 'SMS reminders are queued and will be sent once an SMS provider is configured.',
+          icon: ShieldAlert,
+          tone: 'border-slate-200 bg-slate-50 text-slate-700',
+          statusCard: true,
+        },
+  ];
 
-      <div className="p-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-4">
-            <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
-              <div className="flex items-center justify-between gap-4 bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-800 px-6 py-4 text-white shadow-sm">
+  return (
+    <div className="min-h-screen flex-1 bg-[#f4f7f5]">
+      <Header title="Notifications & Reminders" breadcrumbs={['Clinic Workflow', 'Notifications']} />
+
+      <main className="space-y-6 px-4 py-5 sm:px-6 lg:px-8">
+        <section aria-labelledby="notifications-dashboard-heading">
+          <div className="mb-3">
+            <h2 id="notifications-dashboard-heading" className="text-lg font-extrabold text-foreground">Notifications Dashboard</h2>
+            <p className="mt-1 text-sm text-muted-foreground">A quick view of reminder delivery and PEP appointments needing attention.</p>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {dashboardCards.map((card) => {
+              const Icon = card.icon;
+              return (
+                <div key={card.label} className="rounded-2xl border border-border/80 bg-card p-4 shadow-sm">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-semibold text-muted-foreground">{card.label}</p>
+                      <p className="mt-2 text-3xl font-extrabold tabular-nums text-foreground">{loading ? '—' : card.value}</p>
+                    </div>
+                    <div className={'flex h-11 w-11 items-center justify-center rounded-2xl border ' + card.tone}>
+                      <Icon className="h-5 w-5" />
+                    </div>
+                  </div>
+                  {card.description && <p className="mt-2 text-xs leading-5 text-muted-foreground">{card.description}</p>}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        <div className="flex flex-col gap-6">
+          <section aria-labelledby="notification-history-heading" className="order-2 space-y-4">
+            <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+              <div className="flex flex-col gap-4 bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-800 px-5 py-4 text-white shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-6">
                 <div className="flex items-center gap-3">
-                  <h2 className="text-sm font-semibold text-white">Notification Log</h2>
+                  <div>
+                    <div className="flex items-center gap-2"><History className="h-4 w-4" /><h2 id="notification-history-heading" className="text-base font-bold text-white">Notification History</h2></div>
+                    <p className="mt-1 text-xs text-emerald-50/80">SMS delivery records linked to patient vaccination schedules.</p>
+                  </div>
                   {pendingCount > 0 && (
                     <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs font-semibold text-emerald-50 ring-1 ring-white/20">
                       {pendingCount} pending
                     </span>
                   )}
                 </div>
-                <div className="flex rounded-lg bg-white/12 p-0.5 text-xs ring-1 ring-white/15">
+                <div className="flex max-w-full overflow-x-auto rounded-lg bg-white/12 p-0.5 text-xs ring-1 ring-white/15">
                   {(['all', 'pending', 'sent', 'failed'] as const).map((item) => (
                     <button
                       key={item}
@@ -923,51 +1065,45 @@ export function Notifications() {
                     {filter === 'all' && 'No SMS reminders recorded yet.'}
                   </p>
                 ) : paginatedNotifications.map((notification) => {
-                  const type = normalizeNotificationType(notification);
                   const status = normalizeStatus(notification.status);
-                  const isUnread = notification.read === false || status === 'Pending';
-                  const patientName = notification.patient?.full_name;
-                  const contactLabel = patientName ? patientName + ' - ' + notification.recipient : notification.recipient;
+                  const schedule = getNotificationSchedule(notification, scheduleRows);
+                  const patientName = notification.patient?.full_name || 'Unknown Patient';
+                  const isOverdueReminder = schedule?.scheduled_date && parseDateOnly(schedule.scheduled_date.slice(0, 10)) < parseDateOnly(toDateKey(new Date()));
+                  const reminderType = isOverdueReminder ? 'Missed Appointment Follow-up' : 'Vaccination Reminder';
 
                   return (
-                    <div
-                      key={notification.id}
-                      className={'p-5 hover:bg-muted/30 transition-colors ' + (isUnread ? 'bg-primary-bg/20' : '')}
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className={
-                          'w-9 h-9 rounded-full flex items-center justify-center shrink-0 ' +
-                          'bg-accent-bg'
-                        }>
-                          <MessageSquare className="w-4 h-4 text-accent" />
-                        </div>
+                    <article key={notification.id} className="px-5 py-4 transition-colors hover:bg-muted/25">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2 mb-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <Badge variant="neutral" size="sm">{type}</Badge>
+                              <Badge variant="neutral" size="sm">SMS</Badge>
                               <Badge variant={getStatusVariant(status)} size="sm">{status}</Badge>
-                              {isUnread && <span className="w-2 h-2 bg-primary rounded-full inline-block" />}
                             </div>
-                            {canSendNotifications && status === 'Failed' && (
-                              <button
-                                onClick={() => handleResend(notification)}
-                                className="text-xs text-primary font-medium hover:underline shrink-0"
-                              >
-                                Resend
-                              </button>
-                            )}
                           </div>
                           <p className="hidden">
                             {patientName ? patientName + ' • ' : ''}{notification.recipient}
                           </p>
-                          <p className="text-xs text-muted-foreground mb-1">{contactLabel}</p>
-                          <p className="text-sm text-foreground mb-1">{notification.message}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {getTimestampLabel(notification)}
-                          </p>
+                          <h3 className="mt-2 text-sm font-bold text-foreground">{patientName}</h3>
+                          <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-3 text-xs sm:grid-cols-4">
+                            <div><p className="font-semibold uppercase tracking-wide text-muted-foreground">Dose</p><p className="mt-1 font-medium text-foreground">{schedule ? 'Day ' + schedule.dose_day : 'PEP Dose'}</p></div>
+                            <div><p className="font-semibold uppercase tracking-wide text-muted-foreground">Reminder Type</p><p className="mt-1 font-medium text-foreground">{reminderType}</p></div>
+                            <div><p className="font-semibold uppercase tracking-wide text-muted-foreground">Scheduled</p><p className="mt-1 font-medium text-foreground">{schedule ? formatDate(schedule.scheduled_date) : 'Not linked'}</p></div>
+                            <div><p className="font-semibold uppercase tracking-wide text-muted-foreground">Created</p><p className="mt-1 font-medium text-foreground">{formatDate(notification.created_at || getSentAt(notification))}</p></div>
+                          </div>
+                          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+                            <p className={'text-xs font-medium ' + (status === 'Sent' ? 'text-emerald-700' : status === 'Failed' ? 'text-destructive' : 'text-amber-700')}>
+                              {status === 'Sent' ? 'Delivered successfully.' : status === 'Failed' ? 'SMS delivery failed.' : smsService.enabled ? 'SMS is pending dispatch.' : 'Reminder queued in simulation mode.'}
+                            </p>
+                            {canSendNotifications && (status === 'Pending' || status === 'Failed') && (
+                              <Button type="button" variant={status === 'Failed' ? 'outline' : 'primary'} size="sm" onClick={() => handleResend(notification)}>
+                                <MessageSquare className="mr-2 h-4 w-4" /> {status === 'Failed' ? (smsService.enabled ? 'Retry' : 'Retry Queue') : (smsService.enabled ? 'Send SMS' : 'Queue Reminder')}
+                              </Button>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    </article>
                   );
                 })}
               </div>
@@ -1007,56 +1143,75 @@ export function Notifications() {
                 ) : null}
               </div>
             </div>
-          </div>
+          </section>
 
-          <div className="space-y-4 lg:sticky lg:top-24 lg:self-start">
-            <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-              <div className="mb-4 flex items-center gap-2 bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-800 px-5 py-4 text-white shadow-sm">
+          <section aria-labelledby="upcoming-reminders-heading" className="order-1 space-y-4">
+            <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+              <div className="flex items-center gap-2 bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-800 px-5 py-4 text-white shadow-sm">
                 <Bell className="w-4 h-4 text-emerald-50" />
-                <h3 className="text-sm font-semibold text-white">Upcoming Reminders</h3>
+                <div>
+                  <h2 id="upcoming-reminders-heading" className="text-base font-bold text-white">Upcoming Reminders</h2>
+                  <p className="mt-1 text-xs text-emerald-50/80">Overdue, due today, and upcoming doses within seven days.</p>
+                </div>
               </div>
-              <div className="relative px-5 pb-5">
-                <div className="space-y-4">
+              <div className="relative p-5">
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                   {loading ? (
                     <p className="text-sm text-muted-foreground">Loading PEP schedules...</p>
-                  ) : upcomingReminders.length === 0 ? (
+                  ) : patientReminderGroups.length === 0 ? (
                     <p className="text-sm text-muted-foreground">No upcoming PEP reminders in the next 7 days.</p>
-                  ) : visibleUpcomingReminders.map((reminder) => (
-                    <div key={reminder.id} className="pb-4 border-b border-border last:border-0 last:pb-0">
-                      <p className="text-sm font-medium text-foreground mb-0.5">{reminder.patient}</p>
-                      <p className="text-xs text-muted-foreground mb-2">
-                        Day {reminder.doseDay} dose - {formatDate(reminder.dueDate)}
-                      </p>
-                      <p className="text-xs text-muted-foreground mb-2">{reminder.contact || 'No contact number'}</p>
-                      {canSendNotifications && (
-                        <button
-                          disabled={sending === reminder.id || !reminder.contact}
-                          onClick={() => handleSendReminder(reminder)}
-                          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-border py-1.5 text-xs font-medium transition-colors hover:border-primary/30 hover:bg-primary-bg hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          <MessageSquare className="w-3 h-3" /> Send SMS
-                        </button>
-                      )}
-                    </div>
+                  ) : visiblePatientReminderGroups.map((group) => (
+                    <article key={group.key} className="rounded-xl border border-border bg-muted/15 p-4">
+                      <div className="flex items-center gap-2">
+                        <UserRound className="h-4 w-4 text-primary" />
+                        <h3 className="text-sm font-bold text-foreground">{group.patient}</h3>
+                      </div>
+
+                      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                        {group.overdue.length > 0 && (
+                          <div className="rounded-lg bg-red-50 p-3">
+                            <p className="text-xs font-bold text-red-700">OVERDUE ({group.overdue.length})</p>
+                            <ul className="mt-1 list-inside list-disc space-y-1 text-xs text-red-700">
+                              {group.overdue.map((dose) => <li key={dose.id}>Day {dose.doseDay}</li>)}
+                            </ul>
+                          </div>
+                        )}
+                        {group.dueToday.length > 0 && (
+                          <div className="rounded-lg bg-amber-50 p-3">
+                            <p className="text-xs font-bold text-amber-700">DUE TODAY ({group.dueToday.length})</p>
+                            <ul className="mt-1 list-inside list-disc space-y-1 text-xs text-amber-700">
+                              {group.dueToday.map((dose) => <li key={dose.id}>Day {dose.doseDay}</li>)}
+                            </ul>
+                          </div>
+                        )}
+                        {group.upcoming.length > 0 && (
+                          <div className="rounded-lg bg-emerald-50 p-3">
+                            <p className="text-xs font-bold text-emerald-700">UPCOMING ({group.upcoming.length})</p>
+                            <ul className="mt-1 list-inside list-disc space-y-1 text-xs text-emerald-700">
+                              {group.upcoming.map((dose) => <li key={dose.id}>Day {dose.doseDay} ({formatDate(dose.dueDate)})</li>)}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+
+                      <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground"><Phone className="h-3.5 w-3.5" /> Contact: {group.contact || 'No contact number'}</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {group.patientId && <Button type="button" variant="outline" size="sm" onClick={() => navigate('/patients/' + group.patientId)}>View Patient</Button>}
+                        {group.incidentId && <Button type="button" variant="outline" size="sm" onClick={() => navigate('/pep-schedule?incident_id=' + encodeURIComponent(group.incidentId || ''))}>Open PEP Schedule</Button>}
+                        {canSendNotifications && (
+                          <Button type="button" size="sm" disabled={sending === group.key || !group.contact} onClick={() => group.overdue.length > 0 ? setConfirmationGroup(group) : handleSendReminder(group)}>
+                            <MessageSquare className="mr-2 h-4 w-4" /> {group.overdue.length > 0 ? (smsService.enabled ? 'Send Follow-up Reminder' : 'Queue Follow-up Reminder') : (smsService.enabled ? 'Send Reminder' : 'Queue Reminder')}
+                          </Button>
+                        )}
+                      </div>
+                    </article>
                   ))}
                 </div>
-                {upcomingReminders.length > UPCOMING_REMINDER_LIMIT && (
+                {patientReminderGroups.length > UPCOMING_REMINDER_LIMIT && (
                   <p className="mt-4 rounded-full bg-muted px-3 py-1.5 text-center text-xs font-semibold text-muted-foreground">
-                    Showing next {UPCOMING_REMINDER_LIMIT} reminders
+                    Showing the first {UPCOMING_REMINDER_LIMIT} patients requiring attention
                   </p>
                 )}
-              </div>
-            </div>
-
-            <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
-              <h3 className="text-sm font-semibold text-foreground mb-3">Statistics</h3>
-              <div className="space-y-2.5">
-                {statistics.map((stat) => (
-                  <div key={stat.label} className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">{stat.label}</span>
-                    <span className={'font-semibold ' + stat.color}>{stat.value}</span>
-                  </div>
-                ))}
               </div>
             </div>
 
@@ -1065,16 +1220,104 @@ export function Notifications() {
                 variant="primary"
                 size="md"
                 className="w-full"
-                onClick={handleBulkReminder}
-                disabled={bulkSending || upcomingReminders.length === 0}
+                onClick={() => setBulkModalOpen(true)}
+                disabled={bulkSending || (overduePatientCount === 0 && dueTodayCount === 0)}
               >
                 <Bell className="w-4 h-4 mr-2" />
-                {bulkSending ? 'Sending...' : 'Send Bulk Reminder'}
+                {bulkSending ? 'Processing...' : smsService.enabled ? 'Send Bulk Reminder' : 'Queue Bulk Reminders'}
               </Button>
             )}
+          </section>
+        </div>
+      </main>
+
+      {confirmationGroup && canSendNotifications && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" role="dialog" aria-modal="true" aria-labelledby="follow-up-reminder-title">
+          <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 id="follow-up-reminder-title" className="text-lg font-extrabold text-foreground">{smsService.enabled ? 'Send Follow-up Reminder?' : 'Queue Follow-up Reminder?'}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Review the patient and reminder details before continuing.</p>
+              </div>
+              <button type="button" aria-label="Close follow-up reminder" onClick={() => setConfirmationGroup(null)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"><X className="h-4 w-4" /></button>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-border bg-muted/20 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Patient</p>
+              <p className="mt-1 text-sm font-bold text-foreground">{confirmationGroup.patient}</p>
+
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <div>
+                  <p className="text-xs font-bold text-red-700">Overdue Doses</p>
+                  <ul className="mt-1 space-y-1 text-sm text-foreground">
+                    {confirmationGroup.overdue.map((dose) => <li key={dose.id}>- Day {dose.doseDay}</li>)}
+                  </ul>
+                </div>
+                {(confirmationGroup.dueToday.length > 0 || confirmationGroup.upcoming.length > 0) && (
+                  <div>
+                    <p className="text-xs font-bold text-emerald-700">Upcoming</p>
+                    <ul className="mt-1 space-y-1 text-sm text-foreground">
+                      {[...confirmationGroup.dueToday, ...confirmationGroup.upcoming].map((dose) => <li key={dose.id}>- Day {dose.doseDay} ({formatDate(dose.dueDate)})</li>)}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Message Preview</p>
+              <p className="mt-2 text-sm leading-6 text-emerald-950">You have missed your scheduled anti-rabies vaccination appointment. Please visit the clinic immediately.</p>
+            </div>
+
+            {!smsService.enabled && <p className="mt-3 text-xs text-muted-foreground">Simulation Mode: this reminder will be queued locally and no actual SMS will be sent.</p>}
+            <div className="mt-5 flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setConfirmationGroup(null)}>Cancel</Button>
+              <Button type="button" disabled={sending === confirmationGroup.key} onClick={async () => { await handleSendReminder(confirmationGroup); setConfirmationGroup(null); }}>
+                {sending === confirmationGroup.key ? 'Processing...' : smsService.enabled ? 'Send Reminder' : 'Queue Reminder'}
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {bulkModalOpen && canSendNotifications && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" role="dialog" aria-modal="true" aria-labelledby="bulk-reminder-title">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 id="bulk-reminder-title" className="text-lg font-extrabold text-foreground">{smsService.enabled ? 'Send Bulk Reminder' : 'Queue Bulk Reminders'}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Choose which patients should receive an SMS reminder.</p>
+              </div>
+              <button type="button" aria-label="Close bulk reminder" onClick={() => setBulkModalOpen(false)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"><X className="h-4 w-4" /></button>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-red-100 bg-red-50 p-3"><p className="text-2xl font-extrabold text-red-700">{overduePatientCount}</p><p className="text-xs font-semibold text-red-700">Overdue Patients</p></div>
+              <div className="rounded-xl border border-amber-100 bg-amber-50 p-3"><p className="text-2xl font-extrabold text-amber-700">{dueTodayCount}</p><p className="text-xs font-semibold text-amber-700">Due Today</p></div>
+            </div>
+
+            <fieldset className="mt-5 space-y-2">
+              <legend className="mb-2 text-sm font-bold text-foreground">Send reminders to</legend>
+              {[
+                { value: 'overdue', label: 'Overdue only' },
+                { value: 'due_today', label: 'Due Today only' },
+                { value: 'both', label: 'Both' },
+              ].map((option) => (
+                <label key={option.value} className="flex cursor-pointer items-center gap-3 rounded-xl border border-border p-3 text-sm font-medium text-foreground hover:bg-muted/30">
+                  <input type="radio" name="bulk-reminder-scope" value={option.value} checked={bulkScope === option.value} onChange={() => setBulkScope(option.value as typeof bulkScope)} className="h-4 w-4 text-primary focus:ring-primary" />
+                  {option.label}
+                </label>
+              ))}
+            </fieldset>
+
+            <p className="mt-4 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">{bulkTargetCount} eligible patient{bulkTargetCount !== 1 ? 's' : ''} with contact numbers will receive one SMS each.</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setBulkModalOpen(false)} disabled={bulkSending}>Cancel</Button>
+              <Button type="button" onClick={handleBulkReminder} disabled={bulkSending || bulkTargetCount === 0}>{bulkSending ? 'Processing...' : smsService.enabled ? 'Send' : 'Queue'}</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

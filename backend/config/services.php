@@ -35,6 +35,13 @@ return [
         'facility_name' => env('BITEMAP_FACILITY_NAME', 'Animal Bite Treatment Center'),
     ],
 
+    'sms' => [
+        // Null enables automatic detection from provider credentials.
+        // Set SMS_SERVICE_ENABLED=false to force safe simulation mode.
+        'enabled' => env('SMS_SERVICE_ENABLED'),
+        'provider' => env('SMS_PROVIDER', 'Twilio'),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

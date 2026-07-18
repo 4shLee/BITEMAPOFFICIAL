@@ -832,7 +832,7 @@ class BitemapApiController extends Controller
     public function todayScheduleAlerts(): JsonResponse
     {
         $schedules = PepSchedule::with(['incident.patient', 'incident.barangay'])
-            ->whereDate('scheduled_date', today())
+            ->whereDate('scheduled_date', '<=', today())
             ->whereNotIn('status', ['Done', 'Completed', 'Cancelled', 'Skipped'])
             ->orderBy('scheduled_date')
             ->orderBy('id')
@@ -851,6 +851,7 @@ class BitemapApiController extends Controller
                     'dose_day' => $schedule->dose_day,
                     'scheduled_date' => optional($schedule->scheduled_date)->toDateString(),
                     'status' => $schedule->status,
+                    'alert_type' => $schedule->scheduled_date?->isBefore(today()) ? 'overdue' : 'due_today',
                 ];
             })
             ->values();
@@ -860,8 +861,8 @@ class BitemapApiController extends Controller
             'count' => $schedules->count(),
             'data' => $schedules,
             'message' => $schedules->count() === 0
-                ? 'No PEP schedules due today.'
-                : $schedules->count().' PEP schedule(s) due today.',
+                ? 'No due or overdue PEP reminders.'
+                : $schedules->count().' PEP reminder(s) require attention.',
         ]);
     }
 
@@ -878,7 +879,21 @@ class BitemapApiController extends Controller
             ])
             ->values();
 
-        return response()->json(['success' => true, 'data' => $notifications]);
+        $smsServiceEnabled = $this->smsServiceEnabled();
+
+        return response()->json([
+            'success' => true,
+            'data' => $notifications,
+            'meta' => [
+                'sms_service' => [
+                    'enabled' => $smsServiceEnabled,
+                    'mode' => $smsServiceEnabled ? 'enabled' : 'simulation',
+                    'provider' => $smsServiceEnabled
+                        ? $this->settingValue('sms_provider', config('services.sms.provider', 'SMS Provider'))
+                        : null,
+                ],
+            ],
+        ]);
     }
 
     public function sendSms(Request $request): JsonResponse
@@ -2534,6 +2549,19 @@ class BitemapApiController extends Controller
             && ! blank($this->settingValue('twilio_from_number', config('services.twilio.from')));
     }
 
+    private function smsServiceEnabled(): bool
+    {
+        if (! $this->smsCredentialsConfigured()) {
+            return false;
+        }
+
+        $configuredFlag = config('services.sms.enabled');
+
+        return $configuredFlag === null
+            ? true
+            : filter_var($configuredFlag, FILTER_VALIDATE_BOOL);
+    }
+
     private function settingValue(string $key, mixed $fallback = null): mixed
     {
         $value = Setting::where('setting_key', $key)->value('setting_value');
@@ -2734,8 +2762,8 @@ class BitemapApiController extends Controller
         $token = $this->settingValue('twilio_auth_token', config('services.twilio.token'));
         $from = $this->settingValue('twilio_from_number', config('services.twilio.from'));
 
-        if (blank($sid) || blank($token) || blank($from)) {
-            return ['Pending', 'Twilio is not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_FROM_NUMBER.'];
+        if (! $this->smsServiceEnabled() || blank($sid) || blank($token) || blank($from)) {
+            return ['Pending', 'SMS simulation mode is active. Reminder queued locally for future dispatch.'];
         }
 
         try {

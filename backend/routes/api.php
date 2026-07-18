@@ -71,9 +71,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/settings/{key}', [BitemapApiController::class, 'updateSetting'])->middleware('role:system_admin,clinic_admin');
 
     Route::get('/notifications', [BitemapApiController::class, 'notifications'])
-        ->middleware('role:clinic_admin,nurse_vaccinator');
+        ->middleware('role:clinic_admin,doctor,nurse_vaccinator');
     Route::get('/schedule-alerts/today', [BitemapApiController::class, 'todayScheduleAlerts'])
-        ->middleware('role:clinic_admin,nurse_vaccinator');
+        ->middleware('role:clinic_admin,doctor,nurse_vaccinator');
     Route::post('/send-sms', [BitemapApiController::class, 'sendSms'])
         ->middleware('role:clinic_admin,nurse_vaccinator');
     Route::post('/send-email', [BitemapApiController::class, 'sendEmail'])

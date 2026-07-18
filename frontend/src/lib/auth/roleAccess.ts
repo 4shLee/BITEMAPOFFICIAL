@@ -76,6 +76,7 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     '/inventory',
     '/gis-map',
     '/reports',
+    '/notifications',
   ],
   nurse_vaccinator: [
     '/dashboard',

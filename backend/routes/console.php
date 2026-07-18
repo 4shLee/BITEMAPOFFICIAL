@@ -61,6 +61,9 @@ Artisan::command('bitemap:send-sms-reminders {--scope=today}', function () {
     $sid = $configuredSettings->get('twilio_account_sid') ?: config('services.twilio.sid');
     $token = $configuredSettings->get('twilio_auth_token') ?: config('services.twilio.token');
     $from = $configuredSettings->get('twilio_from_number') ?: config('services.twilio.from');
+    $serviceFlag = config('services.sms.enabled');
+    $smsServiceEnabled = ! blank($sid) && ! blank($token) && ! blank($from)
+        && ($serviceFlag === null || filter_var($serviceFlag, FILTER_VALIDATE_BOOL));
     $facility = config('services.twilio.facility_name', 'Animal Bite Treatment Center');
     $sent = 0;
     $failed = 0;
@@ -98,9 +101,9 @@ Artisan::command('bitemap:send-sms-reminders {--scope=today}', function () {
         };
 
         $status = 'Pending';
-        $responseText = 'Twilio is not configured. Reminder saved locally.';
+        $responseText = 'SMS simulation mode is active. Reminder queued locally for future dispatch.';
 
-        if (! blank($sid) && ! blank($token) && ! blank($from)) {
+        if ($smsServiceEnabled) {
             try {
                 $response = Http::asForm()
                     ->withBasicAuth($sid, $token)
