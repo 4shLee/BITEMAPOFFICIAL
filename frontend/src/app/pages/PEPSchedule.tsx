@@ -31,6 +31,7 @@ type ScheduleGroup = {
   patient: string;
   patientId?: string;
   contact_number: string;
+  smsConsent: boolean;
   category: string;
   startDate: string;
   barangay?: string;
@@ -109,6 +110,7 @@ function buildScheduleGroups(rows: any[]): ScheduleGroup[] {
       patient: patient.full_name || 'Unknown Patient',
       patientId: patient.id ? String(patient.id) : undefined,
       contact_number: patient.contact_number || '',
+      smsConsent: incident.sms_consent !== false,
       category: incident.who_category || 'Category II',
       startDate: incident.incident_date || first.scheduled_date,
       barangay: incident.barangay?.name,
@@ -324,6 +326,10 @@ export function PEPSchedule() {
     }
     if (!schedule.contact_number) {
       toast.error('No contact number on file for this patient.');
+      return;
+    }
+    if (!schedule.smsConsent) {
+      toast.error('SMS consent was declined for this incident.');
       return;
     }
 
@@ -561,14 +567,15 @@ export function PEPSchedule() {
                     <div className="flex items-center justify-between"><span className="text-emerald-700">Dose</span><span className="font-bold text-emerald-950">Day {nextDose.day}</span></div>
                     <div className="flex items-center justify-between"><span className="text-emerald-700">Due Date</span><span className="font-bold text-emerald-950">{formatDate(nextDose.date)}</span></div>
                     <div className="flex items-center gap-2 text-emerald-900"><Phone className="h-4 w-4" /> {schedule.contact_number || 'No contact number'}</div>
-                    <p className="text-xs font-medium text-emerald-700">Preferred channel: SMS. SMS consent assumed from patient contact workflow.</p>
+                    <p className="text-xs font-medium text-emerald-700">SMS Consent: {schedule.smsConsent ? 'Allowed' : 'Declined'}</p>
                     {canSendNotifications && (
-                      <Button type="button" className="mt-2 w-full" onClick={() => handleSendReminder(nextDose)} disabled={!schedule.contact_number}>
+                      <Button type="button" className="mt-2 w-full" onClick={() => handleSendReminder(nextDose)} disabled={!schedule.contact_number || !schedule.smsConsent}>
                         <MessageSquare className="h-4 w-4" />
                         Send Reminder
                       </Button>
                     )}
                     {!schedule.contact_number && <p className="text-xs font-semibold text-destructive">Add a contact number before sending SMS reminders.</p>}
+                    {!schedule.smsConsent && <p className="text-xs font-semibold text-destructive">SMS reminders are disabled because consent was declined.</p>}
                   </div>
                 ) : (
                   <p className="text-sm text-emerald-800">No pending dose reminder needed.</p>

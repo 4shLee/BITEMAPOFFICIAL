@@ -21,7 +21,6 @@ type PatientFormData = {
   address: string;
   barangayId: string;
   smsConsent: boolean;
-  reminderChannel: string;
 };
 
 type PatientFormErrors = Partial<Record<keyof PatientFormData, string>>;
@@ -38,7 +37,6 @@ const initialFormData: PatientFormData = {
   address: '',
   barangayId: '',
   smsConsent: true,
-  reminderChannel: 'SMS',
 };
 
 function composeFullName(formData: PatientFormData) {
@@ -143,8 +141,7 @@ export function PatientRecordForm() {
           email: patient?.email || '',
           address: patient?.address || '',
           barangayId: patient?.barangay_id ? String(patient.barangay_id) : '',
-          smsConsent: true,
-          reminderChannel: 'SMS',
+          smsConsent: patient?.sms_consent !== false && Number(patient?.sms_consent) !== 0,
         });
       } catch (error: any) {
         setLoadError(error.message || 'Unable to load patient record.');
@@ -212,6 +209,7 @@ export function PatientRecordForm() {
       email: formData.email.trim() || null,
       address: formData.address.trim(),
       barangay_id: formData.barangayId,
+      sms_consent: formData.smsConsent,
     };
 
     try {
@@ -328,7 +326,7 @@ export function PatientRecordForm() {
                   <p className="mt-0.5 text-xs text-muted-foreground">Used as a clinic reference for PEP reminders.</p>
                 </div>
               </div>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_240px]">
+              <div>
                 <label className="flex items-start gap-3 rounded-xl border border-border bg-muted/25 p-3 text-sm text-foreground">
                   <input
                     type="checkbox"
@@ -337,16 +335,10 @@ export function PatientRecordForm() {
                     className="mt-1 h-4 w-4 rounded border-border text-primary focus:ring-primary"
                   />
                   <span>
-                    <span className="font-semibold">Allow SMS reminders for PEP schedule</span>
-                    <span className="mt-0.5 block text-xs text-muted-foreground">Reminder consent is noted in the workflow UI.</span>
+                    <span className="font-semibold">SMS Consent</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">Patients who provide SMS consent may receive vaccination reminders based on their PEP schedule.</span>
                   </span>
                 </label>
-                <Select
-                  label="Preferred Channel"
-                  options={[{ value: 'SMS', label: 'SMS' }, { value: 'Phone call', label: 'Phone call' }, { value: 'Email', label: 'Email' }]}
-                  value={formData.reminderChannel}
-                  onChange={(event) => updateField('reminderChannel', event.target.value)}
-                />
               </div>
             </div>
           </div>
@@ -367,7 +359,7 @@ export function PatientRecordForm() {
                 <SummaryRow label="Age / Sex" value={[formData.age, formData.sex].filter(Boolean).join(' / ')} />
                 <SummaryRow label="Contact" value={formData.contactNumber} />
                 <SummaryRow label="Barangay" value={selectedBarangay?.name} />
-                <SummaryRow label="Reminders" value={formData.smsConsent ? formData.reminderChannel + ' allowed' : 'SMS not allowed'} />
+                <SummaryRow label="SMS Consent" value={formData.smsConsent ? 'Allowed' : 'Declined'} />
               </div>
               <div className="mt-4 grid gap-2">
                 <Button type="submit" size="lg" disabled={saving} className="w-full">

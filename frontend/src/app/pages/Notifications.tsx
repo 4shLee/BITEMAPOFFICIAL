@@ -52,6 +52,7 @@ type PepScheduleRow = {
   };
   incident?: {
     id?: number | string;
+    sms_consent?: boolean;
   };
 };
 
@@ -202,6 +203,7 @@ const buildUpcomingReminders = (rows: PepScheduleRow[]): UpcomingReminder[] => {
 
   return rows
     .filter((row) => row.scheduled_date && row.status !== 'Done')
+    .filter((row) => row.incident?.sms_consent !== false)
     .filter((row) => {
       const scheduleDate = parseDateOnly(row.scheduled_date.slice(0, 10));
       return scheduleDate >= today && scheduleDate <= nextWeek;

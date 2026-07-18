@@ -111,7 +111,6 @@ export function IncidentDetail() {
     ['Wound Washed', readNoteValue(incident?.notes, 'Wound Washed')],
     ['Date of First Consult', readNoteValue(incident?.notes, 'Date of First Consult')],
     ['SMS Consent', readNoteValue(incident?.notes, 'SMS Consent')],
-    ['Preferred Reminder Channel', readNoteValue(incident?.notes, 'Preferred Reminder Channel')],
   ];
   const pepSchedules = [...(incident?.pep_schedules || [])].sort((a, b) => (a.dose_day ?? 0) - (b.dose_day ?? 0));
 

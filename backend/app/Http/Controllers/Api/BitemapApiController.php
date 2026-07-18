@@ -2261,6 +2261,7 @@ class BitemapApiController extends Controller
             'barangay_id' => ['nullable', 'exists:barangays,id'],
             'contact_number' => ['required', 'string', 'max:30'],
             'email' => ['nullable', 'email', 'max:150'],
+            'sms_consent' => ['sometimes', 'boolean'],
         ]);
 
         $data['barangay_id'] = blank($data['barangay_id'] ?? null) ? null : $data['barangay_id'];
@@ -2290,6 +2291,7 @@ class BitemapApiController extends Controller
                 'barangay_id' => blank($request->input('barangay_id')) ? null : $request->input('barangay_id'),
                 'contact_number' => $request->input('contact_number', 'Not provided'),
                 'email' => $request->input('email'),
+                'sms_consent' => $request->boolean('sms_consent', true),
             ]);
         } else {
             $updates = [];
@@ -2304,6 +2306,9 @@ class BitemapApiController extends Controller
             }
             if ($request->filled('barangay_id')) {
                 $updates['barangay_id'] = $request->input('barangay_id');
+            }
+            if ($request->has('sms_consent')) {
+                $updates['sms_consent'] = $request->boolean('sms_consent');
             }
             if ($updates !== []) {
                 $patient->update($updates);
@@ -2327,6 +2332,7 @@ class BitemapApiController extends Controller
             'location_lat' => ['nullable', 'numeric'],
             'location_lng' => ['nullable', 'numeric'],
             'notes' => ['nullable', 'string'],
+            'sms_consent' => ['sometimes', 'boolean'],
         ]);
 
         $data = $validator->validate();
@@ -2440,6 +2446,16 @@ class BitemapApiController extends Controller
         $incidentId = $request->input('incidentId') ?? $request->input('incident_id');
         $status = 'Sent';
         $deliveryResponse = 'Logged locally. External gateway not configured yet.';
+
+        $incident = $incidentId ? Incident::with('patient')->find($incidentId) : null;
+        $patient = $patientId ? Patient::find($patientId) : null;
+        if ($channel === 'SMS' && (($incident && ! $this->incidentAllowsSms($incident)) || (! $incident && $patient && $patient->sms_consent === false))) {
+            return response()->json([
+                'success' => false,
+                'message' => 'SMS consent was declined. No reminder was scheduled or sent.',
+                'data' => null,
+            ], 422);
+        }
 
         if ($channel === 'SMS') {
             [$status, $deliveryResponse] = $this->sendSmsThroughGateway((string) $recipient, (string) $message);
@@ -2755,6 +2771,7 @@ class BitemapApiController extends Controller
             'barangay' => $patient->barangay,
             'contact_number' => $patient->contact_number,
             'email' => $patient->email,
+            'sms_consent' => (bool) $patient->sms_consent,
             'created_at' => $patient->created_at,
             'updated_at' => $patient->updated_at,
         ];
@@ -2782,6 +2799,7 @@ class BitemapApiController extends Controller
             'location_lng' => $incident->location_lng,
             'status' => $incident->status,
             'notes' => $incident->notes,
+            'sms_consent' => $this->incidentAllowsSms($incident),
             'pep_schedules' => $incident->pepSchedules->map(fn (PepSchedule $schedule) => $this->pepSchedulePayload($schedule))->values(),
             'created_at' => $incident->created_at,
             'updated_at' => $incident->updated_at,
@@ -2819,7 +2837,19 @@ class BitemapApiController extends Controller
             'who_category' => $this->displayCategory($incident->who_category),
             'status' => $incident->status,
             'barangay' => $incident->barangay,
+            'sms_consent' => $this->incidentAllowsSms($incident),
         ];
+    }
+
+    private function incidentAllowsSms(Incident $incident): bool
+    {
+        if (preg_match('/^SMS Consent:\s*(.+)$/mi', (string) $incident->notes, $matches) === 1) {
+            return ! in_array(strtolower(trim($matches[1])), ['declined', 'not allowed', 'no', 'false'], true);
+        }
+
+        $incident->loadMissing('patient');
+
+        return $incident->patient?->sms_consent !== false;
     }
 
     private function inventoryPayload(Inventory $item): array

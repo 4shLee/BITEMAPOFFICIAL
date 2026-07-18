@@ -46,7 +46,6 @@ type IncidentFormData = {
   address: string;
   contact: string;
   smsConsent: boolean;
-  reminderChannel: string;
   incidentDate: string;
   incidentTime: string;
   firstConsultDate: string;
@@ -106,7 +105,6 @@ const initialFormData: IncidentFormData = {
   address: '',
   contact: '',
   smsConsent: true,
-  reminderChannel: 'SMS',
   incidentDate: '',
   incidentTime: '',
   firstConsultDate: '',
@@ -252,8 +250,7 @@ function buildNotes(formData: IncidentFormData) {
     'Animal Condition: ' + formData.animalCondition,
     'Wound Washed: ' + formData.woundWashed,
     'Date of First Consult: ' + (formData.firstConsultDate || 'Not specified'),
-    'SMS Consent: ' + (formData.smsConsent ? 'Allowed' : 'Not allowed'),
-    'Preferred Reminder Channel: ' + formData.reminderChannel,
+    'SMS Consent: ' + (formData.smsConsent ? 'Allowed' : 'Declined'),
     'Location Precision: ' + (formData.locationMode === 'exact' ? 'Exact Pin' : 'Barangay Only'),
   ].join('\n');
 }
@@ -359,8 +356,7 @@ export function IncidentReport() {
           sex: patient?.sex || '',
           address: patient?.address || '',
           contact: incident?.contact_number || patient?.contact_number || '',
-          smsConsent: readNoteValue(notes, 'SMS Consent') !== 'Not allowed',
-          reminderChannel: readNoteValue(notes, 'Preferred Reminder Channel') || 'SMS',
+          smsConsent: !['Declined', 'Not allowed'].includes(readNoteValue(notes, 'SMS Consent')),
           incidentDate: incident?.incident_date || '',
           incidentTime: incident?.incident_time || '',
           firstConsultDate: readNoteValue(notes, 'Date of First Consult') === 'Not specified' ? '' : readNoteValue(notes, 'Date of First Consult'),
@@ -446,11 +442,6 @@ export function IncidentReport() {
       { value: 'Yes', label: 'Yes' },
       { value: 'No', label: 'No' },
     ],
-    reminderChannel: [
-      { value: 'SMS', label: 'SMS' },
-      { value: 'Call', label: 'Call' },
-      { value: 'None', label: 'None' },
-    ],
     status: [
       { value: 'Active', label: 'Active' },
       { value: 'Completed', label: 'Completed' },
@@ -493,6 +484,7 @@ export function IncidentReport() {
       sex: patient?.sex || '',
       address: patient?.address || '',
       contact: patient?.contact_number || '',
+      smsConsent: patient?.sms_consent !== false && Number(patient?.sms_consent) !== 0,
     }));
     setErrors((current) => ({ ...current, patientSelection: undefined }));
   };
@@ -582,6 +574,7 @@ export function IncidentReport() {
       status: formData.status,
       location_lat: formData.locationLat || null,
       location_lng: formData.locationLng || null,
+      sms_consent: formData.smsConsent,
       notes: buildNotes(formData),
     };
     const payload = isEditMode ? incidentPayload : {
@@ -626,7 +619,7 @@ export function IncidentReport() {
     { label: 'Barangay', value: selectedBarangay?.name || 'Not selected' },
     {
       label: 'Reminders',
-      value: formData.smsConsent ? formData.reminderChannel + ' allowed' : 'SMS not allowed',
+      value: formData.smsConsent ? 'SMS consent allowed' : 'SMS consent declined',
     },
   ];
   const doseSchedulePreview = useMemo(
@@ -850,12 +843,6 @@ export function IncidentReport() {
                   onChange={(e) => updateField('contact', e.target.value)}
                   error={errors.contact}
                 />
-                <Select
-                  label="Preferred Reminder Channel"
-                  options={selectOptions.reminderChannel}
-                  value={formData.reminderChannel}
-                  onChange={(e) => updateField('reminderChannel', e.target.value)}
-                />
               </div>
             ) : (
               <div className="space-y-3">
@@ -926,7 +913,7 @@ export function IncidentReport() {
               </div>
             )}
 
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_220px] gap-3">
+            <div className="mt-3">
               <label className="flex items-start gap-3 rounded-xl border border-border bg-muted/25 p-3 text-sm text-foreground">
                 <input
                   type="checkbox"
@@ -935,18 +922,10 @@ export function IncidentReport() {
                   className="mt-1 h-4 w-4 rounded border-border text-primary focus:ring-primary"
                 />
                 <span>
-                  <span className="font-semibold">Allow SMS reminders for PEP schedule</span>
-                  <span className="block text-xs text-muted-foreground mt-0.5">Supports reminder workflow after saving.</span>
+                  <span className="font-semibold">SMS Consent</span>
+                  <span className="block text-xs text-muted-foreground mt-0.5">Patients who provide SMS consent may receive vaccination reminders based on their PEP schedule.</span>
                 </span>
               </label>
-              {formData.patientType === 'existing' && (
-                <Select
-                  label="Preferred Channel"
-                  options={selectOptions.reminderChannel}
-                  value={formData.reminderChannel}
-                  onChange={(e) => updateField('reminderChannel', e.target.value)}
-                />
-              )}
             </div>
           </div>
 

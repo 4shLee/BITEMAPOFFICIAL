@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['full_name', 'age', 'sex', 'address', 'barangay_id', 'contact_number', 'email'])]
+#[Fillable(['full_name', 'age', 'sex', 'address', 'barangay_id', 'contact_number', 'email', 'sms_consent'])]
 class Patient extends Model
 {
     use HasFactory;
@@ -32,6 +32,7 @@ class Patient extends Model
     {
         return [
             'age' => 'integer',
+            'sms_consent' => 'boolean',
         ];
     }
 }
