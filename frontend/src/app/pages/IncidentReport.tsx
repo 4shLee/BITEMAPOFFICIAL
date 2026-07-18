@@ -1192,12 +1192,12 @@ export function IncidentReport() {
                 onClick={() => navigate('/pep-schedule?incident_id=' + encodeURIComponent(String(savedIncident.id)))}
                 className="w-full"
               >
-                Create PEP Schedule
+                Open PEP Schedule
               </Button>
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => navigate(savedIncident.patient?.id ? '/patients/' + savedIncident.patient.id : '/incidents')}
+                onClick={() => navigate(savedIncident.id ? '/incidents/' + savedIncident.id : '/incidents')}
                 className="w-full"
               >
                 View Incident
