@@ -1,6 +1,6 @@
 # BITEMAP Codex Progress Log
 
-Last updated: June 29, 2026
+**June 29, 2026**
 
 This file tracks the completed changes made through Codex for the BITEMAP project. Keep this updated whenever a feature, fix, or configuration change is completed.
 
@@ -1518,3 +1518,127 @@ Verification
 - PHP syntax and route checks passed.
 - Regression tests passed, including incident-date synchronization, PEP overdue workflows, and location persistence.
 - New and Edit Incident Report workflows were tested in the running application.
+
+## July 18, 2026 — SMS Reminder Workflow Refinement
+
+Refined BITEMAP’s reminder workflow to accurately support SMS reminders only.
+
+### Changes Completed
+
+- Removed the Preferred Reminder Channel field from:
+  - New Incident Report
+  - Edit Incident Report
+  - Incident Details
+  - Patient Record Form and summaries
+  - PEP Schedule reminder information
+- Removed selectable SMS, phone call, and email reminder-channel options.
+- Retained SMS Consent using the values Allowed and Declined.
+- Added the helper text: “Patients who provide SMS consent may receive vaccination reminders based on their PEP schedule.”
+- Added persistent SMS consent storage to patient records through a new database migration.
+- Preserved automatic PEP schedule generation, overdue-dose monitoring, missed appointments, rescheduling, notification logs, and pagination.
+- Updated Upcoming Reminders to exclude incidents where SMS consent was declined.
+- Disabled manual SMS reminder actions for patients who declined consent.
+- Added backend validation to prevent SMS dispatch and notification-record creation when consent is declined.
+- Updated scheduled reminder batches to skip patients who declined SMS consent.
+- Preserved notification records as Pending when SMS consent is allowed but Twilio is unavailable.
+- Updated scheduled SMS processing to recognize Twilio credentials from system settings or environment configuration.
+- Added backend tests covering:
+  - PEP schedule preservation when consent is declined
+  - Prevention of SMS notifications for declined consent
+  - Pending notification creation when Twilio is unavailable
+
+### Verification
+
+- Frontend production build completed successfully using `npm run build`.
+- PHP syntax and formatting checks passed.
+- Confirmed no Preferred Reminder Channel or phone-call reminder wording remains in the affected workflow.
+- Confirmed RBAC and unrelated modules were not modified.
+- Laravel feature tests could not run because the local PHP installation lacks the required SQLite and OpenSSL extensions. The failure occurred during test environment startup, not within the implemented workflow.
+
+### Deployment Note
+
+Run `php artisan migrate` to add the new `sms_consent` field to patient records.
+
+## July 19, 2026 — Incident, Patient, GIS, and WHO Workflow Improvements
+
+### Notifications & Reminders UX
+
+- Redesigned the Notifications page into a more clinic-oriented workflow.
+- Improved dashboard cards for Pending SMS, Patients Due Today, Overdue Patients, and SMS Service Status.
+- Added configuration-based Simulation Mode and SMS Service Enabled states.
+- Grouped reminders by patient and separated overdue, due-today, and upcoming doses.
+- Improved dose rows, status indicators, reminder actions, confirmation dialogs, and mobile responsiveness.
+- Added clearer Pending, Sent, and Failed SMS states with appropriate retry actions.
+- Updated the notification bell to display concise priority-based summaries.
+
+### Incident Navigation
+
+- Corrected the success-modal navigation so View Incident opens `/incidents/{incidentId}`.
+- Updated Open PEP Schedule to open the schedule linked to the newly saved incident.
+- Preserved the separate View Patient action for opening the Patient Record.
+
+### Structured Patient Information
+
+- Added separate first name, full middle name, last name, and suffix fields.
+- Added structured residential-address fields for address line, barangay, city/municipality, and province.
+- Retained legacy `full_name` and `address` compatibility.
+- Added stronger age, name, suffix, and Philippine mobile-number validation.
+- Updated compact patient displays to use a derived middle initial.
+- Renamed SMS Consent in the interface to SMS Reminder Permission.
+- New patients now default to SMS permission disabled, while existing patients retain their saved preference.
+
+### Incident Location Scope and GIS
+
+- Added a required incident-location classification:
+  - Within Digos City
+  - Outside Digos City
+- Retained the barangay selector and Digos map for within-Digos incidents.
+- Added city/municipality, province, and optional landmark fields for outside-Digos incidents.
+- Cleared incompatible values when switching between location scopes.
+- Allowed outside-Digos incidents to remain part of the patient and PEP records.
+- Excluded outside-Digos incidents from Digos GIS markers, heatmaps, and barangay analysis.
+- Added null-safe handling for legacy incidents without complete location data.
+
+### Rule-Based WHO Exposure Classification
+
+- Added a structured exposure assessment for contact type, skin condition, bleeding, transdermal exposure, saliva contact, and direct bat contact.
+- Implemented deterministic WHO Category I, II, and III suggestions without AI or external classification services.
+- Centralized the classification rules in the backend.
+- Added clinical confirmation of the final WHO category.
+- Required an explanation when clinic staff select a category different from the valid system suggestion.
+- Recorded the confirming user and confirmation timestamp.
+- Added classification and audit information to Incident Detail.
+- Preserved legacy/manual classifications without inventing missing assessment data.
+- Kept the category suggestion separate from treatment decisions.
+
+### Patient Registry Reliability and Error Handling
+
+- Diagnosed the Patient Registry loading failure as an unavailable MySQL connection during Sanctum authentication.
+- Confirmed that the failure was not caused by legacy WHO data or an unapplied migration.
+- Added a distinct API failure state with a Retry action.
+- Prevented request failures from being displayed as an empty patient registry.
+- Verified that structured patients, legacy patients, and incidents with null WHO assessment fields load correctly.
+- Preserved patient name and barangay search behavior.
+
+### Database Migrations
+
+Created and applied additive migrations for:
+
+- structured patient information;
+- incident location scope and outside-Digos fields; and
+- WHO exposure assessment, suggestion, confirmation, and audit fields.
+
+No existing records were deleted or clinically backfilled.
+
+### Verification
+
+- Patient and WHO compatibility: **4 tests, 31 assertions passed**
+- WHO classification: **24 tests, 105 assertions passed**
+- Directly affected Incident workflows: **18 tests, 147 assertions passed**
+- Frontend production build passed.
+- Focused Laravel Pint checks passed.
+- PHP syntax checks passed.
+- `git diff --check` passed.
+- Manual browser testing passed for Patient Registry, Patient Detail, Incident Report, search, API failure, and Retry behavior.
+
+Existing PEP intervals, completed-dose history, missed-appointment rules, SMS provider behavior, RBAC, Inventory, and Reports remained unchanged.
