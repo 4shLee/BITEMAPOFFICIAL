@@ -7,6 +7,7 @@ import { Badge } from '../UI/Badge';
 import { Button } from '../UI/Button';
 import { incidentsAPI } from '../../../lib/services/api';
 import { canPerformAction, getStoredUser, normalizeRoleKey } from '../../../lib/auth/roleAccess';
+import { getPatientDisplayName } from '../../../lib/patient';
 
 const whoGuidance: Record<string, string> = {
   'Category I': 'No PEP required if reliable history. Provide health advice.',
@@ -103,7 +104,7 @@ export function IncidentListPage() {
   };
 
   const filteredIncidents = incidents.filter((incident) =>
-    incident.patient?.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    getPatientDisplayName(incident.patient || {}).toLowerCase().includes(searchTerm.toLowerCase()) ||
     incident.barangay?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     incident.animal_type?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     incident.who_category?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -197,7 +198,7 @@ export function IncidentListPage() {
                     return (
                     <tr key={incident.id} className="hover:bg-muted/50 transition-colors">
                       <td className="px-6 py-4 text-sm font-medium text-foreground">
-                        {incident.patient?.full_name || 'Unknown'}
+                        {getPatientDisplayName(incident.patient || {}) || 'Unknown'}
                       </td>
                       <td className="px-6 py-4 text-sm text-muted-foreground">
                         {new Date(incident.incident_date).toLocaleDateString()}
@@ -310,7 +311,7 @@ export function IncidentListPage() {
                 <div className="rounded-xl border border-border p-4">
                   <h3 className="text-sm font-bold text-foreground mb-3">Patient Information</h3>
                   <div className="space-y-2 text-sm">
-                    <p><span className="text-muted-foreground">Patient:</span> <span className="font-semibold">{reviewIncident.patient?.full_name || 'Unknown'}</span></p>
+                    <p><span className="text-muted-foreground">Patient:</span> <span className="font-semibold">{getPatientDisplayName(reviewIncident.patient || {}) || 'Unknown'}</span></p>
                     <p><span className="text-muted-foreground">Contact:</span> {reviewIncident.contact_number || reviewIncident.patient?.contact_number || 'Not provided'}</p>
                     <p><span className="text-muted-foreground">Barangay:</span> {reviewIncident.barangay?.name || 'Unknown'}</p>
                   </div>

@@ -23,6 +23,7 @@ import { Button } from '../components/UI/Button';
 import { toast } from 'sonner';
 import { auditLogsAPI, notificationsAPI, pepScheduleAPI } from '../../lib/services/api';
 import { canPerformAction, getStoredUser, isSystemAdminRole } from '../../lib/auth/roleAccess';
+import { getPatientDisplayName } from '../../lib/patient';
 
 type NotificationLog = {
   id: number;
@@ -45,6 +46,10 @@ type NotificationLog = {
   patient?: {
     id?: number | string;
     full_name?: string;
+    first_name?: string;
+    middle_name?: string;
+    last_name?: string;
+    suffix?: string;
     contact_number?: string;
   };
 };
@@ -58,6 +63,10 @@ type PepScheduleRow = {
   patient?: {
     id?: number | string;
     full_name?: string;
+    first_name?: string;
+    middle_name?: string;
+    last_name?: string;
+    suffix?: string;
     contact_number?: string;
   };
   incident?: {
@@ -247,7 +256,7 @@ const buildUpcomingReminders = (rows: PepScheduleRow[]): UpcomingReminder[] => {
     .sort((a, b) => parseDateOnly(a.scheduled_date).getTime() - parseDateOnly(b.scheduled_date).getTime())
     .map((row) => ({
       id: row.id,
-      patient: row.patient?.full_name || 'Unknown Patient',
+      patient: getPatientDisplayName(row.patient || {}) || 'Unknown Patient',
       doseDay: row.dose_day,
       dueDate: row.scheduled_date,
       contact: row.patient?.contact_number || '',

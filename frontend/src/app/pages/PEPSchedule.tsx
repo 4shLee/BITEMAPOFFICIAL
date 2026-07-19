@@ -8,6 +8,7 @@ import { Button } from '../components/UI/Button';
 import { Input } from '../components/UI/Input';
 import { inventoryAPI, notificationsAPI, pepScheduleAPI } from '../../lib/services/api';
 import { canPerformAction, getStoredUser } from '../../lib/auth/roleAccess';
+import { getPatientDisplayName } from '../../lib/patient';
 
 type DoseStatus = 'completed' | 'completed_late' | 'due_today' | 'upcoming' | 'overdue' | 'pending' | 'missed' | 'rescheduled';
 
@@ -107,10 +108,10 @@ function buildScheduleGroups(rows: any[]): ScheduleGroup[] {
 
     return {
       incidentId,
-      patient: patient.full_name || 'Unknown Patient',
+      patient: getPatientDisplayName(patient) || 'Unknown Patient',
       patientId: patient.id ? String(patient.id) : undefined,
       contact_number: patient.contact_number || '',
-      smsConsent: incident.sms_consent !== false,
+      smsConsent: incident.sms_consent === true,
       category: incident.who_category || 'Category II',
       startDate: incident.incident_date || first.scheduled_date,
       barangay: incident.barangay?.name,
@@ -567,7 +568,7 @@ export function PEPSchedule() {
                     <div className="flex items-center justify-between"><span className="text-emerald-700">Dose</span><span className="font-bold text-emerald-950">Day {nextDose.day}</span></div>
                     <div className="flex items-center justify-between"><span className="text-emerald-700">Due Date</span><span className="font-bold text-emerald-950">{formatDate(nextDose.date)}</span></div>
                     <div className="flex items-center gap-2 text-emerald-900"><Phone className="h-4 w-4" /> {schedule.contact_number || 'No contact number'}</div>
-                    <p className="text-xs font-medium text-emerald-700">SMS Consent: {schedule.smsConsent ? 'Allowed' : 'Declined'}</p>
+                    <p className="text-xs font-medium text-emerald-700">SMS Reminder Permission: {schedule.smsConsent ? 'Enabled' : 'Disabled'}</p>
                     {canSendNotifications && (
                       <Button type="button" className="mt-2 w-full" onClick={() => handleSendReminder(nextDose)} disabled={!schedule.contact_number || !schedule.smsConsent}>
                         <MessageSquare className="h-4 w-4" />
@@ -575,7 +576,7 @@ export function PEPSchedule() {
                       </Button>
                     )}
                     {!schedule.contact_number && <p className="text-xs font-semibold text-destructive">Add a contact number before sending SMS reminders.</p>}
-                    {!schedule.smsConsent && <p className="text-xs font-semibold text-destructive">SMS reminders are disabled because consent was declined.</p>}
+                    {!schedule.smsConsent && <p className="text-xs font-semibold text-destructive">Patient SMS reminders are disabled because permission was not provided.</p>}
                   </div>
                 ) : (
                   <p className="text-sm text-emerald-800">No pending dose reminder needed.</p>

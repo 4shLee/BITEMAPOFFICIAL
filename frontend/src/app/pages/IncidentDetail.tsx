@@ -6,6 +6,7 @@ import { Button } from '../components/UI/Button';
 import { Badge } from '../components/UI/Badge';
 import { incidentsAPI } from '../../lib/services/api';
 import { canPerformAction, getStoredUser } from '../../lib/auth/roleAccess';
+import { composePatientAddress, composePatientFullName } from '../../lib/patient';
 
 const whoGuidance: Record<string, string> = {
   'Category I': 'No PEP required if reliable history. Provide health advice.',
@@ -77,8 +78,9 @@ export function IncidentDetail() {
   }, [id]);
 
   const patient = incident?.patient;
-  const patientName = patient?.full_name || 'Unknown Patient';
-  const ageSex = [patient?.age, patient?.sex].filter(Boolean).join(' / ');
+  const patientName = composePatientFullName(patient || {}) || 'Unknown Patient';
+  const patientAddress = composePatientAddress(patient || {});
+  const ageSex = [patient?.age, patient?.sex].filter((value) => value !== null && value !== undefined && value !== '').join(' / ');
   const contactNumber = incident?.contact_number || patient?.contact_number;
   const biteSite = incident?.bite_site || incident?.bite_location;
   const barangayName = incident?.barangay?.name;
@@ -110,7 +112,7 @@ export function IncidentDetail() {
     ['Animal Condition', readNoteValue(incident?.notes, 'Animal Condition')],
     ['Wound Washed', readNoteValue(incident?.notes, 'Wound Washed')],
     ['Date of First Consult', readNoteValue(incident?.notes, 'Date of First Consult')],
-    ['SMS Consent', readNoteValue(incident?.notes, 'SMS Consent')],
+    ['SMS Reminder Permission', readNoteValue(incident?.notes, 'SMS Consent')],
   ];
   const pepSchedules = [...(incident?.pep_schedules || [])].sort((a, b) => (a.dose_day ?? 0) - (b.dose_day ?? 0));
 
@@ -179,7 +181,7 @@ export function IncidentDetail() {
                       <DetailItem label="Full Name" value={patientName} />
                       <DetailItem label="Age / Sex" value={ageSex} />
                       <DetailItem label="Contact Number" value={contactNumber} />
-                      <DetailItem label="Address" value={patient?.address} />
+                      <DetailItem label="Patient Residential Address" value={patientAddress} />
                     </div>
                   </section>
 

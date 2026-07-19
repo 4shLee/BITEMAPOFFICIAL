@@ -1,13 +1,22 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { ArrowLeft, CheckCircle2, MessageSquare, UserRound } from 'lucide-react';
+import { ArrowLeft, MessageSquare, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { Header } from '../components/Layout/Header';
 import { Input } from '../components/UI/Input';
 import { Select } from '../components/UI/Select';
 import { Button } from '../components/UI/Button';
-import { patientsAPI, barangaysAPI } from '../../lib/services/api';
+import { patientsAPI } from '../../lib/services/api';
 import { canPerformAction, getStoredUser } from '../../lib/auth/roleAccess';
+import {
+  PATIENT_SUFFIX_OPTIONS,
+  composePatientAddress,
+  composePatientFullName,
+  contactNumberError,
+  getPatientNameFields,
+  isValidPatientName,
+  normalizePatientText,
+} from '../../lib/patient';
 
 type PatientFormData = {
   firstName: string;
@@ -18,8 +27,11 @@ type PatientFormData = {
   sex: string;
   contactNumber: string;
   email: string;
-  address: string;
-  barangayId: string;
+  addressLine: string;
+  residenceBarangay: string;
+  cityMunicipality: string;
+  province: string;
+  legacyAddress: string;
   smsConsent: boolean;
 };
 
@@ -34,57 +46,20 @@ const initialFormData: PatientFormData = {
   sex: '',
   contactNumber: '',
   email: '',
-  address: '',
-  barangayId: '',
-  smsConsent: true,
+  addressLine: '',
+  residenceBarangay: '',
+  cityMunicipality: 'Digos City',
+  province: 'Davao del Sur',
+  legacyAddress: '',
+  smsConsent: false,
 };
 
-function composeFullName(formData: PatientFormData) {
-  return [
-    formData.firstName.trim(),
-    formData.middleName.trim(),
-    formData.lastName.trim(),
-    formData.suffix.trim(),
-  ].filter(Boolean).join(' ');
-}
-
-function splitFullName(fullName?: string) {
-  const parts = (fullName || '').trim().split(/\s+/).filter(Boolean);
-  const suffixes = ['jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv', 'v'];
-
-  if (parts.length === 0) return { firstName: '', middleName: '', lastName: '', suffix: '' };
-
-  const lastPart = parts[parts.length - 1];
-  const hasSuffix = suffixes.includes(lastPart.toLowerCase());
-  const suffix = hasSuffix ? lastPart : '';
-  const nameParts = hasSuffix ? parts.slice(0, -1) : parts;
-
-  if (nameParts.length === 1) {
-    return { firstName: nameParts[0], middleName: '', lastName: '', suffix };
-  }
-
-  return {
-    firstName: nameParts[0] || '',
-    middleName: nameParts.length > 2 ? nameParts.slice(1, -1).join(' ') : '',
-    lastName: nameParts[nameParts.length - 1] || '',
-    suffix,
-  };
-}
-
-function normalizeContact(value: string) {
-  return value.replace(/[\s-]/g, '');
-}
-
-function isValidPhilippineMobile(value: string) {
-  const contact = normalizeContact(value);
-  return /^09\d{9}$/.test(contact) || /^\+639\d{9}$/.test(contact);
-}
-
 function SummaryRow({ label, value }: { label: string; value?: string | number | null }) {
+  const displayValue = value === null || value === undefined || value === '' ? 'Not provided' : value;
   return (
     <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 bg-white px-3 py-2.5 text-xs">
       <span className="font-semibold text-slate-500">{label}</span>
-      <span className="truncate font-semibold text-slate-900">{value || 'Not provided'}</span>
+      <span className="truncate font-semibold text-slate-900">{displayValue}</span>
     </div>
   );
 }
@@ -97,23 +72,9 @@ export function PatientRecordForm() {
   const canSavePatient = canPerformAction(currentUser?.role, isEditMode ? 'patients.update' : 'patients.create');
   const [formData, setFormData] = useState<PatientFormData>(initialFormData);
   const [errors, setErrors] = useState<PatientFormErrors>({});
-  const [barangays, setBarangays] = useState<any[]>([]);
   const [loadingPatient, setLoadingPatient] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    async function loadBarangays() {
-      try {
-        const response = await barangaysAPI.getAll();
-        if (response.success) setBarangays(response.data || []);
-      } catch {
-        toast.error('Failed to load barangay options.');
-      }
-    }
-
-    loadBarangays();
-  }, []);
 
   useEffect(() => {
     async function loadPatient() {
@@ -128,20 +89,23 @@ export function PatientRecordForm() {
         setLoadError(null);
         const response = await patientsAPI.getById(id);
         const patient = response.data;
-        const name = splitFullName(patient?.full_name);
+        const name = getPatientNameFields(patient);
 
         setFormData({
           firstName: name.firstName,
           middleName: name.middleName,
           lastName: name.lastName,
           suffix: name.suffix,
-          age: patient?.age ? String(patient.age) : '',
+          age: patient?.age != null ? String(patient.age) : '',
           sex: patient?.sex || '',
           contactNumber: patient?.contact_number || '',
           email: patient?.email || '',
-          address: patient?.address || '',
-          barangayId: patient?.barangay_id ? String(patient.barangay_id) : '',
-          smsConsent: patient?.sms_consent !== false && Number(patient?.sms_consent) !== 0,
+          addressLine: patient?.address_line || '',
+          residenceBarangay: patient?.residence_barangay || '',
+          cityMunicipality: patient?.city_municipality || 'Digos City',
+          province: patient?.province || 'Davao del Sur',
+          legacyAddress: patient?.address || '',
+          smsConsent: patient?.sms_consent === true || Number(patient?.sms_consent) === 1,
         });
       } catch (error: any) {
         setLoadError(error.message || 'Unable to load patient record.');
@@ -153,13 +117,19 @@ export function PatientRecordForm() {
     loadPatient();
   }, [id, canSavePatient]);
 
-  const barangayOptions = useMemo(() => [
-    { value: '', label: 'Select barangay' },
-    ...barangays.map((barangay) => ({ value: String(barangay.id), label: barangay.name })),
-  ], [barangays]);
-
-  const selectedBarangay = barangays.find((barangay) => String(barangay.id) === formData.barangayId);
-  const fullName = composeFullName(formData);
+  const fullName = composePatientFullName({
+    first_name: formData.firstName,
+    middle_name: formData.middleName,
+    last_name: formData.lastName,
+    suffix: formData.suffix,
+  });
+  const completeAddress = composePatientAddress({
+    address_line: formData.addressLine,
+    residence_barangay: formData.residenceBarangay,
+    city_municipality: formData.cityMunicipality,
+    province: formData.province,
+    address: formData.legacyAddress,
+  });
 
   const updateField = <K extends keyof PatientFormData>(field: K, value: PatientFormData[K]) => {
     setFormData((current) => ({ ...current, [field]: value }));
@@ -170,22 +140,28 @@ export function PatientRecordForm() {
     const nextErrors: PatientFormErrors = {};
     const age = Number(formData.age);
 
-    if (!formData.firstName.trim()) nextErrors.firstName = 'First name is required.';
-    if (!formData.lastName.trim()) nextErrors.lastName = 'Last name is required.';
-    if (!formData.age || Number.isNaN(age) || age < 0 || age > 120) nextErrors.age = 'Enter a valid age from 0 to 120.';
+    if (!isValidPatientName(formData.firstName, 2)) nextErrors.firstName = 'Enter 2–50 letters; spaces, hyphens, and apostrophes are allowed.';
+    if (formData.middleName && !isValidPatientName(formData.middleName, 1)) nextErrors.middleName = 'Enter a valid middle name using letters, spaces, hyphens, or apostrophes.';
+    if (!isValidPatientName(formData.lastName, 2)) nextErrors.lastName = 'Enter 2–50 letters; spaces, hyphens, and apostrophes are allowed.';
+    if (!formData.age || !Number.isInteger(age) || age < 0 || age > 120) nextErrors.age = 'Enter a whole-number age from 0 to 120.';
     if (!formData.sex) nextErrors.sex = 'Sex is required.';
-    if (!formData.contactNumber.trim()) {
-      nextErrors.contactNumber = 'Contact number is required.';
-    } else if (!isValidPhilippineMobile(formData.contactNumber)) {
-      nextErrors.contactNumber = 'Use a Philippine mobile number, e.g. 09XXXXXXXXX.';
-    }
+    nextErrors.contactNumber = contactNumberError(formData.contactNumber, formData.smsConsent);
     if (formData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
       nextErrors.email = 'Enter a valid email address.';
     }
-    if (!formData.address.trim()) nextErrors.address = 'Complete address is required.';
-    if (!formData.barangayId) nextErrors.barangayId = 'Barangay is required.';
+    const addressLineLength = normalizePatientText(formData.addressLine).length;
+    const residenceBarangayLength = normalizePatientText(formData.residenceBarangay).length;
+    const cityMunicipalityLength = normalizePatientText(formData.cityMunicipality).length;
+    const provinceLength = normalizePatientText(formData.province).length;
+    if (addressLineLength < 3 || addressLineLength > 150) nextErrors.addressLine = 'House No. / Purok / Street must contain 3–150 characters.';
+    if (residenceBarangayLength < 2 || residenceBarangayLength > 80) nextErrors.residenceBarangay = 'Barangay must contain 2–80 characters.';
+    if (cityMunicipalityLength < 2 || cityMunicipalityLength > 80) nextErrors.cityMunicipality = 'City / Municipality must contain 2–80 characters.';
+    if (provinceLength < 2 || provinceLength > 80) nextErrors.province = 'Province must contain 2–80 characters.';
 
     setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) {
+      requestAnimationFrame(() => document.querySelector('[aria-invalid="true"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+    }
     return Object.keys(nextErrors).length === 0;
   };
 
@@ -202,13 +178,20 @@ export function PatientRecordForm() {
     }
 
     const payload = {
+      first_name: normalizePatientText(formData.firstName),
+      middle_name: normalizePatientText(formData.middleName) || null,
+      last_name: normalizePatientText(formData.lastName),
+      suffix: formData.suffix || null,
       full_name: fullName,
       age: Number(formData.age),
       sex: formData.sex,
-      contact_number: normalizeContact(formData.contactNumber),
+      contact_number: formData.contactNumber.trim() || null,
       email: formData.email.trim() || null,
-      address: formData.address.trim(),
-      barangay_id: formData.barangayId,
+      address_line: normalizePatientText(formData.addressLine),
+      residence_barangay: normalizePatientText(formData.residenceBarangay),
+      city_municipality: normalizePatientText(formData.cityMunicipality),
+      province: normalizePatientText(formData.province),
+      address: completeAddress,
       sms_consent: formData.smsConsent,
     };
 
@@ -274,7 +257,7 @@ export function PatientRecordForm() {
   }
 
   return (
-    <div className="flex-1 bg-[#f6f8f7] min-h-screen">
+    <div className="min-h-screen flex-1 bg-[#f6f8f7] max-md:fixed max-md:inset-0 max-md:z-30 max-md:overflow-y-auto">
       <Header title={isEditMode ? 'Edit Patient Record' : 'New Patient Record'} breadcrumbs={isEditMode ? ['Patients', 'Edit Patient'] : ['Patients', 'New Patient']} />
 
       <div className="px-5 py-5 lg:px-7 lg:py-6">
@@ -294,26 +277,39 @@ export function PatientRecordForm() {
                 </Button>
               </div>
 
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
-                <div className="md:col-span-2">
-                  <Input label="First Name *" placeholder="First name" value={formData.firstName} onChange={(event) => updateField('firstName', event.target.value)} error={errors.firstName} />
+              <section>
+                <h3 className="mb-3 text-sm font-bold text-foreground">A. Patient Identity</h3>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <Input label="First Name *" placeholder="Enter first name" value={formData.firstName} onChange={(event) => updateField('firstName', event.target.value)} error={errors.firstName} />
+                  <Input label="Middle Name (Optional)" placeholder="Enter full middle name" value={formData.middleName} onChange={(event) => updateField('middleName', event.target.value)} error={errors.middleName} />
+                  <Input label="Last Name *" placeholder="Enter last name" value={formData.lastName} onChange={(event) => updateField('lastName', event.target.value)} error={errors.lastName} />
+                  <Select label="Suffix (Optional)" options={PATIENT_SUFFIX_OPTIONS} value={formData.suffix} onChange={(event) => updateField('suffix', event.target.value)} error={errors.suffix} />
                 </div>
-                <Input label="Middle Name / Initial" placeholder="M.I. or middle name" value={formData.middleName} onChange={(event) => updateField('middleName', event.target.value)} />
-                <div className="md:col-span-2">
-                  <Input label="Last Name *" placeholder="Last name" value={formData.lastName} onChange={(event) => updateField('lastName', event.target.value)} error={errors.lastName} />
+              </section>
+
+              <section className="mt-5 border-t border-border pt-4">
+                <h3 className="mb-3 text-sm font-bold text-foreground">B. Demographics and Contact</h3>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <Input label="Age *" type="number" min={0} max={120} step={1} inputMode="numeric" placeholder="Age" value={formData.age} onChange={(event) => updateField('age', event.target.value)} error={errors.age} />
+                  <Select label="Sex *" options={[{ value: '', label: 'Select sex' }, { value: 'Male', label: 'Male' }, { value: 'Female', label: 'Female' }]} value={formData.sex} onChange={(event) => updateField('sex', event.target.value)} error={errors.sex} />
+                  <Input label={formData.smsConsent ? 'Contact Number *' : 'Contact Number (Optional)'} type="tel" inputMode="numeric" maxLength={11} placeholder="09XXXXXXXXX" value={formData.contactNumber} onChange={(event) => updateField('contactNumber', event.target.value)} error={errors.contactNumber} />
+                  <Input label="Email (Optional)" type="email" placeholder="patient@email.com" value={formData.email} onChange={(event) => updateField('email', event.target.value)} error={errors.email} />
                 </div>
-                <Input label="Suffix" placeholder="Jr., Sr., III" value={formData.suffix} onChange={(event) => updateField('suffix', event.target.value)} />
-                <Input label="Age *" type="number" placeholder="Age" value={formData.age} onChange={(event) => updateField('age', event.target.value)} error={errors.age} />
-                <Select label="Sex *" options={[{ value: '', label: 'Select sex' }, { value: 'Male', label: 'Male' }, { value: 'Female', label: 'Female' }]} value={formData.sex} onChange={(event) => updateField('sex', event.target.value)} error={errors.sex} />
-                <Input label="Contact Number *" type="tel" placeholder="09XXXXXXXXX" value={formData.contactNumber} onChange={(event) => updateField('contactNumber', event.target.value)} error={errors.contactNumber} />
-                <Input label="Email" type="email" placeholder="patient@email.com" value={formData.email} onChange={(event) => updateField('email', event.target.value)} error={errors.email} />
-                <div className="md:col-span-2">
-                  <Input label="Complete Address *" placeholder="House no., street, purok, landmark" value={formData.address} onChange={(event) => updateField('address', event.target.value)} error={errors.address} />
+              </section>
+
+              <section className="mt-5 border-t border-border pt-4">
+                <h3 className="mb-1 text-sm font-bold text-foreground">C. Patient Residential Address</h3>
+                <p className="mb-3 text-xs text-muted-foreground">This is the patient's residence and is separate from the location of an animal-bite incident.</p>
+                {formData.legacyAddress && !formData.addressLine && (
+                  <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">Legacy address on file: {formData.legacyAddress}</p>
+                )}
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <Input label="House No. / Purok / Street *" placeholder="Enter house number, purok, subdivision, or street" value={formData.addressLine} onChange={(event) => updateField('addressLine', event.target.value)} error={errors.addressLine} />
+                  <Input label="Barangay *" placeholder="Enter residential barangay" value={formData.residenceBarangay} onChange={(event) => updateField('residenceBarangay', event.target.value)} error={errors.residenceBarangay} />
+                  <Input label="City / Municipality *" placeholder="Enter city or municipality" value={formData.cityMunicipality} onChange={(event) => updateField('cityMunicipality', event.target.value)} error={errors.cityMunicipality} />
+                  <Input label="Province *" placeholder="Enter province" value={formData.province} onChange={(event) => updateField('province', event.target.value)} error={errors.province} />
                 </div>
-                <div className="md:col-span-2">
-                  <Select label="Barangay *" options={barangayOptions} value={formData.barangayId} onChange={(event) => updateField('barangayId', event.target.value)} error={errors.barangayId} />
-                </div>
-              </div>
+              </section>
             </div>
 
             <div className="rounded-2xl border border-border bg-card p-4 shadow-sm lg:p-5">
@@ -322,8 +318,8 @@ export function PatientRecordForm() {
                   <MessageSquare className="h-4 w-4" />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold text-foreground">Reminder Preferences</h2>
-                  <p className="mt-0.5 text-xs text-muted-foreground">Used as a clinic reference for PEP reminders.</p>
+                  <h2 className="text-base font-bold text-foreground">D. SMS Reminder Permission</h2>
+                  <p className="mt-0.5 text-xs text-muted-foreground">Patient messaging permission only; treatment and clinic monitoring remain unaffected.</p>
                 </div>
               </div>
               <div>
@@ -335,8 +331,8 @@ export function PatientRecordForm() {
                     className="mt-1 h-4 w-4 rounded border-border text-primary focus:ring-primary"
                   />
                   <span>
-                    <span className="font-semibold">SMS Consent</span>
-                    <span className="mt-0.5 block text-xs text-muted-foreground">Patients who provide SMS consent may receive vaccination reminders based on their PEP schedule.</span>
+                    <span className="font-semibold">SMS Reminder Permission</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">Patient agrees to receive vaccination appointment reminders through SMS at the contact number provided. This choice does not affect treatment or PEP scheduling.</span>
                   </span>
                 </label>
               </div>
@@ -358,8 +354,8 @@ export function PatientRecordForm() {
                 <SummaryRow label="Patient" value={fullName || 'Not entered'} />
                 <SummaryRow label="Age / Sex" value={[formData.age, formData.sex].filter(Boolean).join(' / ')} />
                 <SummaryRow label="Contact" value={formData.contactNumber} />
-                <SummaryRow label="Barangay" value={selectedBarangay?.name} />
-                <SummaryRow label="SMS Consent" value={formData.smsConsent ? 'Allowed' : 'Declined'} />
+                <SummaryRow label="Residence" value={completeAddress} />
+                <SummaryRow label="SMS Permission" value={formData.smsConsent ? 'Enabled' : 'Disabled'} />
               </div>
               <div className="mt-4 grid gap-2">
                 <Button type="submit" size="lg" disabled={saving} className="w-full">

@@ -253,7 +253,7 @@ class BitemapApiController extends Controller
 
     public function storePatient(Request $request): JsonResponse
     {
-        $data = $this->validatePatient($request);
+        $data = $this->validatePatient($request, true);
         $patient = Patient::create($data);
 
         return response()->json([
@@ -264,7 +264,7 @@ class BitemapApiController extends Controller
 
     public function updatePatient(Request $request, Patient $patient): JsonResponse
     {
-        $patient->update($this->validatePatient($request));
+        $patient->update($this->validatePatient($request, false));
 
         return response()->json([
             'success' => true,
@@ -2295,20 +2295,80 @@ class BitemapApiController extends Controller
         ]);
     }
 
-    private function validatePatient(Request $request): array
+    private function validatePatient(Request $request, bool $creating): array
     {
-        $data = $request->validate([
-            'full_name' => ['required', 'string', 'max:150'],
-            'age' => ['required', 'integer', 'min:0'],
+        $input = $request->all();
+        if (blank($input['full_name'] ?? null) && filled($input['patient_name'] ?? null)) {
+            $input['full_name'] = $input['patient_name'];
+        }
+        $structuredNameFields = ['first_name', 'middle_name', 'last_name', 'suffix'];
+        $structuredAddressFields = ['address_line', 'residence_barangay', 'city_municipality', 'province'];
+        $hasStructuredName = collect($structuredNameFields)->contains(fn (string $field): bool => $request->exists($field));
+        $hasStructuredAddress = collect($structuredAddressFields)->contains(fn (string $field): bool => $request->exists($field));
+
+        foreach (array_merge($structuredNameFields, $structuredAddressFields, ['full_name', 'address', 'contact_number']) as $field) {
+            if (array_key_exists($field, $input) && is_string($input[$field])) {
+                $input[$field] = Patient::normalizeText($input[$field]);
+            }
+        }
+
+        $nameRule = ['nullable', 'string', 'min:1', 'max:50', 'regex:/^(?=.*\p{L})[\p{L}\p{M}]+(?:[ \'\x{2019}-][\p{L}\p{M}]+)*$/u'];
+        $validator = Validator::make($input, [
+            'first_name' => [$hasStructuredName ? 'required' : 'nullable', 'string', 'min:2', 'max:50', 'regex:/^(?=.*\p{L})[\p{L}\p{M}]+(?:[ \'\x{2019}-][\p{L}\p{M}]+)*$/u'],
+            'middle_name' => $nameRule,
+            'last_name' => [$hasStructuredName ? 'required' : 'nullable', 'string', 'min:2', 'max:50', 'regex:/^(?=.*\p{L})[\p{L}\p{M}]+(?:[ \'\x{2019}-][\p{L}\p{M}]+)*$/u'],
+            'suffix' => ['nullable', Rule::in(['Jr.', 'Sr.', 'II', 'III', 'IV', 'V'])],
+            'full_name' => [$hasStructuredName ? 'nullable' : 'required', 'string', 'max:150'],
+            'age' => ['required', 'integer', 'min:0', 'max:120'],
             'sex' => ['required', Rule::in(['Male', 'Female'])],
-            'address' => ['required', 'string'],
+            'address_line' => [$hasStructuredAddress ? 'required' : 'nullable', 'string', 'min:3', 'max:150'],
+            'residence_barangay' => [$hasStructuredAddress ? 'required' : 'nullable', 'string', 'min:2', 'max:80'],
+            'city_municipality' => [$hasStructuredAddress ? 'required' : 'nullable', 'string', 'min:2', 'max:80'],
+            'province' => [$hasStructuredAddress ? 'required' : 'nullable', 'string', 'min:2', 'max:80'],
+            'address' => [$hasStructuredAddress ? 'nullable' : 'required', 'string', 'max:500'],
             'barangay_id' => ['nullable', 'exists:barangays,id'],
-            'contact_number' => ['required', 'string', 'max:30'],
+            'contact_number' => ['nullable', 'string', 'max:30'],
             'email' => ['nullable', 'email', 'max:150'],
-            'sms_consent' => ['sometimes', 'boolean'],
+            'sms_consent' => ['sometimes', 'nullable', 'boolean'],
+        ], [
+            'first_name.regex' => 'First name may contain letters, spaces, hyphens, and apostrophes only.',
+            'middle_name.regex' => 'Middle name may contain letters, spaces, hyphens, and apostrophes only.',
+            'last_name.regex' => 'Last name may contain letters, spaces, hyphens, and apostrophes only.',
+            'age.max' => 'Age must not be greater than 120.',
         ]);
 
+        $validator->after(function ($validator) use ($input): void {
+            $contact = (string) ($input['contact_number'] ?? '');
+            $smsConsent = filter_var($input['sms_consent'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+            if ($contact !== '' && (preg_match('/^\d+$/', $contact) !== 1 || strlen($contact) !== 11)) {
+                $validator->errors()->add('contact_number', 'Contact number must contain exactly 11 digits.');
+            } elseif ($contact !== '' && ! str_starts_with($contact, '09')) {
+                $validator->errors()->add('contact_number', 'Contact number must start with 09.');
+            }
+
+            if ($smsConsent && $contact === '') {
+                $validator->errors()->add('contact_number', 'A valid contact number is required to enable SMS reminders.');
+            }
+        });
+
+        $data = $validator->validate();
+        if ($hasStructuredName) {
+            $data['full_name'] = Patient::composeFullName($data);
+        }
+        if ($hasStructuredAddress) {
+            $data['address'] = Patient::composeAddress($data);
+        }
+
         $data['barangay_id'] = blank($data['barangay_id'] ?? null) ? null : $data['barangay_id'];
+        $data['contact_number'] = blank($data['contact_number'] ?? null) ? null : $data['contact_number'];
+        if ($creating) {
+            $data['sms_consent'] = $request->boolean('sms_consent', false);
+        } elseif ($request->has('sms_consent')) {
+            $data['sms_consent'] = $request->boolean('sms_consent');
+        } else {
+            unset($data['sms_consent']);
+        }
 
         return $data;
     }
@@ -2319,47 +2379,14 @@ class BitemapApiController extends Controller
             return Patient::findOrFail($request->input('patient_id'));
         }
 
-        $name = trim((string) $request->input('patient_name', $request->input('full_name', $fallback?->full_name)));
-        if ($name === '') {
-            abort(response()->json(['success' => false, 'error' => 'Patient name is required.'], 422));
+        if ($fallback) {
+            return $fallback;
         }
 
-        $patient = Patient::where('full_name', $name)->first() ?? $fallback;
+        $patientData = $this->validatePatient($request, true);
+        $patientData['barangay_id'] = null;
 
-        if (! $patient) {
-            $patient = Patient::create([
-                'full_name' => $name,
-                'age' => (int) $request->input('age', 0),
-                'sex' => $request->input('sex', 'Male') === 'Female' ? 'Female' : 'Male',
-                'address' => $request->input('address', 'Not provided'),
-                'barangay_id' => blank($request->input('barangay_id')) ? null : $request->input('barangay_id'),
-                'contact_number' => $request->input('contact_number', 'Not provided'),
-                'email' => $request->input('email'),
-                'sms_consent' => $request->boolean('sms_consent', false),
-            ]);
-        } else {
-            $updates = [];
-            if ($request->filled('age')) {
-                $updates['age'] = (int) $request->input('age');
-            }
-            if ($request->filled('sex')) {
-                $updates['sex'] = $request->input('sex') === 'Female' ? 'Female' : 'Male';
-            }
-            if ($request->filled('contact_number')) {
-                $updates['contact_number'] = $request->input('contact_number');
-            }
-            if ($request->filled('barangay_id')) {
-                $updates['barangay_id'] = $request->input('barangay_id');
-            }
-            if ($request->has('sms_consent')) {
-                $updates['sms_consent'] = $request->boolean('sms_consent');
-            }
-            if ($updates !== []) {
-                $patient->update($updates);
-            }
-        }
-
-        return $patient->fresh();
+        return Patient::create($patientData)->fresh();
     }
 
     private function incidentData(Request $request, Patient $patient): array
@@ -2376,7 +2403,7 @@ class BitemapApiController extends Controller
             'location_lat' => ['nullable', 'numeric'],
             'location_lng' => ['nullable', 'numeric'],
             'notes' => ['nullable', 'string'],
-            'sms_consent' => ['sometimes', 'boolean'],
+            'sms_consent' => ['sometimes', 'nullable', 'boolean'],
         ]);
 
         $data = $validator->validate();
@@ -2384,7 +2411,7 @@ class BitemapApiController extends Controller
 
         return [
             'patient_id' => $patient->id,
-            'barangay_id' => blank($data['barangay_id'] ?? null) ? $patient->barangay_id : $data['barangay_id'],
+            'barangay_id' => blank($data['barangay_id'] ?? null) ? null : $data['barangay_id'],
             'incident_date' => $incidentDate,
             'incident_time' => $data['incident_time'] ?? null,
             'animal_type' => $this->normalizeAnimalType($data['animal_type'] ?? 'Dog'),
@@ -2932,10 +2959,19 @@ class BitemapApiController extends Controller
 
         return [
             'id' => $patient->id,
+            'first_name' => $patient->first_name,
+            'middle_name' => $patient->middle_name,
+            'last_name' => $patient->last_name,
+            'suffix' => $patient->suffix,
             'full_name' => $patient->full_name,
+            'display_name' => $patient->displayName(),
             'age' => $patient->age,
             'sex' => $patient->sex,
             'address' => $patient->address,
+            'address_line' => $patient->address_line,
+            'residence_barangay' => $patient->residence_barangay,
+            'city_municipality' => $patient->city_municipality,
+            'province' => $patient->province,
             'barangay_id' => $patient->barangay_id,
             'barangay' => $patient->barangay,
             'contact_number' => $patient->contact_number,
@@ -2953,7 +2989,7 @@ class BitemapApiController extends Controller
         return [
             'id' => $incident->id,
             'patient_id' => $incident->patient_id,
-            'patient' => $incident->patient,
+            'patient' => $incident->patient ? $this->patientPayload($incident->patient) : null,
             'contact_number' => $incident->patient?->contact_number,
             'barangay_id' => $incident->barangay_id,
             'barangay' => $incident->barangay,
@@ -3012,10 +3048,6 @@ class BitemapApiController extends Controller
 
     private function incidentAllowsSms(Incident $incident): bool
     {
-        if (preg_match('/^SMS Consent:\s*(.+)$/mi', (string) $incident->notes, $matches) === 1) {
-            return ! in_array(strtolower(trim($matches[1])), ['declined', 'not allowed', 'no', 'false'], true);
-        }
-
         $incident->loadMissing('patient');
 
         return $incident->patient?->sms_consent === true;

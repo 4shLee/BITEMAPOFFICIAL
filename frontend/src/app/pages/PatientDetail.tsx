@@ -7,13 +7,15 @@ import { Badge } from '../components/UI/Badge';
 import { Button } from '../components/UI/Button';
 import { patientsAPI } from '../../lib/services/api';
 import { canPerformAction, getStoredUser } from '../../lib/auth/roleAccess';
+import { composePatientAddress, composePatientFullName } from '../../lib/patient';
 
 function DetailItem({ label, value }: { label: string; value?: string | number | null }) {
+  const displayValue = value === null || value === undefined || value === '' ? 'Not recorded' : value;
   return (
     <div className="min-w-0">
       <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="mt-1 truncate text-sm font-semibold text-foreground" title={String(value || 'Not recorded')}>
-        {value || 'Not recorded'}
+      <p className="mt-1 truncate text-sm font-semibold text-foreground" title={String(displayValue)}>
+        {displayValue}
       </p>
     </div>
   );
@@ -91,12 +93,13 @@ export function PatientDetail() {
     return new Date(value).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
   };
 
-  const patientName = patient?.full_name || 'Unknown Patient';
-  const ageSex = [patient?.age, patient?.sex].filter(Boolean).join(' / ');
+  const patientName = composePatientFullName(patient || {}) || 'Unknown Patient';
+  const patientAddress = composePatientAddress(patient || {});
+  const ageSex = [patient?.age, patient?.sex].filter((value) => value !== null && value !== undefined && value !== '').join(' / ');
   const summary = [
     ageSex,
     patient?.contact_number,
-    patient?.barangay?.name,
+    patient?.residence_barangay || patient?.barangay?.name,
     incidents.length ? incidents.length + ' incident' + (incidents.length !== 1 ? 's' : '') : 'No incidents',
   ].filter(Boolean).join(' - ');
 
@@ -191,8 +194,8 @@ export function PatientDetail() {
                         <h4 className="text-sm font-bold text-foreground">Location</h4>
                       </div>
                       <div className="grid gap-3">
-                        <DetailItem label="Complete Address" value={patient.address} />
-                        <DetailItem label="Barangay" value={patient.barangay?.name} />
+                        <DetailItem label="Patient Residential Address" value={patientAddress} />
+                        <DetailItem label="Barangay" value={patient.residence_barangay || patient.barangay?.name} />
                       </div>
                     </section>
                   </div>

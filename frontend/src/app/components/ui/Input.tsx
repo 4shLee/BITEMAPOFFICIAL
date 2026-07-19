@@ -17,6 +17,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         )}
         <input
           ref={ref}
+          aria-invalid={error ? true : undefined}
           className={`h-10 w-full rounded-xl border bg-input-background px-3 text-sm text-foreground shadow-sm placeholder:text-muted-foreground/75 focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-ring/20 transition-all ${
             error ? 'border-destructive' : 'border-input'
           } ${className}`}

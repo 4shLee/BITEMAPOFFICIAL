@@ -7,6 +7,7 @@ import { Badge } from '../components/UI/Badge';
 import { Button } from '../components/UI/Button';
 import { patientsAPI } from '../../lib/services/api';
 import { canPerformAction, getStoredUser } from '../../lib/auth/roleAccess';
+import { getPatientDisplayName } from '../../lib/patient';
 
 export function Patients() {
   const navigate = useNavigate();
@@ -57,7 +58,8 @@ export function Patients() {
   };
 
   const filteredPatients = patients.filter((patient) =>
-    patient.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    getPatientDisplayName(patient).toLowerCase().includes(searchTerm.toLowerCase()) ||
+    patient.residence_barangay?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     patient.barangay?.name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -121,11 +123,11 @@ export function Patients() {
                 ) : (
                   filteredPatients.map((patient) => (
                     <tr key={patient.id} className="transition-colors hover:bg-muted/45">
-                      <td className="px-5 py-4 text-sm font-semibold text-foreground">{patient.full_name}</td>
+                      <td className="px-5 py-4 text-sm font-semibold text-foreground">{getPatientDisplayName(patient) || 'Unknown Patient'}</td>
                       <td className="px-5 py-4 text-sm text-muted-foreground">{patient.age}</td>
                       <td className="px-5 py-4 text-sm text-muted-foreground">{patient.sex}</td>
-                      <td className="px-5 py-4 text-sm text-muted-foreground">{patient.barangay?.name || 'Unknown'}</td>
-                      <td className="px-5 py-4 text-sm text-muted-foreground">{patient.contact_number}</td>
+                      <td className="px-5 py-4 text-sm text-muted-foreground">{patient.residence_barangay || patient.barangay?.name || 'Not recorded'}</td>
+                      <td className="px-5 py-4 text-sm text-muted-foreground">{patient.contact_number || 'Not provided'}</td>
                       <td className="px-5 py-4 text-sm text-muted-foreground">
                         {new Date(patient.created_at).toLocaleDateString()}
                       </td>

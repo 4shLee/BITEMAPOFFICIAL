@@ -9,6 +9,16 @@ import { Select } from '../components/UI/Select';
 import { Button } from '../components/UI/Button';
 import { barangaysAPI, incidentsAPI, patientsAPI } from '../../lib/services/api';
 import { getStoredUser, normalizeRoleKey } from '../../lib/auth/roleAccess';
+import {
+  PATIENT_SUFFIX_OPTIONS,
+  composePatientAddress,
+  composePatientFullName,
+  contactNumberError,
+  getPatientDisplayName,
+  getPatientNameFields,
+  isValidPatientName,
+  normalizePatientText,
+} from '../../lib/patient';
 
 type PatientOption = {
   id: number | string;
@@ -20,8 +30,13 @@ type PatientOption = {
   age?: number | string;
   sex?: string;
   address?: string;
+  address_line?: string;
+  residence_barangay?: string;
+  city_municipality?: string;
+  province?: string;
   contact_number?: string;
   barangay_id?: number | string;
+  sms_consent?: boolean | number | null;
 };
 
 type BarangayOption = {
@@ -43,7 +58,11 @@ type IncidentFormData = {
   suffix: string;
   age: string;
   sex: string;
-  address: string;
+  addressLine: string;
+  residenceBarangay: string;
+  cityMunicipality: string;
+  province: string;
+  legacyAddress: string;
   contact: string;
   smsConsent: boolean;
   incidentDate: string;
@@ -102,9 +121,13 @@ const initialFormData: IncidentFormData = {
   suffix: '',
   age: '',
   sex: '',
-  address: '',
+  addressLine: '',
+  residenceBarangay: '',
+  cityMunicipality: 'Digos City',
+  province: 'Davao del Sur',
+  legacyAddress: '',
   contact: '',
-  smsConsent: true,
+  smsConsent: false,
   incidentDate: '',
   incidentTime: '',
   firstConsultDate: '',
@@ -182,65 +205,17 @@ function addDaysToDateKey(dateKey: string, days: number) {
   return date.toISOString().slice(0, 10);
 }
 
-function normalizeContact(value: string) {
-  return value.replace(/[\s-]/g, '');
-}
-
-function isValidPhilippineMobile(value: string) {
-  const contact = normalizeContact(value);
-  return /^09\d{9}$/.test(contact) || /^\+639\d{9}$/.test(contact);
-}
-
 function composePatientName(formData: IncidentFormData) {
-  return [
-    formData.firstName.trim(),
-    formData.middleName.trim(),
-    formData.lastName.trim(),
-    formData.suffix.trim(),
-  ].filter(Boolean).join(' ');
+  return composePatientFullName({
+    first_name: formData.firstName,
+    middle_name: formData.middleName,
+    last_name: formData.lastName,
+    suffix: formData.suffix,
+  });
 }
 
 function splitPatientName(patient: PatientOption | undefined) {
-  if (!patient) {
-    return { firstName: '', middleName: '', lastName: '', suffix: '' };
-  }
-
-  const fullName = (patient.full_name || '').trim();
-  const parts = fullName.split(/\s+/).filter(Boolean);
-  const suffixes = ['jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv', 'v'];
-  const structuredFirst = patient.first_name || '';
-  const structuredMiddle = patient.middle_name || '';
-  const structuredLast = patient.last_name || '';
-  const structuredSuffix = patient.suffix || '';
-
-  if (structuredFirst || structuredMiddle || structuredLast || structuredSuffix) {
-    return {
-      firstName: structuredFirst,
-      middleName: structuredMiddle,
-      lastName: structuredLast,
-      suffix: structuredSuffix,
-    };
-  }
-
-  if (parts.length === 0) {
-    return { firstName: '', middleName: '', lastName: '', suffix: '' };
-  }
-
-  const lastPart = parts[parts.length - 1];
-  const hasSuffix = suffixes.includes(lastPart.toLowerCase());
-  const suffix = hasSuffix ? lastPart : '';
-  const nameParts = hasSuffix ? parts.slice(0, -1) : parts;
-
-  if (nameParts.length === 1) {
-    return { firstName: nameParts[0], middleName: '', lastName: '', suffix };
-  }
-
-  return {
-    firstName: nameParts[0] || '',
-    middleName: nameParts.length > 2 ? nameParts.slice(1, -1).join(' ') : '',
-    lastName: nameParts[nameParts.length - 1] || '',
-    suffix,
-  };
+  return getPatientNameFields(patient);
 }
 
 function buildNotes(formData: IncidentFormData) {
@@ -352,11 +327,15 @@ export function IncidentReport() {
           middleName: nameParts.middleName,
           lastName: nameParts.lastName,
           suffix: nameParts.suffix,
-          age: patient?.age ? String(patient.age) : '',
+          age: patient?.age != null ? String(patient.age) : '',
           sex: patient?.sex || '',
-          address: patient?.address || '',
+          addressLine: patient?.address_line || '',
+          residenceBarangay: patient?.residence_barangay || '',
+          cityMunicipality: patient?.city_municipality || '',
+          province: patient?.province || '',
+          legacyAddress: patient?.address || '',
           contact: incident?.contact_number || patient?.contact_number || '',
-          smsConsent: !['Declined', 'Not allowed'].includes(readNoteValue(notes, 'SMS Consent')),
+          smsConsent: patient?.sms_consent === true || Number(patient?.sms_consent) === 1,
           incidentDate: incident?.incident_date || '',
           incidentTime: incident?.incident_time || '',
           firstConsultDate: readNoteValue(notes, 'Date of First Consult') === 'Not specified' ? '' : readNoteValue(notes, 'Date of First Consult'),
@@ -390,6 +369,13 @@ export function IncidentReport() {
   const selectedCategory = categoryCards.find((category) => category.value === formData.whoCategory);
   const linkedPatientName = composePatientName(formData) || selectedPatient?.full_name || 'Linked patient';
   const linkedPatientAgeSex = [formData.age, formData.sex].filter(Boolean).join(' / ');
+  const patientResidentialAddress = composePatientAddress({
+    address_line: formData.addressLine,
+    residence_barangay: formData.residenceBarangay,
+    city_municipality: formData.cityMunicipality,
+    province: formData.province,
+    address: formData.legacyAddress,
+  });
 
   const filteredPatients = useMemo(() => {
     const search = formData.patientSearch.trim().toLowerCase();
@@ -465,6 +451,13 @@ export function IncidentReport() {
       middleName: type === 'new' ? current.middleName : '',
       lastName: type === 'new' ? current.lastName : '',
       suffix: type === 'new' ? current.suffix : '',
+      addressLine: type === 'new' ? current.addressLine : '',
+      residenceBarangay: type === 'new' ? current.residenceBarangay : '',
+      cityMunicipality: type === 'new' ? (current.cityMunicipality || 'Digos City') : '',
+      province: type === 'new' ? (current.province || 'Davao del Sur') : '',
+      legacyAddress: '',
+      contact: type === 'new' ? current.contact : '',
+      smsConsent: type === 'new' ? current.smsConsent : false,
     }));
     setErrors({});
   };
@@ -480,11 +473,15 @@ export function IncidentReport() {
       middleName: nameParts.middleName,
       lastName: nameParts.lastName,
       suffix: nameParts.suffix,
-      age: patient?.age ? String(patient.age) : '',
+      age: patient?.age != null ? String(patient.age) : '',
       sex: patient?.sex || '',
-      address: patient?.address || '',
+      addressLine: patient?.address_line || '',
+      residenceBarangay: patient?.residence_barangay || '',
+      cityMunicipality: patient?.city_municipality || '',
+      province: patient?.province || '',
+      legacyAddress: patient?.address || '',
       contact: patient?.contact_number || '',
-      smsConsent: patient?.sms_consent !== false && Number(patient?.sms_consent) !== 0,
+      smsConsent: patient?.sms_consent === true || Number(patient?.sms_consent) === 1,
     }));
     setErrors((current) => ({ ...current, patientSelection: undefined }));
   };
@@ -510,25 +507,25 @@ export function IncidentReport() {
     }
 
     if (!isEditMode) {
-      if (!formData.firstName.trim()) {
-        nextErrors.firstName = 'First name is required.';
-      }
-
-      if (!formData.lastName.trim()) {
-        nextErrors.lastName = 'Last name is required.';
-      }
+      if (!isValidPatientName(formData.firstName, 2)) nextErrors.firstName = 'Enter 2–50 letters; spaces, hyphens, and apostrophes are allowed.';
+      if (formData.middleName && !isValidPatientName(formData.middleName, 1)) nextErrors.middleName = 'Enter a valid middle name using letters, spaces, hyphens, or apostrophes.';
+      if (!isValidPatientName(formData.lastName, 2)) nextErrors.lastName = 'Enter 2–50 letters; spaces, hyphens, and apostrophes are allowed.';
 
       const age = Number(formData.age);
-      if (!formData.age || Number.isNaN(age) || age < 0 || age > 120) {
-        nextErrors.age = 'Enter a valid age from 0 to 120.';
+      if (!formData.age || !Number.isInteger(age) || age < 0 || age > 120) {
+        nextErrors.age = 'Enter a whole-number age from 0 to 120.';
       }
 
       if (!formData.sex) nextErrors.sex = 'Sex is required.';
-      if (!formData.contact.trim()) {
-        nextErrors.contact = 'Contact number is required.';
-      } else if (!isValidPhilippineMobile(formData.contact)) {
-        nextErrors.contact = 'Use a Philippine mobile number, e.g. 09XXXXXXXXX.';
-      }
+      nextErrors.contact = contactNumberError(formData.contact, formData.smsConsent);
+      const addressLineLength = normalizePatientText(formData.addressLine).length;
+      const residenceBarangayLength = normalizePatientText(formData.residenceBarangay).length;
+      const cityMunicipalityLength = normalizePatientText(formData.cityMunicipality).length;
+      const provinceLength = normalizePatientText(formData.province).length;
+      if (addressLineLength < 3 || addressLineLength > 150) nextErrors.addressLine = 'House No. / Purok / Street must contain 3–150 characters.';
+      if (residenceBarangayLength < 2 || residenceBarangayLength > 80) nextErrors.residenceBarangay = 'Barangay must contain 2–80 characters.';
+      if (cityMunicipalityLength < 2 || cityMunicipalityLength > 80) nextErrors.cityMunicipality = 'City / Municipality must contain 2–80 characters.';
+      if (provinceLength < 2 || provinceLength > 80) nextErrors.province = 'Province must contain 2–80 characters.';
     }
 
     if (!formData.incidentDate) {
@@ -547,6 +544,9 @@ export function IncidentReport() {
     if (!formData.barangayId) nextErrors.barangayId = 'Barangay of Incident is required.';
 
     setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) {
+      requestAnimationFrame(() => document.querySelector('[aria-invalid="true"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+    }
     return Object.keys(nextErrors).length === 0;
   };
 
@@ -581,14 +581,18 @@ export function IncidentReport() {
       ...incidentPayload,
       patient_name: fullName,
       full_name: fullName,
-      first_name: formData.firstName,
-      middle_name: formData.middleName,
-      last_name: formData.lastName,
-      suffix: formData.suffix,
+      first_name: normalizePatientText(formData.firstName),
+      middle_name: normalizePatientText(formData.middleName) || null,
+      last_name: normalizePatientText(formData.lastName),
+      suffix: formData.suffix || null,
       age: Number(formData.age),
       sex: formData.sex,
-      address: formData.address || 'Not provided',
-      contact_number: normalizeContact(formData.contact),
+      address_line: normalizePatientText(formData.addressLine),
+      residence_barangay: normalizePatientText(formData.residenceBarangay),
+      city_municipality: normalizePatientText(formData.cityMunicipality),
+      province: normalizePatientText(formData.province),
+      address: patientResidentialAddress,
+      contact_number: formData.contact.trim() || null,
     };
 
     try {
@@ -619,7 +623,7 @@ export function IncidentReport() {
     { label: 'Barangay', value: selectedBarangay?.name || 'Not selected' },
     {
       label: 'Reminders',
-      value: formData.smsConsent ? 'SMS consent allowed' : 'SMS consent declined',
+      value: formData.smsConsent ? 'SMS permission enabled' : 'SMS permission disabled',
     },
   ];
   const doseSchedulePreview = useMemo(
@@ -690,7 +694,7 @@ export function IncidentReport() {
   }
 
   return (
-    <div className="flex-1 bg-[#f6f8f7] min-h-screen">
+    <div className="min-h-screen flex-1 bg-[#f6f8f7] max-md:fixed max-md:inset-0 max-md:z-30 max-md:overflow-y-auto">
       <Header title={isEditMode ? 'Edit Incident Report' : 'New Incident Report'} breadcrumbs={isEditMode ? ['Incidents', 'Edit Incident'] : ['Incidents', 'New Report']} />
 
       <div className="px-5 py-5 lg:px-7 lg:py-6">
@@ -737,7 +741,7 @@ export function IncidentReport() {
                       { value: '', label: filteredPatients.length ? 'Select patient' : 'No matching patients' },
                       ...filteredPatients.map((patient) => ({
                         value: String(patient.id),
-                        label: (patient.full_name || 'Unnamed patient') + (patient.contact_number ? ' - ' + patient.contact_number : ''),
+                        label: (getPatientDisplayName(patient) || 'Unnamed patient') + (patient.contact_number ? ' - ' + patient.contact_number : ''),
                       })),
                     ]}
                     value={formData.patientId}
@@ -747,7 +751,7 @@ export function IncidentReport() {
                 </div>
                 {selectedPatient && (
                   <div className="mt-3 rounded-lg border border-emerald-100 bg-white/70 px-3 py-2 text-xs text-emerald-800">
-                    <span className="font-semibold">{selectedPatient.full_name || 'Unnamed patient'}</span>
+                    <span className="font-semibold">{getPatientDisplayName(selectedPatient) || 'Unnamed patient'}</span>
                     <span className="text-emerald-700"> selected</span>
                     {selectedPatient.contact_number && <span className="text-emerald-700"> - {selectedPatient.contact_number}</span>}
                   </div>
@@ -777,72 +781,40 @@ export function IncidentReport() {
                   <ReadOnlyPatientItem label="Full Name" value={linkedPatientName} />
                   <ReadOnlyPatientItem label="Age / Sex" value={linkedPatientAgeSex} />
                   <ReadOnlyPatientItem label="Contact Number" value={formData.contact} />
-                  <ReadOnlyPatientItem label="Address" value={formData.address} />
+                   <ReadOnlyPatientItem label="Patient Residential Address" value={patientResidentialAddress} />
                 </div>
               </div>
             ) : formData.patientType === 'new' ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
-                <div className="md:col-span-2">
-                  <Input
-                    label="First Name *"
-                    placeholder="First name"
-                    value={formData.firstName}
-                    onChange={(e) => updateField('firstName', e.target.value)}
-                    error={errors.firstName}
-                  />
-                </div>
-                <Input
-                  label="Middle Name / Initial"
-                  placeholder="M.I. or middle name"
-                  value={formData.middleName}
-                  onChange={(e) => updateField('middleName', e.target.value)}
-                />
-                <div className="md:col-span-2">
-                  <Input
-                    label="Last Name *"
-                    placeholder="Last name"
-                    value={formData.lastName}
-                    onChange={(e) => updateField('lastName', e.target.value)}
-                    error={errors.lastName}
-                  />
-                </div>
-                <Input
-                  label="Suffix"
-                  placeholder="Jr., Sr., III"
-                  value={formData.suffix}
-                  onChange={(e) => updateField('suffix', e.target.value)}
-                />
-                <Input
-                  label="Age *"
-                  type="number"
-                  placeholder="Age"
-                  value={formData.age}
-                  onChange={(e) => updateField('age', e.target.value)}
-                  error={errors.age}
-                />
-                <Select
-                  label="Sex *"
-                  options={selectOptions.sex}
-                  value={formData.sex}
-                  onChange={(e) => updateField('sex', e.target.value)}
-                  error={errors.sex}
-                />
-                <div className="md:col-span-2">
-                  <Input
-                    label="Address"
-                    placeholder="Enter complete address"
-                    value={formData.address}
-                    onChange={(e) => updateField('address', e.target.value)}
-                  />
-                </div>
-                <Input
-                  label="Contact Number *"
-                  type="tel"
-                  placeholder="09XXXXXXXXX"
-                  value={formData.contact}
-                  onChange={(e) => updateField('contact', e.target.value)}
-                  error={errors.contact}
-                />
+              <div className="space-y-5">
+                <section>
+                  <h3 className="mb-3 text-sm font-bold text-foreground">A. Patient Identity</h3>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <Input label="First Name *" placeholder="Enter first name" value={formData.firstName} onChange={(e) => updateField('firstName', e.target.value)} error={errors.firstName} />
+                    <Input label="Middle Name (Optional)" placeholder="Enter full middle name" value={formData.middleName} onChange={(e) => updateField('middleName', e.target.value)} error={errors.middleName} />
+                    <Input label="Last Name *" placeholder="Enter last name" value={formData.lastName} onChange={(e) => updateField('lastName', e.target.value)} error={errors.lastName} />
+                    <Select label="Suffix (Optional)" options={PATIENT_SUFFIX_OPTIONS} value={formData.suffix} onChange={(e) => updateField('suffix', e.target.value)} error={errors.suffix} />
+                  </div>
+                </section>
+
+                <section className="border-t border-border pt-4">
+                  <h3 className="mb-3 text-sm font-bold text-foreground">B. Demographics and Contact</h3>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    <Input label="Age *" type="number" min={0} max={120} step={1} inputMode="numeric" placeholder="Age" value={formData.age} onChange={(e) => updateField('age', e.target.value)} error={errors.age} />
+                    <Select label="Sex *" options={selectOptions.sex} value={formData.sex} onChange={(e) => updateField('sex', e.target.value)} error={errors.sex} />
+                    <Input label={formData.smsConsent ? 'Contact Number *' : 'Contact Number (Optional)'} type="tel" inputMode="numeric" maxLength={11} placeholder="09XXXXXXXXX" value={formData.contact} onChange={(e) => updateField('contact', e.target.value)} error={errors.contact} />
+                  </div>
+                </section>
+
+                <section className="border-t border-border pt-4">
+                  <h3 className="mb-1 text-sm font-bold text-foreground">C. Patient Residential Address</h3>
+                  <p className="mb-3 text-xs text-muted-foreground">This address is separate from the Barangay of Incident and does not affect the incident map pin.</p>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <Input label="House No. / Purok / Street *" placeholder="Enter house number, purok, subdivision, or street" value={formData.addressLine} onChange={(e) => updateField('addressLine', e.target.value)} error={errors.addressLine} />
+                    <Input label="Barangay *" placeholder="Enter residential barangay" value={formData.residenceBarangay} onChange={(e) => updateField('residenceBarangay', e.target.value)} error={errors.residenceBarangay} />
+                    <Input label="City / Municipality *" placeholder="Enter city or municipality" value={formData.cityMunicipality} onChange={(e) => updateField('cityMunicipality', e.target.value)} error={errors.cityMunicipality} />
+                    <Input label="Province *" placeholder="Enter province" value={formData.province} onChange={(e) => updateField('province', e.target.value)} error={errors.province} />
+                  </div>
+                </section>
               </div>
             ) : (
               <div className="space-y-3">
@@ -857,8 +829,8 @@ export function IncidentReport() {
                   />
                 </div>
                 <Input
-                  label="Middle Name / Initial"
-                  placeholder="M.I. or middle name"
+                  label="Middle Name"
+                  placeholder="Enter full middle name"
                   value={formData.middleName}
                   onChange={(e) => updateField('middleName', e.target.value)}
                   disabled={Boolean(formData.patientId)}
@@ -872,13 +844,7 @@ export function IncidentReport() {
                     disabled={Boolean(formData.patientId)}
                   />
                 </div>
-                <Input
-                  label="Suffix"
-                  placeholder="Jr., Sr., III"
-                  value={formData.suffix}
-                  onChange={(e) => updateField('suffix', e.target.value)}
-                  disabled={Boolean(formData.patientId)}
-                />
+                <Select label="Suffix" options={PATIENT_SUFFIX_OPTIONS} value={formData.suffix} onChange={(e) => updateField('suffix', e.target.value)} disabled={Boolean(formData.patientId)} />
               </div>
               {selectedPatient?.full_name && (
                 <p className="text-xs text-muted-foreground">
@@ -889,6 +855,10 @@ export function IncidentReport() {
                 <Input
                   label="Age *"
                   type="number"
+                  min={0}
+                  max={120}
+                  step={1}
+                  inputMode="numeric"
                   placeholder="Age"
                   value={formData.age}
                   onChange={(e) => updateField('age', e.target.value)}
@@ -902,14 +872,17 @@ export function IncidentReport() {
                   error={errors.sex}
                 />
                 <Input
-                  label="Contact Number *"
+                  label={formData.smsConsent ? 'Contact Number *' : 'Contact Number (Optional)'}
                   type="tel"
+                  inputMode="numeric"
+                  maxLength={11}
                   placeholder="09XXXXXXXXX"
                   value={formData.contact}
                   onChange={(e) => updateField('contact', e.target.value)}
                   error={errors.contact}
                 />
               </div>
+              {selectedPatient && <ReadOnlyPatientItem label="Patient Residential Address" value={patientResidentialAddress} />}
               </div>
             )}
 
@@ -919,11 +892,13 @@ export function IncidentReport() {
                   type="checkbox"
                   checked={formData.smsConsent}
                   onChange={(e) => updateField('smsConsent', e.target.checked)}
+                  disabled={isEditMode || formData.patientType === 'existing'}
                   className="mt-1 h-4 w-4 rounded border-border text-primary focus:ring-primary"
                 />
                 <span>
-                  <span className="font-semibold">SMS Consent</span>
-                  <span className="block text-xs text-muted-foreground mt-0.5">Patients who provide SMS consent may receive vaccination reminders based on their PEP schedule.</span>
+                  <span className="font-semibold">D. SMS Reminder Permission</span>
+                  <span className="block text-xs text-muted-foreground mt-0.5">Patient agrees to receive vaccination appointment reminders through SMS at the contact number provided. This choice does not affect treatment or PEP scheduling.</span>
+                  {(isEditMode || formData.patientType === 'existing') && <span className="mt-1 block text-xs font-medium text-emerald-700">Loaded from the selected patient record. Edit it from Patient Registry.</span>}
                 </span>
               </label>
             </div>
