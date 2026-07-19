@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Filter, Plus, Edit, Eye, Trash2 } from 'lucide-react';
+import { Search, Filter, Plus, Edit, Eye, Trash2, AlertCircle, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { Header } from '../components/Layout/Header';
@@ -18,6 +18,7 @@ export function Patients() {
   const [searchTerm, setSearchTerm] = useState('');
   const [patients, setPatients] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     loadPatients();
@@ -26,11 +27,16 @@ export function Patients() {
   const loadPatients = async () => {
     try {
       setLoading(true);
+      setLoadError(false);
       const response = await patientsAPI.getAll();
-      if (response.success) {
-        setPatients(response.data);
+      if (!response.success || !Array.isArray(response.data)) {
+        throw new Error('Unexpected Patient Registry response.');
       }
+
+      setPatients(response.data);
     } catch (error) {
+      setPatients([]);
+      setLoadError(true);
       toast.error('Failed to load patients');
     } finally {
       setLoading(false);
@@ -114,10 +120,26 @@ export function Patients() {
                       Loading patients...
                     </td>
                   </tr>
+                ) : loadError ? (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-10 text-center">
+                      <div role="alert" className="mx-auto flex max-w-md flex-col items-center gap-3 text-sm text-muted-foreground">
+                        <AlertCircle className="h-6 w-6 text-destructive" aria-hidden="true" />
+                        <div>
+                          <p className="font-semibold text-foreground">Unable to load patients</p>
+                          <p className="mt-1">The Patient Registry request failed. Please try again.</p>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={loadPatients}>
+                          <RefreshCw className="h-4 w-4" />
+                          Try Again
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
                 ) : filteredPatients.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-6 py-10 text-center text-sm text-muted-foreground">
-                      No patients found
+                      {searchTerm.trim() ? 'No patients match your search' : 'No patients found'}
                     </td>
                   </tr>
                 ) : (

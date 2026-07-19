@@ -205,7 +205,12 @@ class StructuredPatientDataTest extends TestCase
             'incident_province' => 'Davao del Sur',
             'incident_date' => '2026-07-18',
             'animal_type' => 'Dog',
+            'exposure_contact_types' => ['scratch'],
+            'exposure_skin_condition' => 'broken',
+            'exposure_bleeding_present' => false,
+            'exposure_transdermal' => false,
             'who_category' => 'Category II',
+            'who_category_confirmed' => true,
             'sms_consent' => false,
         ])->assertCreated();
 
@@ -218,7 +223,12 @@ class StructuredPatientDataTest extends TestCase
             'incident_province' => 'Davao del Sur',
             'incident_date' => '2026-07-17',
             'animal_type' => 'Cat',
+            'exposure_contact_types' => ['scratch'],
+            'exposure_skin_condition' => 'broken',
+            'exposure_bleeding_present' => false,
+            'exposure_transdermal' => false,
             'who_category' => 'Category II',
+            'who_category_confirmed' => true,
             'sms_consent' => false,
         ])->assertOk();
 
@@ -268,7 +278,12 @@ class StructuredPatientDataTest extends TestCase
             'incident_date' => '2026-07-18',
             'animal_type' => 'Dog',
             'bite_site' => 'Left arm',
+            'exposure_contact_types' => ['scratch'],
+            'exposure_skin_condition' => 'broken',
+            'exposure_bleeding_present' => false,
+            'exposure_transdermal' => false,
             'who_category' => 'Category II',
+            'who_category_confirmed' => true,
             'status' => 'Active',
         ], $overrides);
     }

@@ -24,6 +24,11 @@ class User extends Authenticatable
         return $this->hasMany(Incident::class, 'reported_by');
     }
 
+    public function confirmedWhoCategories(): HasMany
+    {
+        return $this->hasMany(Incident::class, 'who_category_confirmed_by');
+    }
+
     public function administeredPepSchedules(): HasMany
     {
         return $this->hasMany(PepSchedule::class, 'administered_by');

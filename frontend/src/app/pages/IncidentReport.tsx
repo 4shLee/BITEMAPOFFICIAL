@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { AlertCircle, CalendarDays, CheckCircle2, MapPin } from 'lucide-react';
+import { CalendarDays, CheckCircle2, MapPin, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { Header } from '../components/Layout/Header';
 import { IncidentLocationPicker } from '../components/Incidents/IncidentLocationPicker';
@@ -19,6 +19,12 @@ import {
   isValidPatientName,
   normalizePatientText,
 } from '../../lib/patient';
+import {
+  classifyWhoExposure,
+  exposureContactLabel,
+  exposureContactOptions,
+  type ExposureContactType,
+} from '../../lib/whoExposureClassification';
 
 type PatientOption = {
   id: number | string;
@@ -69,12 +75,19 @@ type IncidentFormData = {
   incidentTime: string;
   firstConsultDate: string;
   animalType: string;
-  exposureType: string;
+  exposureContactTypes: ExposureContactType[];
+  exposureSkinCondition: '' | 'intact' | 'broken' | 'unknown';
+  exposureBleedingPresent: '' | 'yes' | 'no';
+  exposureTransdermal: '' | 'yes' | 'no';
+  exposureSalivaContactSite: '' | 'none' | 'intact_skin' | 'broken_skin' | 'mucous_membrane' | 'unknown';
+  exposureDirectBatContact: '' | 'yes' | 'no';
   animalStatus: string;
   animalCondition: string;
   woundWashed: string;
   biteSite: string;
   whoCategory: string;
+  whoCategoryConfirmed: boolean;
+  whoCategoryOverrideReason: string;
   status: string;
   locationScope: '' | 'within_digos' | 'outside_digos';
   barangayId: string;
@@ -136,12 +149,19 @@ const initialFormData: IncidentFormData = {
   incidentTime: '',
   firstConsultDate: '',
   animalType: '',
-  exposureType: 'Bite',
+  exposureContactTypes: [],
+  exposureSkinCondition: '',
+  exposureBleedingPresent: '',
+  exposureTransdermal: '',
+  exposureSalivaContactSite: '',
+  exposureDirectBatContact: '',
   animalStatus: 'Unknown',
   animalCondition: 'Under observation',
   woundWashed: '',
   biteSite: '',
   whoCategory: '',
+  whoCategoryConfirmed: false,
+  whoCategoryOverrideReason: '',
   status: 'Active',
   locationScope: '',
   barangayId: '',
@@ -193,7 +213,7 @@ const categoryCards = [
     value: 'III',
     label: 'Category III',
     risk: 'High risk',
-    desc: 'Single/multiple bites, licks on broken skin, contamination',
+    desc: 'Transdermal bites/scratches, saliva on broken skin or mucosa, direct bat contact',
     idleClass: 'border-rose-100 bg-rose-50/45 hover:border-rose-300',
     activeClass: 'border-rose-500 bg-rose-50 shadow-sm ring-2 ring-rose-100',
     badgeClass: 'bg-rose-100 text-rose-700',
@@ -228,7 +248,7 @@ function splitPatientName(patient: PatientOption | undefined) {
 
 function buildNotes(formData: IncidentFormData) {
   return [
-    'Exposure Type: ' + formData.exposureType,
+    'Exposure Type: ' + (formData.exposureContactTypes.map(exposureContactLabel).join(', ') || 'Not specified'),
     'Animal Status: ' + formData.animalStatus,
     'Animal Condition: ' + formData.animalCondition,
     'Wound Washed: ' + formData.woundWashed,
@@ -287,6 +307,8 @@ export function IncidentReport() {
   const [saving, setSaving] = useState(false);
   const [savedIncident, setSavedIncident] = useState<any>(null);
   const [pendingPin, setPendingPin] = useState<{ latitude: string; longitude: string } | null>(null);
+  const [hasStructuredAssessment, setHasStructuredAssessment] = useState(!isEditMode);
+  const [isLegacyClassification, setIsLegacyClassification] = useState(false);
 
   useEffect(() => {
     async function loadOptions() {
@@ -333,6 +355,10 @@ export function IncidentReport() {
           : incident?.location_scope === 'within_digos' || incident?.barangay_id
             ? 'within_digos'
             : '';
+        const structuredContactTypes = Array.isArray(incident?.exposure_contact_types)
+          ? incident.exposure_contact_types as ExposureContactType[]
+          : [];
+        const hasStoredAssessment = structuredContactTypes.length > 0;
 
         setFormData({
           patientType: 'existing',
@@ -355,12 +381,19 @@ export function IncidentReport() {
           incidentTime: incident?.incident_time || '',
           firstConsultDate: readNoteValue(notes, 'Date of First Consult') === 'Not specified' ? '' : readNoteValue(notes, 'Date of First Consult'),
           animalType: incident?.animal_type || '',
-          exposureType: readNoteValue(notes, 'Exposure Type') || 'Bite',
+          exposureContactTypes: structuredContactTypes,
+          exposureSkinCondition: incident?.exposure_skin_condition || '',
+          exposureBleedingPresent: incident?.exposure_bleeding_present == null ? '' : (incident.exposure_bleeding_present ? 'yes' : 'no'),
+          exposureTransdermal: incident?.exposure_transdermal == null ? '' : (incident.exposure_transdermal ? 'yes' : 'no'),
+          exposureSalivaContactSite: incident?.exposure_saliva_contact_site || '',
+          exposureDirectBatContact: incident?.exposure_direct_bat_contact == null ? '' : (incident.exposure_direct_bat_contact ? 'yes' : 'no'),
           animalStatus: readNoteValue(notes, 'Animal Status') || 'Unknown',
           animalCondition: readNoteValue(notes, 'Animal Condition') || 'Under observation',
           woundWashed: readNoteValue(notes, 'Wound Washed') || '',
           biteSite: incident?.bite_site || incident?.bite_location || '',
           whoCategory: normalizeCategoryForForm(incident?.who_category),
+          whoCategoryConfirmed: hasStoredAssessment ? Boolean(incident?.who_category_confirmed_at) : true,
+          whoCategoryOverrideReason: incident?.who_category_override_reason || '',
           status: incident?.status || 'Active',
           locationScope,
           barangayId: incident?.barangay_id ? String(incident.barangay_id) : '',
@@ -373,6 +406,8 @@ export function IncidentReport() {
           incidentProvince: incident?.incident_province || '',
           incidentSpecificLocation: incident?.incident_specific_location || '',
         });
+        setHasStructuredAssessment(hasStoredAssessment);
+        setIsLegacyClassification(!hasStoredAssessment);
       } catch (error: any) {
         setLoadError(error.message || 'Unable to load incident report.');
       } finally {
@@ -386,6 +421,21 @@ export function IncidentReport() {
   const selectedPatient = patients.find((patient) => String(patient.id) === formData.patientId);
   const selectedBarangay = barangays.find((barangay) => String(barangay.id) === formData.barangayId);
   const selectedCategory = categoryCards.find((category) => category.value === formData.whoCategory);
+  const whoSuggestion = useMemo(() => classifyWhoExposure({
+    exposureContactTypes: formData.exposureContactTypes,
+    exposureSkinCondition: formData.exposureSkinCondition,
+    exposureBleedingPresent: formData.exposureBleedingPresent,
+    exposureTransdermal: formData.exposureTransdermal,
+    exposureSalivaContactSite: formData.exposureSalivaContactSite,
+    exposureDirectBatContact: formData.exposureDirectBatContact,
+  }), [
+    formData.exposureContactTypes,
+    formData.exposureSkinCondition,
+    formData.exposureBleedingPresent,
+    formData.exposureTransdermal,
+    formData.exposureSalivaContactSite,
+    formData.exposureDirectBatContact,
+  ]);
   const linkedPatientName = composePatientName(formData) || selectedPatient?.full_name || 'Linked patient';
   const linkedPatientAgeSex = [formData.age, formData.sex].filter(Boolean).join(' / ');
   const patientResidentialAddress = composePatientAddress({
@@ -425,12 +475,6 @@ export function IncidentReport() {
       { value: 'Cat', label: 'Cat' },
       { value: 'Other', label: 'Other' },
     ],
-    exposure: [
-      { value: 'Bite', label: 'Bite' },
-      { value: 'Scratch', label: 'Scratch' },
-      { value: 'Lick on broken skin', label: 'Lick on broken skin' },
-      { value: 'Contact with saliva', label: 'Contact with saliva' },
-    ],
     animalStatus: [
       { value: 'Owned', label: 'Owned' },
       { value: 'Stray', label: 'Stray' },
@@ -458,6 +502,85 @@ export function IncidentReport() {
   const updateField = <K extends keyof IncidentFormData>(field: K, value: IncidentFormData[K]) => {
     setFormData((current) => ({ ...current, [field]: value }));
     setErrors((current) => ({ ...current, [field]: undefined }));
+  };
+
+  const updateAssessmentField = <K extends keyof IncidentFormData>(field: K, value: IncidentFormData[K]) => {
+    setHasStructuredAssessment(true);
+    setIsLegacyClassification(false);
+    setFormData((current) => ({
+      ...current,
+      [field]: value,
+      whoCategoryConfirmed: false,
+    }));
+    setErrors((current) => ({
+      ...current,
+      [field]: undefined,
+      exposureContactTypes: undefined,
+      whoCategoryConfirmed: undefined,
+    }));
+  };
+
+  const toggleExposureContact = (contactType: ExposureContactType) => {
+    setHasStructuredAssessment(true);
+    setIsLegacyClassification(false);
+    setFormData((current) => {
+      const nextTypes = current.exposureContactTypes.includes(contactType)
+        ? current.exposureContactTypes.filter((value) => value !== contactType)
+        : [...current.exposureContactTypes, contactType];
+      const hasWound = nextTypes.includes('bite') || nextTypes.includes('scratch');
+
+      return {
+        ...current,
+        exposureContactTypes: nextTypes,
+        exposureSkinCondition: hasWound ? current.exposureSkinCondition : '',
+        exposureBleedingPresent: hasWound ? current.exposureBleedingPresent : '',
+        exposureTransdermal: hasWound ? current.exposureTransdermal : '',
+        exposureSalivaContactSite: nextTypes.includes('lick') ? current.exposureSalivaContactSite : '',
+        exposureDirectBatContact: nextTypes.includes('bat_contact') ? current.exposureDirectBatContact : '',
+        whoCategoryConfirmed: false,
+      };
+    });
+    setErrors((current) => ({ ...current, exposureContactTypes: undefined, whoCategoryConfirmed: undefined }));
+  };
+
+  const selectFinalCategory = (category: string) => {
+    if (isLegacyClassification && category !== formData.whoCategory) {
+      setHasStructuredAssessment(true);
+      setIsLegacyClassification(false);
+    }
+    setFormData((current) => ({
+      ...current,
+      whoCategory: category,
+      whoCategoryConfirmed: false,
+      whoCategoryOverrideReason: whoSuggestion.category === category ? '' : current.whoCategoryOverrideReason,
+    }));
+    setErrors((current) => ({ ...current, whoCategory: undefined, whoCategoryConfirmed: undefined }));
+  };
+
+  const confirmSuggestedCategory = () => {
+    if (!whoSuggestion.category) return;
+    setFormData((current) => ({
+      ...current,
+      whoCategory: whoSuggestion.category || '',
+      whoCategoryConfirmed: true,
+      whoCategoryOverrideReason: '',
+    }));
+    setErrors((current) => ({ ...current, whoCategory: undefined, whoCategoryConfirmed: undefined, whoCategoryOverrideReason: undefined }));
+  };
+
+  const confirmSelectedCategory = () => {
+    if (!formData.whoCategory) {
+      setErrors((current) => ({ ...current, whoCategory: 'Select the final WHO category first.' }));
+      return;
+    }
+
+    if (whoSuggestion.category && whoSuggestion.category !== formData.whoCategory && !formData.whoCategoryOverrideReason.trim()) {
+      setErrors((current) => ({ ...current, whoCategoryOverrideReason: 'Reason for changing the suggested category is required.' }));
+      return;
+    }
+
+    setFormData((current) => ({ ...current, whoCategoryConfirmed: true }));
+    setErrors((current) => ({ ...current, whoCategoryConfirmed: undefined }));
   };
 
   const handlePatientTypeChange = (type: 'existing' | 'new') => {
@@ -584,7 +707,14 @@ export function IncidentReport() {
     }
 
     if (!formData.animalType) nextErrors.animalType = 'Animal type is required.';
-    if (!formData.whoCategory) nextErrors.whoCategory = 'Select a WHO wound category.';
+    if (hasStructuredAssessment) {
+      if (!formData.exposureContactTypes.length) nextErrors.exposureContactTypes = 'Select at least one nature of contact.';
+      if (!formData.whoCategory) nextErrors.whoCategory = 'Select the final WHO category.';
+      if (!formData.whoCategoryConfirmed) nextErrors.whoCategoryConfirmed = 'A clinic professional must confirm the final category before saving.';
+      if (whoSuggestion.category && whoSuggestion.category !== formData.whoCategory && !formData.whoCategoryOverrideReason.trim()) {
+        nextErrors.whoCategoryOverrideReason = 'Reason for changing the suggested category is required.';
+      }
+    }
     if (!formData.locationScope) {
       nextErrors.locationScope = 'Select whether the incident occurred within or outside Digos City.';
     } else if (formData.locationScope === 'within_digos') {
@@ -623,6 +753,17 @@ export function IncidentReport() {
     }
 
     const fullName = composePatientName(formData);
+    const structuredAssessmentPayload = hasStructuredAssessment ? {
+      exposure_contact_types: formData.exposureContactTypes,
+      exposure_skin_condition: formData.exposureSkinCondition || null,
+      exposure_bleeding_present: formData.exposureBleedingPresent === '' ? null : formData.exposureBleedingPresent === 'yes',
+      exposure_transdermal: formData.exposureTransdermal === '' ? null : formData.exposureTransdermal === 'yes',
+      exposure_saliva_contact_site: formData.exposureSalivaContactSite || null,
+      exposure_direct_bat_contact: formData.exposureDirectBatContact === '' ? null : formData.exposureDirectBatContact === 'yes',
+      who_category: formData.whoCategory,
+      who_category_confirmed: formData.whoCategoryConfirmed,
+      who_category_override_reason: formData.whoCategoryOverrideReason.trim() || null,
+    } : {};
     const incidentPayload = {
       patient_id: formData.patientId || undefined,
       location_scope: formData.locationScope,
@@ -631,8 +772,7 @@ export function IncidentReport() {
       incident_time: formData.incidentTime || null,
       animal_type: formData.animalType,
       animal_description: 'Status: ' + formData.animalStatus + '; Condition: ' + formData.animalCondition,
-      bite_site: formData.biteSite || formData.exposureType,
-      who_category: formData.whoCategory,
+      bite_site: formData.biteSite || 'Not specified',
       status: formData.status,
       location_lat: formData.locationScope === 'within_digos' ? (formData.locationLat || null) : null,
       location_lng: formData.locationScope === 'within_digos' ? (formData.locationLng || null) : null,
@@ -647,6 +787,7 @@ export function IncidentReport() {
         : null,
       sms_consent: formData.smsConsent,
       notes: buildNotes(formData),
+      ...structuredAssessmentPayload,
     };
     const payload = isEditMode ? incidentPayload : {
       ...incidentPayload,
@@ -688,7 +829,7 @@ export function IncidentReport() {
     { label: 'Patient', value: composePatientName(formData) || selectedPatient?.full_name || 'Not selected' },
     { label: 'Contact', value: formData.contact || 'Not provided' },
     { label: 'Animal Type', value: formData.animalType || 'Not selected' },
-    { label: 'Exposure', value: formData.exposureType || 'Not selected' },
+    { label: 'Exposure', value: formData.exposureContactTypes.map(exposureContactLabel).join(', ') || (isLegacyClassification ? 'Legacy/manual record' : 'Not selected') },
     { label: 'WHO Category', value: formData.whoCategory ? 'Category ' + formData.whoCategory : 'Not selected' },
     { label: 'Status', value: formData.status || 'Active' },
     {
@@ -1024,12 +1165,6 @@ export function IncidentReport() {
                 onChange={(e) => updateField('firstConsultDate', e.target.value)}
               />
               <Select
-                label="Exposure Type"
-                options={selectOptions.exposure}
-                value={formData.exposureType}
-                onChange={(e) => updateField('exposureType', e.target.value)}
-              />
-              <Select
                 label="Animal Type *"
                 options={selectOptions.animal}
                 value={formData.animalType}
@@ -1069,52 +1204,243 @@ export function IncidentReport() {
                 />
               )}
             </div>
+
+            <fieldset className="mt-5 border-t border-border pt-5">
+              <legend className="px-1 text-sm font-extrabold text-foreground">Structured Exposure Assessment *</legend>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                Select every contact that occurred. The rule engine applies the highest safely supported WHO category; animal status and wound washing do not affect this suggestion.
+              </p>
+
+              {isLegacyClassification && (
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900">
+                  <p className="font-bold">Legacy/manual classification</p>
+                  <p className="mt-0.5">No structured exposure answers were stored for this incident. Its saved category remains unchanged unless you begin a new assessment below.</p>
+                </div>
+              )}
+
+              <div
+                className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3"
+                aria-invalid={Boolean(errors.exposureContactTypes)}
+              >
+                {exposureContactOptions.map((option) => (
+                  <label
+                    key={option.value}
+                    className={'flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors ' + (
+                      formData.exposureContactTypes.includes(option.value)
+                        ? 'border-emerald-400 bg-emerald-50'
+                        : 'border-border bg-white hover:border-emerald-200'
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={formData.exposureContactTypes.includes(option.value)}
+                      onChange={() => toggleExposureContact(option.value)}
+                      className="mt-0.5 h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-bold text-foreground">{option.label}</span>
+                      <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">{option.helper}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              {errors.exposureContactTypes && <p className="mt-2 text-xs font-medium text-destructive">{errors.exposureContactTypes}</p>}
+
+              {(formData.exposureContactTypes.includes('bite') || formData.exposureContactTypes.includes('scratch')) && (
+                <div className="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3 md:grid-cols-3">
+                  <Select
+                    label="Skin condition *"
+                    options={[
+                      { value: '', label: 'Select skin condition' },
+                      { value: 'intact', label: 'Intact' },
+                      { value: 'broken', label: 'Broken' },
+                      { value: 'unknown', label: 'Unknown / needs examination' },
+                    ]}
+                    value={formData.exposureSkinCondition}
+                    onChange={(event) => updateAssessmentField('exposureSkinCondition', event.target.value as IncidentFormData['exposureSkinCondition'])}
+                  />
+                  <Select
+                    label="Did bleeding occur? *"
+                    options={[
+                      { value: '', label: 'Select answer' },
+                      { value: 'yes', label: 'Yes' },
+                      { value: 'no', label: 'No' },
+                    ]}
+                    value={formData.exposureBleedingPresent}
+                    onChange={(event) => updateAssessmentField('exposureBleedingPresent', event.target.value as IncidentFormData['exposureBleedingPresent'])}
+                  />
+                  <Select
+                    label="Was it transdermal / puncturing? *"
+                    options={[
+                      { value: '', label: 'Select answer' },
+                      { value: 'yes', label: 'Yes' },
+                      { value: 'no', label: 'No' },
+                    ]}
+                    value={formData.exposureTransdermal}
+                    onChange={(event) => updateAssessmentField('exposureTransdermal', event.target.value as IncidentFormData['exposureTransdermal'])}
+                  />
+                </div>
+              )}
+
+              {formData.exposureContactTypes.includes('lick') && (
+                <div className="mt-4 max-w-xl rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                  <Select
+                    label="Where did the animal saliva make contact? *"
+                    options={[
+                      { value: '', label: 'Select contact site' },
+                      { value: 'intact_skin', label: 'Intact skin' },
+                      { value: 'broken_skin', label: 'Broken skin / open wound' },
+                      { value: 'mucous_membrane', label: 'Mucous membrane (eyes or mouth)' },
+                      { value: 'unknown', label: 'Unknown / needs examination' },
+                    ]}
+                    value={formData.exposureSalivaContactSite}
+                    onChange={(event) => updateAssessmentField('exposureSalivaContactSite', event.target.value as IncidentFormData['exposureSalivaContactSite'])}
+                  />
+                </div>
+              )}
+
+              {formData.exposureContactTypes.includes('bat_contact') && (
+                <div className="mt-4 max-w-xl rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                  <Select
+                    label="Did direct physical contact with the bat occur? *"
+                    options={[
+                      { value: '', label: 'Select answer' },
+                      { value: 'yes', label: 'Yes, direct physical contact occurred' },
+                      { value: 'no', label: 'No direct physical contact' },
+                    ]}
+                    value={formData.exposureDirectBatContact}
+                    onChange={(event) => updateAssessmentField('exposureDirectBatContact', event.target.value as IncidentFormData['exposureDirectBatContact'])}
+                  />
+                </div>
+              )}
+            </fieldset>
           </div>
 
-          <div className="bg-card border border-border rounded-2xl p-4 lg:p-5 shadow-sm">
-                <h2 className="text-base font-bold text-foreground mb-1">WHO Wound Category</h2>
-                <p className="text-xs text-muted-foreground mb-3">Select the wound category used for clinical workflow guidance.</p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {categoryCards.map((cat) => (
+          <div id="who-category-review" className="bg-card border border-border rounded-2xl p-4 lg:p-5 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl bg-emerald-50 p-2 text-emerald-700">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-foreground">Rule-Based WHO Exposure Classification with Clinical Confirmation</h2>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  This deterministic suggestion supports review only. An authorized clinic professional remains responsible for the final category.
+                </p>
+              </div>
+            </div>
+
+            {hasStructuredAssessment && whoSuggestion.category ? (
+              <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-xs font-extrabold uppercase tracking-wide text-emerald-700">System suggested</p>
+                    <p className="mt-1 text-lg font-extrabold text-emerald-950">Suggested WHO Category: Category {whoSuggestion.category}</p>
+                    <p className="mt-1 text-sm font-semibold text-emerald-900">System basis: {whoSuggestion.reason}</p>
+                    <p className="mt-2 text-xs leading-relaxed text-emerald-800">This is a rule-based suggestion. A clinic professional must confirm the final category.</p>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    <Button type="button" size="sm" onClick={confirmSuggestedCategory}>Confirm Category {whoSuggestion.category}</Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => document.getElementById('final-category-options')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                    >
+                      Review or Change Category
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : hasStructuredAssessment ? (
+              <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4" role="status">
+                <p className="text-sm font-extrabold text-amber-950">Unable to suggest a WHO category</p>
+                <p className="mt-1 text-xs leading-relaxed text-amber-800">Complete the exposure assessment or select a category for clinical review.</p>
+                {whoSuggestion.state === 'contradictory' && <p className="mt-1 text-xs font-semibold text-amber-900">The current answers contain a contradiction and must be clinically reviewed.</p>}
+              </div>
+            ) : (
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm font-extrabold text-slate-900">Legacy/manual classification</p>
+                <p className="mt-1 text-xs leading-relaxed text-slate-600">No rule-based suggestion exists for this saved record. Its final category remains unchanged unless a new structured assessment is entered.</p>
+              </div>
+            )}
+
+            <fieldset id="final-category-options" className="mt-4" aria-invalid={Boolean(errors.whoCategory || errors.whoCategoryConfirmed)}>
+              <legend className="text-sm font-extrabold text-foreground">Final WHO Category *</legend>
+              <p className="mb-3 mt-1 text-xs text-muted-foreground">Select the category to be clinically confirmed. The system suggestion is not a diagnosis or treatment order.</p>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                {categoryCards.map((cat) => {
+                  const isSuggested = whoSuggestion.category === cat.value;
+                  const isConfirmed = hasStructuredAssessment && formData.whoCategoryConfirmed && formData.whoCategory === cat.value;
+
+                  return (
                     <label
                       key={cat.value}
-                      className={
-                        'border rounded-xl p-3 cursor-pointer transition-all ' +
-                        (formData.whoCategory === cat.value
-                          ? cat.activeClass
-                          : cat.idleClass)
-                      }
+                      className={'border rounded-xl p-3 cursor-pointer transition-all ' + (formData.whoCategory === cat.value ? cat.activeClass : cat.idleClass)}
                     >
                       <input
                         type="radio"
                         name="whoCategory"
                         value={cat.value}
                         checked={formData.whoCategory === cat.value}
-                        onChange={(e) => updateField('whoCategory', e.target.value)}
+                        onChange={(event) => selectFinalCategory(event.target.value)}
                         className="sr-only"
                       />
-                      <div className="mb-2 flex items-center justify-between gap-2">
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                         <div className="font-bold text-sm text-foreground">{cat.label}</div>
-                        <span className={'rounded-full px-2 py-0.5 text-[10px] font-bold ' + cat.badgeClass}>{cat.risk}</span>
+                        <div className="flex flex-wrap justify-end gap-1">
+                          {isSuggested && <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">System Suggested</span>}
+                          {isConfirmed && <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white">Clinically Confirmed</span>}
+                          {!isSuggested && !isConfirmed && <span className={'rounded-full px-2 py-0.5 text-[10px] font-bold ' + cat.badgeClass}>{cat.risk}</span>}
+                        </div>
                       </div>
                       <div className="text-xs text-muted-foreground leading-relaxed">{cat.desc}</div>
                     </label>
-                  ))}
-                </div>
-                {errors.whoCategory && <p className="mt-2 text-xs text-destructive">{errors.whoCategory}</p>}
-                {formData.whoCategory && (
-                  <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 shadow-sm">
-                    <div className="flex items-start gap-3">
-                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
-                      <div>
-                        <p className="text-sm font-bold text-emerald-950">{categoryGuidance[formData.whoCategory]}</p>
-                        <p className="text-xs leading-relaxed text-emerald-700 mt-1">
-                          Recommendation is based on encoded category and is subject to doctor or clinic validation.
-                        </p>
-                      </div>
-                    </div>
+                  );
+                })}
+              </div>
+              {errors.whoCategory && <p className="mt-2 text-xs font-medium text-destructive">{errors.whoCategory}</p>}
+            </fieldset>
+
+            {hasStructuredAssessment && whoSuggestion.category && formData.whoCategory && whoSuggestion.category !== formData.whoCategory && (
+              <div className="mt-4">
+                <label htmlFor="who-category-override-reason" className="mb-1.5 block text-sm font-semibold text-foreground">
+                  Reason for changing the suggested category *
+                </label>
+                <textarea
+                  id="who-category-override-reason"
+                  rows={3}
+                  maxLength={1000}
+                  value={formData.whoCategoryOverrideReason}
+                  onChange={(event) => {
+                    updateField('whoCategoryOverrideReason', event.target.value);
+                    updateField('whoCategoryConfirmed', false);
+                  }}
+                  placeholder="Briefly describe the clinical finding that changed the classification."
+                  aria-invalid={Boolean(errors.whoCategoryOverrideReason)}
+                  className="w-full rounded-xl border border-border bg-white px-3 py-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
+                />
+                {errors.whoCategoryOverrideReason && <p className="mt-1 text-xs font-medium text-destructive">{errors.whoCategoryOverrideReason}</p>}
+              </div>
+            )}
+
+            {hasStructuredAssessment && formData.whoCategory && !formData.whoCategoryConfirmed && (
+              <Button type="button" className="mt-4" onClick={confirmSelectedCategory}>
+                Clinically Confirm Category {formData.whoCategory}
+              </Button>
+            )}
+            {errors.whoCategoryConfirmed && <p className="mt-2 text-xs font-medium text-destructive">{errors.whoCategoryConfirmed}</p>}
+
+            {hasStructuredAssessment && formData.whoCategory && formData.whoCategoryConfirmed && (
+              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                <div className="flex items-start gap-3">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
+                  <div>
+                    <p className="text-sm font-bold text-emerald-950">Category {formData.whoCategory} clinically confirmed</p>
+                    <p className="mt-1 text-xs leading-relaxed text-emerald-800">{categoryGuidance[formData.whoCategory]} Existing clinic protocol and professional judgment remain authoritative.</p>
                   </div>
-                )}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-wrap gap-3 pb-4 xl:hidden">

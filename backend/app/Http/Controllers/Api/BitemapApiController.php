@@ -14,6 +14,7 @@ use App\Models\Patient;
 use App\Models\PepSchedule;
 use App\Models\Setting;
 use App\Models\User;
+use App\Services\WhoExposureClassificationService;
 use App\Support\DefaultAdminAccount;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,6 +26,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class BitemapApiController extends Controller
 {
@@ -287,7 +289,7 @@ class BitemapApiController extends Controller
 
     public function incidents(): JsonResponse
     {
-        $incidents = Incident::with(['patient', 'barangay', 'pepSchedules'])
+        $incidents = Incident::with(['patient', 'barangay', 'pepSchedules', 'whoCategoryConfirmer'])
             ->latest('incident_date')
             ->latest('id')
             ->get()
@@ -301,7 +303,7 @@ class BitemapApiController extends Controller
     {
         return response()->json([
             'success' => true,
-            'data' => $this->incidentPayload($incident->load(['patient', 'barangay', 'pepSchedules'])),
+            'data' => $this->incidentPayload($incident->load(['patient', 'barangay', 'pepSchedules', 'whoCategoryConfirmer'])),
         ]);
     }
 
@@ -313,7 +315,7 @@ class BitemapApiController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $this->incidentPayload($incident->fresh(['patient', 'barangay', 'pepSchedules'])),
+            'data' => $this->incidentPayload($incident->fresh(['patient', 'barangay', 'pepSchedules', 'whoCategoryConfirmer'])),
         ], 201);
     }
 
@@ -321,7 +323,7 @@ class BitemapApiController extends Controller
     {
         DB::transaction(function () use ($request, $incident): void {
             $patient = $this->resolveIncidentPatient($request, $incident->patient);
-            $incidentData = $this->incidentData($request, $patient);
+            $incidentData = $this->incidentData($request, $patient, $incident);
             $incidentDateChanged = $incident->incident_date?->toDateString() !== $incidentData['incident_date'];
 
             $incident->update($incidentData);
@@ -332,7 +334,7 @@ class BitemapApiController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $this->incidentPayload($incident->fresh(['patient', 'barangay', 'pepSchedules'])),
+            'data' => $this->incidentPayload($incident->fresh(['patient', 'barangay', 'pepSchedules', 'whoCategoryConfirmer'])),
         ]);
     }
 
@@ -2458,15 +2460,37 @@ class BitemapApiController extends Controller
         return Patient::create($patientData)->fresh();
     }
 
-    private function incidentData(Request $request, Patient $patient): array
+    private function incidentData(Request $request, Patient $patient, ?Incident $incident = null): array
     {
+        $hasStoredAssessment = $incident?->exposure_contact_types !== null;
+        $hasAssessmentInput = $request->exists('exposure_contact_types');
+        $requiresStructuredAssessment = $incident === null || $hasStoredAssessment || $hasAssessmentInput;
+
         $validator = Validator::make($request->all(), [
             'incident_date' => ['required', 'date', 'before_or_equal:today'],
             'incident_time' => ['nullable'],
             'animal_type' => ['nullable', 'string'],
             'bite_location' => ['nullable', 'string', 'max:150'],
             'bite_site' => ['nullable', 'string', 'max:150'],
-            'who_category' => ['nullable', 'string'],
+            'exposure_contact_types' => [
+                Rule::requiredIf($requiresStructuredAssessment),
+                'nullable',
+                'array',
+                'min:1',
+            ],
+            'exposure_contact_types.*' => [
+                'string',
+                'distinct',
+                Rule::in(['touching_or_feeding', 'lick', 'nibbling', 'scratch', 'bite', 'bat_contact', 'other']),
+            ],
+            'exposure_skin_condition' => ['nullable', Rule::in(['intact', 'broken', 'unknown'])],
+            'exposure_bleeding_present' => ['nullable', 'boolean'],
+            'exposure_transdermal' => ['nullable', 'boolean'],
+            'exposure_saliva_contact_site' => ['nullable', Rule::in(['none', 'intact_skin', 'broken_skin', 'mucous_membrane', 'unknown'])],
+            'exposure_direct_bat_contact' => ['nullable', 'boolean'],
+            'who_category' => [Rule::requiredIf($requiresStructuredAssessment), 'nullable', Rule::in(['I', 'II', 'III', 'Category I', 'Category II', 'Category III'])],
+            'who_category_confirmed' => ['nullable', 'boolean'],
+            'who_category_override_reason' => ['nullable', 'string', 'max:1000'],
             'status' => ['nullable', 'string'],
             'location_scope' => ['required', Rule::in(['within_digos', 'outside_digos'])],
             'barangay_id' => [
@@ -2518,12 +2542,40 @@ class BitemapApiController extends Controller
             'barangay_id.required' => 'Barangay of Incident is required for incidents within Digos City.',
             'incident_city_municipality.required' => 'City / Municipality of Incident is required for incidents outside Digos City.',
             'incident_province.required' => 'Province of Incident is required for incidents outside Digos City.',
+            'exposure_contact_types.required' => 'Select at least one nature of contact for the exposure assessment.',
+            'who_category.required' => 'A clinic professional must select the final WHO category.',
         ]);
 
         $data = $validator->validate();
         $incidentDate = Carbon::parse($data['incident_date'])->toDateString();
 
-        return [
+        if (! $requiresStructuredAssessment && $incident && $request->filled('who_category')) {
+            $submittedCategory = $this->normalizeWhoCategory($request->string('who_category')->toString());
+            if ($submittedCategory !== $incident->who_category) {
+                throw ValidationException::withMessages([
+                    'exposure_contact_types' => 'Complete the structured exposure assessment before changing a legacy WHO category.',
+                ]);
+            }
+        }
+
+        $classificationData = $requiresStructuredAssessment
+            ? $this->whoClassificationData($request, $data, $incident)
+            : [
+                'who_category' => $incident?->who_category ?? $this->normalizeWhoCategory($data['who_category'] ?? 'Category II'),
+                'exposure_contact_types' => $incident?->exposure_contact_types,
+                'exposure_skin_condition' => $incident?->exposure_skin_condition,
+                'exposure_bleeding_present' => $incident?->exposure_bleeding_present,
+                'exposure_transdermal' => $incident?->exposure_transdermal,
+                'exposure_saliva_contact_site' => $incident?->exposure_saliva_contact_site,
+                'exposure_direct_bat_contact' => $incident?->exposure_direct_bat_contact,
+                'suggested_who_category' => $incident?->suggested_who_category,
+                'who_category_suggestion_reason' => $incident?->who_category_suggestion_reason,
+                'who_category_override_reason' => $incident?->who_category_override_reason,
+                'who_category_confirmed_by' => $incident?->who_category_confirmed_by,
+                'who_category_confirmed_at' => $incident?->who_category_confirmed_at,
+            ];
+
+        return array_merge([
             'patient_id' => $patient->id,
             'location_scope' => $data['location_scope'],
             'barangay_id' => $data['location_scope'] === 'within_digos' ? $data['barangay_id'] : null,
@@ -2532,7 +2584,6 @@ class BitemapApiController extends Controller
             'animal_type' => $this->normalizeAnimalType($data['animal_type'] ?? 'Dog'),
             'animal_description' => $request->input('animal_description'),
             'bite_site' => $data['bite_site'] ?? $data['bite_location'] ?? 'Not specified',
-            'who_category' => $this->normalizeWhoCategory($data['who_category'] ?? 'Category II'),
             'location_lat' => $data['location_scope'] === 'within_digos' ? ($data['location_lat'] ?? null) : null,
             'location_lng' => $data['location_scope'] === 'within_digos' ? ($data['location_lng'] ?? null) : null,
             'incident_city_municipality' => $data['location_scope'] === 'outside_digos'
@@ -2547,7 +2598,70 @@ class BitemapApiController extends Controller
             'status' => $this->normalizeIncidentStatus($data['status'] ?? 'Active'),
             'reported_by' => $request->user()?->id,
             'notes' => $data['notes'] ?? null,
+        ], $classificationData);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function whoClassificationData(Request $request, array $data, ?Incident $incident): array
+    {
+        $contactTypes = collect($data['exposure_contact_types'] ?? [])->sort()->values()->all();
+        $hasWoundContact = in_array('bite', $contactTypes, true) || in_array('scratch', $contactTypes, true);
+        $assessment = [
+            'exposure_contact_types' => $contactTypes,
+            'exposure_skin_condition' => $hasWoundContact ? ($data['exposure_skin_condition'] ?? null) : null,
+            'exposure_bleeding_present' => $hasWoundContact ? ($data['exposure_bleeding_present'] ?? null) : null,
+            'exposure_transdermal' => $hasWoundContact ? ($data['exposure_transdermal'] ?? null) : null,
+            'exposure_saliva_contact_site' => in_array('lick', $contactTypes, true) ? ($data['exposure_saliva_contact_site'] ?? null) : null,
+            'exposure_direct_bat_contact' => in_array('bat_contact', $contactTypes, true) ? ($data['exposure_direct_bat_contact'] ?? null) : null,
         ];
+
+        $suggestion = app(WhoExposureClassificationService::class)->classify($assessment);
+        $finalCategory = $this->normalizeWhoCategory($data['who_category']);
+        $overrideReason = blank($data['who_category_override_reason'] ?? null)
+            ? null
+            : trim($data['who_category_override_reason']);
+
+        if ($suggestion['category'] !== null && $suggestion['category'] !== $finalCategory && $overrideReason === null) {
+            throw ValidationException::withMessages([
+                'who_category_override_reason' => 'Explain the clinical finding that changed the system-suggested category.',
+            ]);
+        }
+
+        if ($suggestion['category'] === null || $suggestion['category'] === $finalCategory) {
+            $overrideReason = null;
+        }
+
+        $storedAssessment = $incident ? [
+            'exposure_contact_types' => collect($incident->exposure_contact_types ?? [])->sort()->values()->all(),
+            'exposure_skin_condition' => $incident->exposure_skin_condition,
+            'exposure_bleeding_present' => $incident->exposure_bleeding_present,
+            'exposure_transdermal' => $incident->exposure_transdermal,
+            'exposure_saliva_contact_site' => $incident->exposure_saliva_contact_site,
+            'exposure_direct_bat_contact' => $incident->exposure_direct_bat_contact,
+        ] : null;
+        $confirmationChanged = $incident === null
+            || $storedAssessment !== $assessment
+            || $incident->who_category !== $finalCategory
+            || $incident->suggested_who_category !== $suggestion['category']
+            || $incident->who_category_confirmed_at === null;
+
+        if ($confirmationChanged && $request->boolean('who_category_confirmed') !== true) {
+            throw ValidationException::withMessages([
+                'who_category_confirmed' => 'A clinic professional must clinically confirm the final WHO category before saving.',
+            ]);
+        }
+
+        return array_merge($assessment, [
+            'who_category' => $finalCategory,
+            'suggested_who_category' => $suggestion['category'],
+            'who_category_suggestion_reason' => $suggestion['reason'],
+            'who_category_override_reason' => $overrideReason,
+            'who_category_confirmed_by' => $confirmationChanged ? $request->user()?->id : $incident?->who_category_confirmed_by,
+            'who_category_confirmed_at' => $confirmationChanged ? now() : $incident?->who_category_confirmed_at,
+        ]);
     }
 
     private function inventoryData(Request $request, bool $partial = false): array
@@ -3108,7 +3222,7 @@ class BitemapApiController extends Controller
 
     private function incidentPayload(Incident $incident): array
     {
-        $incident->loadMissing(['patient', 'barangay', 'pepSchedules']);
+        $incident->loadMissing(['patient', 'barangay', 'pepSchedules', 'whoCategoryConfirmer']);
 
         return [
             'id' => $incident->id,
@@ -3125,6 +3239,21 @@ class BitemapApiController extends Controller
             'bite_site' => $incident->bite_site,
             'bite_location' => $incident->bite_site,
             'who_category' => $this->displayCategory($incident->who_category),
+            'exposure_contact_types' => $incident->exposure_contact_types,
+            'exposure_skin_condition' => $incident->exposure_skin_condition,
+            'exposure_bleeding_present' => $incident->exposure_bleeding_present,
+            'exposure_transdermal' => $incident->exposure_transdermal,
+            'exposure_saliva_contact_site' => $incident->exposure_saliva_contact_site,
+            'exposure_direct_bat_contact' => $incident->exposure_direct_bat_contact,
+            'suggested_who_category' => $incident->suggested_who_category ? $this->displayCategory($incident->suggested_who_category) : null,
+            'who_category_suggestion_reason' => $incident->who_category_suggestion_reason,
+            'who_category_override_reason' => $incident->who_category_override_reason,
+            'who_category_confirmed_by' => $incident->who_category_confirmed_by,
+            'who_category_confirmer' => $incident->whoCategoryConfirmer ? [
+                'id' => $incident->whoCategoryConfirmer->id,
+                'name' => $incident->whoCategoryConfirmer->name,
+            ] : null,
+            'who_category_confirmed_at' => $incident->who_category_confirmed_at,
             'location_lat' => $incident->location_lat,
             'location_lng' => $incident->location_lng,
             'incident_city_municipality' => $incident->incident_city_municipality,

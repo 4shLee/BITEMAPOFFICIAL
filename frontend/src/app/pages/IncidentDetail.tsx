@@ -7,6 +7,7 @@ import { Badge } from '../components/UI/Badge';
 import { incidentsAPI } from '../../lib/services/api';
 import { canPerformAction, getStoredUser } from '../../lib/auth/roleAccess';
 import { composePatientAddress, composePatientFullName } from '../../lib/patient';
+import { exposureContactLabel } from '../../lib/whoExposureClassification';
 
 const whoGuidance: Record<string, string> = {
   'Category I': 'No PEP required if reliable history. Provide health advice.',
@@ -47,6 +48,12 @@ function readNoteValue(notes: string | undefined, label: string) {
   if (!notes) return '';
   const line = notes.split('\n').find((entry) => entry.toLowerCase().startsWith(label.toLowerCase() + ':'));
   return line ? line.slice(line.indexOf(':') + 1).trim() : '';
+}
+
+function formatConfirmationDate(value?: string | null) {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 export function IncidentDetail() {
@@ -110,6 +117,17 @@ export function IncidentDetail() {
         ? (isApproximateBarangayPin ? 'Barangay only' : 'Exact pin selected')
         : 'Barangay only';
   const coordinates = hasLocationPin ? 'Latitude: ' + incidentLat + ' / Longitude: ' + incidentLng : '';
+  const hasStructuredAssessment = Array.isArray(incident?.exposure_contact_types) && incident.exposure_contact_types.length > 0;
+  const exposureContacts = hasStructuredAssessment
+    ? incident.exposure_contact_types.map(exposureContactLabel).join(', ')
+    : readNoteValue(incident?.notes, 'Exposure Type');
+  const classificationLabel = !hasStructuredAssessment
+    ? 'Legacy/manual classification'
+    : incident?.suggested_who_category === incident?.who_category
+      ? 'System suggestion confirmed by clinic staff'
+      : incident?.suggested_who_category
+        ? 'Clinically confirmed with change from system suggestion'
+        : 'Manual clinical assessment; no valid system suggestion';
   const oneLineSummary = [
     ageSex,
     contactNumber,
@@ -120,7 +138,14 @@ export function IncidentDetail() {
       : barangayName ? 'Barangay: ' + barangayName : '',
   ].filter(Boolean).join(' • ');
   const clinicalNotes = [
-    ['Exposure Type', readNoteValue(incident?.notes, 'Exposure Type')],
+    ['Nature of Contact', exposureContacts],
+    ...(hasStructuredAssessment ? [
+      ['Skin Condition', incident?.exposure_skin_condition ? String(incident.exposure_skin_condition).replace('_', ' ') : 'Not recorded'],
+      ['Bleeding Present', incident?.exposure_bleeding_present == null ? 'Not applicable / unknown' : (incident.exposure_bleeding_present ? 'Yes' : 'No')],
+      ['Transdermal / Puncturing', incident?.exposure_transdermal == null ? 'Not applicable / unknown' : (incident.exposure_transdermal ? 'Yes' : 'No')],
+      ['Saliva Contact Site', incident?.exposure_saliva_contact_site ? String(incident.exposure_saliva_contact_site).replaceAll('_', ' ') : 'Not applicable / unknown'],
+      ['Direct Bat Contact', incident?.exposure_direct_bat_contact == null ? 'Not applicable / unknown' : (incident.exposure_direct_bat_contact ? 'Yes' : 'No')],
+    ] : []),
     ['Animal Status', readNoteValue(incident?.notes, 'Animal Status')],
     ['Animal Condition', readNoteValue(incident?.notes, 'Animal Condition')],
     ['Wound Washed', readNoteValue(incident?.notes, 'Wound Washed')],
@@ -208,7 +233,7 @@ export function IncidentDetail() {
                       <DetailItem label="Time of Incident" value={incident.incident_time} />
                       <DetailItem label="Animal Type" value={incident.animal_type} />
                       <DetailItem label="Bite Site" value={biteSite} />
-                      <DetailItem label="WHO Category" value={incident.who_category} />
+                      <DetailItem label="Final WHO Category" value={incident.who_category} />
                     </div>
                   </section>
 
@@ -273,11 +298,17 @@ export function IncidentDetail() {
                     <Stethoscope className="h-4 w-4 text-primary" />
                     <h3 className="text-base font-extrabold text-emerald-950">Clinical Review</h3>
                   </div>
-                  <p className="text-sm font-bold text-emerald-950">
-                    {whoGuidance[incident.who_category] || 'WHO category guidance is unavailable for this record.'}
-                  </p>
-                  <p className="mt-1 text-xs font-medium text-emerald-700">
-                    Final clinical decision is subject to doctor assessment and clinic protocol.
+                  <div className="space-y-2">
+                    <ClinicalRow label="Final WHO Category" value={incident.who_category} />
+                    <ClinicalRow label="Classification" value={classificationLabel} />
+                    {hasStructuredAssessment && <ClinicalRow label="System Suggestion" value={incident.suggested_who_category || 'No valid suggestion'} />}
+                    {incident.who_category_suggestion_reason && <ClinicalRow label="System Basis" value={incident.who_category_suggestion_reason} />}
+                    {incident.who_category_override_reason && <ClinicalRow label="Reason for Change" value={incident.who_category_override_reason} />}
+                    {incident.who_category_confirmer?.name && <ClinicalRow label="Confirmed By" value={incident.who_category_confirmer.name} />}
+                    {incident.who_category_confirmed_at && <ClinicalRow label="Confirmed At" value={formatConfirmationDate(incident.who_category_confirmed_at)} />}
+                  </div>
+                  <p className="mt-3 text-xs font-semibold leading-relaxed text-emerald-800">
+                    {whoGuidance[incident.who_category] || 'WHO category guidance is unavailable for this record.'} The record reflects clinical confirmation and does not replace professional judgment.
                   </p>
                 </div>
               </aside>

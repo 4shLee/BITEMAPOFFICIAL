@@ -205,7 +205,7 @@ class IncidentLocationScopeTest extends TestCase
 
     private function withinPayload(array $overrides = []): array
     {
-        return array_merge($this->basePayload(), [
+        return array_merge($this->basePayload(), $this->assessmentPayload(), [
             'location_scope' => 'within_digos',
             'barangay_id' => $this->barangay->id,
             'location_lat' => null,
@@ -218,7 +218,7 @@ class IncidentLocationScopeTest extends TestCase
 
     private function outsidePayload(array $overrides = []): array
     {
-        return array_merge($this->basePayload(), [
+        return array_merge($this->basePayload(), $this->assessmentPayload(), [
             'location_scope' => 'outside_digos',
             'barangay_id' => null,
             'location_lat' => null,
@@ -227,5 +227,16 @@ class IncidentLocationScopeTest extends TestCase
             'incident_province' => 'Davao del Sur',
             'incident_specific_location' => 'Near the municipal hall',
         ], $overrides);
+    }
+
+    private function assessmentPayload(): array
+    {
+        return [
+            'exposure_contact_types' => ['scratch'],
+            'exposure_skin_condition' => 'broken',
+            'exposure_bleeding_present' => false,
+            'exposure_transdermal' => false,
+            'who_category_confirmed' => true,
+        ];
     }
 }
