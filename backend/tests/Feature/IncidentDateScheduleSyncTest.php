@@ -55,6 +55,9 @@ class IncidentDateScheduleSyncTest extends TestCase
 
         $response = $this->putJson('/api/incidents/'.$incident->id, [
             'patient_id' => $patient->id,
+            'location_scope' => 'outside_digos',
+            'incident_city_municipality' => 'Bansalan',
+            'incident_province' => 'Davao del Sur',
             'incident_date' => '2026-07-06',
             'animal_type' => 'Dog',
             'bite_site' => 'Left arm',
@@ -133,6 +136,9 @@ class IncidentDateScheduleSyncTest extends TestCase
 
         $this->putJson('/api/incidents/'.$incident->id, [
             'patient_id' => $patient->id,
+            'location_scope' => 'outside_digos',
+            'incident_city_municipality' => 'Bansalan',
+            'incident_province' => 'Davao del Sur',
             'incident_date' => '2026-07-13',
             'animal_type' => 'Dog',
             'bite_site' => 'Left hand',

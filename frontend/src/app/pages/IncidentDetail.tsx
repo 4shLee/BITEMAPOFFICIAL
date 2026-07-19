@@ -84,6 +84,17 @@ export function IncidentDetail() {
   const contactNumber = incident?.contact_number || patient?.contact_number;
   const biteSite = incident?.bite_site || incident?.bite_location;
   const barangayName = incident?.barangay?.name;
+  const isOutsideDigos = incident?.location_scope === 'outside_digos';
+  const isWithinDigos = incident?.location_scope === 'within_digos'
+    || (!incident?.location_scope && Boolean(incident?.barangay_id && barangayName));
+  const incidentArea = isOutsideDigos
+    ? 'Outside Digos City'
+    : isWithinDigos
+      ? 'Within Digos City'
+      : 'Not recorded';
+  const outsideLocation = [incident?.incident_city_municipality, incident?.incident_province]
+    .filter(Boolean)
+    .join(', ');
   const hasLocationPin = Boolean(incident?.location_lat && incident?.location_lng);
   const barangayLat = incident?.barangay?.latitude ? String(incident.barangay.latitude) : '';
   const barangayLng = incident?.barangay?.longitude ? String(incident.barangay.longitude) : '';
@@ -104,7 +115,9 @@ export function IncidentDetail() {
     contactNumber,
     incident?.animal_type,
     biteSite ? 'Bite site: ' + biteSite : '',
-    barangayName ? 'Barangay: ' + barangayName : '',
+    isOutsideDigos
+      ? (outsideLocation ? 'Location: ' + outsideLocation : 'Outside Digos City')
+      : barangayName ? 'Barangay: ' + barangayName : '',
   ].filter(Boolean).join(' • ');
   const clinicalNotes = [
     ['Exposure Type', readNoteValue(incident?.notes, 'Exposure Type')],
@@ -205,9 +218,22 @@ export function IncidentDetail() {
                       <h4 className="text-sm font-bold text-foreground">Location</h4>
                     </div>
                     <div className="grid gap-3">
-                      <DetailItem label="Barangay of Incident" value={barangayName} />
-                      <DetailItem label="Location Pin Status" value={locationPinStatus} />
-                      {hasLocationPin && <DetailItem label="Coordinates" value={coordinates} />}
+                      <DetailItem label="Incident Area" value={incidentArea} />
+                      {isOutsideDigos ? (
+                        <>
+                          <DetailItem label="Location" value={outsideLocation} />
+                          {incident?.incident_specific_location && (
+                            <DetailItem label="Specific Location" value={incident.incident_specific_location} />
+                          )}
+                          <DetailItem label="GIS Inclusion" value="Excluded from Digos barangay analysis" />
+                        </>
+                      ) : (
+                        <>
+                          <DetailItem label="Barangay" value={barangayName} />
+                          {isWithinDigos && <DetailItem label="Location Pin Status" value={locationPinStatus} />}
+                          {isWithinDigos && hasLocationPin && <DetailItem label="Coordinates" value={coordinates} />}
+                        </>
+                      )}
                     </div>
                   </section>
                 </div>

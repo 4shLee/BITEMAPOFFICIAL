@@ -2154,7 +2154,11 @@ class BitemapApiController extends Controller
 
     private function heatmapPayload(array $filters): array
     {
-        $query = Incident::with(['barangay', 'pepSchedules']);
+        $query = Incident::with(['barangay', 'pepSchedules'])
+            ->where(function ($scopeQuery): void {
+                $scopeQuery->where('location_scope', 'within_digos')
+                    ->orWhereNull('location_scope');
+            });
 
         if (! blank($filters['date_from'] ?? null)) {
             $query->whereDate('incident_date', '>=', $filters['date_from']);
@@ -2464,11 +2468,56 @@ class BitemapApiController extends Controller
             'bite_site' => ['nullable', 'string', 'max:150'],
             'who_category' => ['nullable', 'string'],
             'status' => ['nullable', 'string'],
-            'barangay_id' => ['nullable', 'exists:barangays,id'],
-            'location_lat' => ['nullable', 'numeric'],
-            'location_lng' => ['nullable', 'numeric'],
+            'location_scope' => ['required', Rule::in(['within_digos', 'outside_digos'])],
+            'barangay_id' => [
+                Rule::requiredIf($request->input('location_scope') === 'within_digos'),
+                'nullable',
+                'exists:barangays,id',
+                'prohibited_if:location_scope,outside_digos',
+            ],
+            'location_lat' => [
+                'nullable',
+                'numeric',
+                'between:-90,90',
+                'required_with:location_lng',
+                'prohibited_if:location_scope,outside_digos',
+            ],
+            'location_lng' => [
+                'nullable',
+                'numeric',
+                'between:-180,180',
+                'required_with:location_lat',
+                'prohibited_if:location_scope,outside_digos',
+            ],
+            'incident_city_municipality' => [
+                Rule::requiredIf($request->input('location_scope') === 'outside_digos'),
+                'nullable',
+                'string',
+                'min:2',
+                'max:100',
+                'prohibited_if:location_scope,within_digos',
+            ],
+            'incident_province' => [
+                Rule::requiredIf($request->input('location_scope') === 'outside_digos'),
+                'nullable',
+                'string',
+                'min:2',
+                'max:100',
+                'prohibited_if:location_scope,within_digos',
+            ],
+            'incident_specific_location' => [
+                'nullable',
+                'string',
+                'max:200',
+                'prohibited_if:location_scope,within_digos',
+            ],
             'notes' => ['nullable', 'string'],
             'sms_consent' => ['sometimes', 'nullable', 'boolean'],
+        ], [
+            'location_scope.required' => 'Select whether the incident occurred within or outside Digos City.',
+            'barangay_id.required' => 'Barangay of Incident is required for incidents within Digos City.',
+            'incident_city_municipality.required' => 'City / Municipality of Incident is required for incidents outside Digos City.',
+            'incident_province.required' => 'Province of Incident is required for incidents outside Digos City.',
         ]);
 
         $data = $validator->validate();
@@ -2476,15 +2525,25 @@ class BitemapApiController extends Controller
 
         return [
             'patient_id' => $patient->id,
-            'barangay_id' => blank($data['barangay_id'] ?? null) ? null : $data['barangay_id'],
+            'location_scope' => $data['location_scope'],
+            'barangay_id' => $data['location_scope'] === 'within_digos' ? $data['barangay_id'] : null,
             'incident_date' => $incidentDate,
             'incident_time' => $data['incident_time'] ?? null,
             'animal_type' => $this->normalizeAnimalType($data['animal_type'] ?? 'Dog'),
             'animal_description' => $request->input('animal_description'),
             'bite_site' => $data['bite_site'] ?? $data['bite_location'] ?? 'Not specified',
             'who_category' => $this->normalizeWhoCategory($data['who_category'] ?? 'Category II'),
-            'location_lat' => $data['location_lat'] ?? null,
-            'location_lng' => $data['location_lng'] ?? null,
+            'location_lat' => $data['location_scope'] === 'within_digos' ? ($data['location_lat'] ?? null) : null,
+            'location_lng' => $data['location_scope'] === 'within_digos' ? ($data['location_lng'] ?? null) : null,
+            'incident_city_municipality' => $data['location_scope'] === 'outside_digos'
+                ? trim($data['incident_city_municipality'])
+                : null,
+            'incident_province' => $data['location_scope'] === 'outside_digos'
+                ? trim($data['incident_province'])
+                : null,
+            'incident_specific_location' => $data['location_scope'] === 'outside_digos'
+                ? (blank($data['incident_specific_location'] ?? null) ? null : trim($data['incident_specific_location']))
+                : null,
             'status' => $this->normalizeIncidentStatus($data['status'] ?? 'Active'),
             'reported_by' => $request->user()?->id,
             'notes' => $data['notes'] ?? null,
@@ -3058,6 +3117,7 @@ class BitemapApiController extends Controller
             'contact_number' => $incident->patient?->contact_number,
             'barangay_id' => $incident->barangay_id,
             'barangay' => $incident->barangay,
+            'location_scope' => $incident->location_scope,
             'incident_date' => optional($incident->incident_date)->toDateString(),
             'incident_time' => $incident->incident_time,
             'animal_type' => $incident->animal_type,
@@ -3067,6 +3127,9 @@ class BitemapApiController extends Controller
             'who_category' => $this->displayCategory($incident->who_category),
             'location_lat' => $incident->location_lat,
             'location_lng' => $incident->location_lng,
+            'incident_city_municipality' => $incident->incident_city_municipality,
+            'incident_province' => $incident->incident_province,
+            'incident_specific_location' => $incident->incident_specific_location,
             'status' => $incident->status,
             'notes' => $incident->notes,
             'sms_consent' => $this->incidentAllowsSms($incident),
@@ -3276,6 +3339,10 @@ class BitemapApiController extends Controller
 
     private function incidentMapLocation(Incident $incident): ?array
     {
+        if ($incident->location_scope === 'outside_digos') {
+            return null;
+        }
+
         $incidentLatitude = $incident->getRawOriginal('location_lat');
         $incidentLongitude = $incident->getRawOriginal('location_lng');
         $hasExactCoordinateValue = filled($incidentLatitude) || filled($incidentLongitude);

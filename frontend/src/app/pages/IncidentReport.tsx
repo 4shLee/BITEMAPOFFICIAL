@@ -76,10 +76,14 @@ type IncidentFormData = {
   biteSite: string;
   whoCategory: string;
   status: string;
+  locationScope: '' | 'within_digos' | 'outside_digos';
   barangayId: string;
   locationLat: string;
   locationLng: string;
   locationMode: 'none' | 'barangay' | 'exact';
+  incidentCityMunicipality: string;
+  incidentProvince: string;
+  incidentSpecificLocation: string;
 };
 
 const DIGOS_BARANGAY_COORDINATES: Record<string, { lat: number; lng: number }> = {
@@ -139,10 +143,14 @@ const initialFormData: IncidentFormData = {
   biteSite: '',
   whoCategory: '',
   status: 'Active',
+  locationScope: '',
   barangayId: '',
   locationLat: '',
   locationLng: '',
   locationMode: 'none',
+  incidentCityMunicipality: '',
+  incidentProvince: '',
+  incidentSpecificLocation: '',
 };
 
 const fallbackBarangays: BarangayOption[] = [
@@ -226,7 +234,9 @@ function buildNotes(formData: IncidentFormData) {
     'Wound Washed: ' + formData.woundWashed,
     'Date of First Consult: ' + (formData.firstConsultDate || 'Not specified'),
     'SMS Consent: ' + (formData.smsConsent ? 'Allowed' : 'Declined'),
-    'Location Precision: ' + (formData.locationMode === 'exact' ? 'Exact Pin' : 'Barangay Only'),
+    'Location Precision: ' + (formData.locationScope === 'outside_digos'
+      ? 'Not applicable'
+      : (formData.locationMode === 'exact' ? 'Exact Pin' : 'Barangay Only')),
   ].join('\n');
 }
 
@@ -318,6 +328,11 @@ export function IncidentReport() {
         const patient = incident?.patient || {};
         const nameParts = splitPatientName(patient);
         const notes = incident?.notes || '';
+        const locationScope: IncidentFormData['locationScope'] = incident?.location_scope === 'outside_digos'
+          ? 'outside_digos'
+          : incident?.location_scope === 'within_digos' || incident?.barangay_id
+            ? 'within_digos'
+            : '';
 
         setFormData({
           patientType: 'existing',
@@ -347,12 +362,16 @@ export function IncidentReport() {
           biteSite: incident?.bite_site || incident?.bite_location || '',
           whoCategory: normalizeCategoryForForm(incident?.who_category),
           status: incident?.status || 'Active',
+          locationScope,
           barangayId: incident?.barangay_id ? String(incident.barangay_id) : '',
           locationLat: incident?.location_lat ? String(incident.location_lat) : '',
           locationLng: incident?.location_lng ? String(incident.location_lng) : '',
           locationMode: readNoteValue(notes, 'Location Precision') === 'Barangay Only'
             ? 'barangay'
             : (incident?.location_lat && incident?.location_lng ? 'exact' : (incident?.barangay_id ? 'barangay' : 'none')),
+          incidentCityMunicipality: incident?.incident_city_municipality || '',
+          incidentProvince: incident?.incident_province || '',
+          incidentSpecificLocation: incident?.incident_specific_location || '',
         });
       } catch (error: any) {
         setLoadError(error.message || 'Unable to load incident report.');
@@ -498,6 +517,31 @@ export function IncidentReport() {
     setErrors((current) => ({ ...current, barangayId: undefined }));
   };
 
+  const handleLocationScopeChange = (locationScope: IncidentFormData['locationScope']) => {
+    setPendingPin(null);
+    setFormData((current) => ({
+      ...current,
+      locationScope,
+      barangayId: locationScope === 'outside_digos' ? '' : current.barangayId,
+      locationLat: locationScope === 'outside_digos' ? '' : current.locationLat,
+      locationLng: locationScope === 'outside_digos' ? '' : current.locationLng,
+      locationMode: locationScope === 'outside_digos' ? 'none' : current.locationMode,
+      incidentCityMunicipality: locationScope === 'within_digos' ? '' : current.incidentCityMunicipality,
+      incidentProvince: locationScope === 'within_digos' ? '' : current.incidentProvince,
+      incidentSpecificLocation: locationScope === 'within_digos' ? '' : current.incidentSpecificLocation,
+    }));
+    setErrors((current) => ({
+      ...current,
+      locationScope: undefined,
+      barangayId: undefined,
+      locationLat: undefined,
+      locationLng: undefined,
+      incidentCityMunicipality: undefined,
+      incidentProvince: undefined,
+      incidentSpecificLocation: undefined,
+    }));
+  };
+
   const validateForm = () => {
     const nextErrors: FormErrors = {};
     const today = todayKey();
@@ -541,7 +585,24 @@ export function IncidentReport() {
 
     if (!formData.animalType) nextErrors.animalType = 'Animal type is required.';
     if (!formData.whoCategory) nextErrors.whoCategory = 'Select a WHO wound category.';
-    if (!formData.barangayId) nextErrors.barangayId = 'Barangay of Incident is required.';
+    if (!formData.locationScope) {
+      nextErrors.locationScope = 'Select whether the incident occurred within or outside Digos City.';
+    } else if (formData.locationScope === 'within_digos') {
+      if (!formData.barangayId) nextErrors.barangayId = 'Barangay of Incident is required.';
+    } else {
+      const incidentCityLength = normalizePatientText(formData.incidentCityMunicipality).length;
+      const incidentProvinceLength = normalizePatientText(formData.incidentProvince).length;
+      const specificLocationLength = normalizePatientText(formData.incidentSpecificLocation).length;
+      if (incidentCityLength < 2 || incidentCityLength > 100) {
+        nextErrors.incidentCityMunicipality = 'City / Municipality of Incident must contain 2–100 characters.';
+      }
+      if (incidentProvinceLength < 2 || incidentProvinceLength > 100) {
+        nextErrors.incidentProvince = 'Province of Incident must contain 2–100 characters.';
+      }
+      if (specificLocationLength > 200) {
+        nextErrors.incidentSpecificLocation = 'Specific Location / Landmark must not exceed 200 characters.';
+      }
+    }
 
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
@@ -564,7 +625,8 @@ export function IncidentReport() {
     const fullName = composePatientName(formData);
     const incidentPayload = {
       patient_id: formData.patientId || undefined,
-      barangay_id: formData.barangayId,
+      location_scope: formData.locationScope,
+      barangay_id: formData.locationScope === 'within_digos' ? formData.barangayId : null,
       incident_date: formData.incidentDate,
       incident_time: formData.incidentTime || null,
       animal_type: formData.animalType,
@@ -572,8 +634,17 @@ export function IncidentReport() {
       bite_site: formData.biteSite || formData.exposureType,
       who_category: formData.whoCategory,
       status: formData.status,
-      location_lat: formData.locationLat || null,
-      location_lng: formData.locationLng || null,
+      location_lat: formData.locationScope === 'within_digos' ? (formData.locationLat || null) : null,
+      location_lng: formData.locationScope === 'within_digos' ? (formData.locationLng || null) : null,
+      incident_city_municipality: formData.locationScope === 'outside_digos'
+        ? normalizePatientText(formData.incidentCityMunicipality)
+        : null,
+      incident_province: formData.locationScope === 'outside_digos'
+        ? normalizePatientText(formData.incidentProvince)
+        : null,
+      incident_specific_location: formData.locationScope === 'outside_digos'
+        ? (normalizePatientText(formData.incidentSpecificLocation) || null)
+        : null,
       sms_consent: formData.smsConsent,
       notes: buildNotes(formData),
     };
@@ -620,7 +691,28 @@ export function IncidentReport() {
     { label: 'Exposure', value: formData.exposureType || 'Not selected' },
     { label: 'WHO Category', value: formData.whoCategory ? 'Category ' + formData.whoCategory : 'Not selected' },
     { label: 'Status', value: formData.status || 'Active' },
-    { label: 'Barangay', value: selectedBarangay?.name || 'Not selected' },
+    {
+      label: 'Incident Area',
+      value: formData.locationScope === 'within_digos'
+        ? 'Within Digos City'
+        : formData.locationScope === 'outside_digos'
+          ? 'Outside Digos City'
+          : 'Not selected',
+    },
+    ...(formData.locationScope === 'within_digos'
+      ? [{ label: 'Barangay', value: selectedBarangay?.name || 'Not selected' }]
+      : formData.locationScope === 'outside_digos'
+        ? [
+            {
+              label: 'Location',
+              value: [formData.incidentCityMunicipality, formData.incidentProvince].filter(Boolean).join(', ') || 'Not provided',
+            },
+            ...(formData.incidentSpecificLocation
+              ? [{ label: 'Specific Location', value: formData.incidentSpecificLocation }]
+              : []),
+            { label: 'GIS Inclusion', value: 'Excluded from Digos barangay analysis' },
+          ]
+        : []),
     {
       label: 'Reminders',
       value: formData.smsConsent ? 'SMS permission enabled' : 'SMS permission disabled',
@@ -1040,14 +1132,28 @@ export function IncidentReport() {
             <h2 className="text-base font-bold text-foreground mb-1">Incident Location</h2>
 
             <Select
-              label="Barangay of Incident *"
-              options={barangayOptions}
-              value={formData.barangayId}
-              onChange={(e) => handleBarangayChange(e.target.value)}
-              error={errors.barangayId}
+              label="Incident occurred within Digos City? *"
+              options={[
+                { value: '', label: 'Select incident area' },
+                { value: 'within_digos', label: 'Within Digos City' },
+                { value: 'outside_digos', label: 'Outside Digos City' },
+              ]}
+              value={formData.locationScope}
+              onChange={(e) => handleLocationScopeChange(e.target.value as IncidentFormData['locationScope'])}
+              error={errors.locationScope}
             />
 
-            <div className="mt-4 rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-slate-50 p-3">
+            {formData.locationScope === 'within_digos' && (
+              <div className="mt-4 space-y-4">
+                <Select
+                  label="Barangay of Incident *"
+                  options={barangayOptions}
+                  value={formData.barangayId}
+                  onChange={(e) => handleBarangayChange(e.target.value)}
+                  error={errors.barangayId}
+                />
+
+                <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-slate-50 p-3">
               <IncidentLocationPicker
                 barangayName={selectedBarangay?.name}
                 barangayCoordinates={barangayCoordinates}
@@ -1089,7 +1195,38 @@ export function IncidentReport() {
                 </div>
               )}
 
-            </div>
+                </div>
+              </div>
+            )}
+
+            {formData.locationScope === 'outside_digos' && (
+              <div className="mt-4 space-y-3">
+                <Input
+                  label="City / Municipality of Incident *"
+                  value={formData.incidentCityMunicipality}
+                  onChange={(e) => updateField('incidentCityMunicipality', e.target.value)}
+                  error={errors.incidentCityMunicipality}
+                  maxLength={100}
+                />
+                <Input
+                  label="Province of Incident *"
+                  value={formData.incidentProvince}
+                  onChange={(e) => updateField('incidentProvince', e.target.value)}
+                  error={errors.incidentProvince}
+                  maxLength={100}
+                />
+                <Input
+                  label="Specific Location / Landmark (Optional)"
+                  value={formData.incidentSpecificLocation}
+                  onChange={(e) => updateField('incidentSpecificLocation', e.target.value)}
+                  error={errors.incidentSpecificLocation}
+                  maxLength={200}
+                />
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs font-medium leading-relaxed text-amber-900">
+                  This incident will remain part of the patient’s clinical record but will not be included in Digos City barangay GIS analysis.
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">

@@ -39,6 +39,7 @@ class IncidentLocationPersistenceTest extends TestCase
 
         $createResponse = $this->postJson('/api/incidents', [
             'patient_id' => $patient->id,
+            'location_scope' => 'within_digos',
             'barangay_id' => $barangay->id,
             'incident_date' => '2026-07-14',
             'animal_type' => 'Dog',
@@ -65,6 +66,7 @@ class IncidentLocationPersistenceTest extends TestCase
 
         $this->putJson('/api/incidents/'.$incidentId, [
             'patient_id' => $patient->id,
+            'location_scope' => 'within_digos',
             'barangay_id' => $barangay->id,
             'incident_date' => '2026-07-14',
             'animal_type' => 'Dog',

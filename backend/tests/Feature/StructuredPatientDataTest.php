@@ -160,6 +160,9 @@ class StructuredPatientDataTest extends TestCase
     {
         $incidentBarangay = Barangay::create(['name' => 'Aplaya']);
         $response = $this->postJson('/api/incidents', $this->incidentPayload([
+            'location_scope' => 'within_digos',
+            'incident_city_municipality' => null,
+            'incident_province' => null,
             'barangay_id' => $incidentBarangay->id,
             'residence_barangay' => 'Zone 2',
         ]))->assertCreated();
@@ -197,6 +200,9 @@ class StructuredPatientDataTest extends TestCase
 
         $create = $this->postJson('/api/incidents', [
             'patient_id' => $patient->id,
+            'location_scope' => 'outside_digos',
+            'incident_city_municipality' => 'Bansalan',
+            'incident_province' => 'Davao del Sur',
             'incident_date' => '2026-07-18',
             'animal_type' => 'Dog',
             'who_category' => 'Category II',
@@ -207,6 +213,9 @@ class StructuredPatientDataTest extends TestCase
 
         $this->putJson('/api/incidents/'.$create->json('data.id'), [
             'patient_id' => $patient->id,
+            'location_scope' => 'outside_digos',
+            'incident_city_municipality' => 'Bansalan',
+            'incident_province' => 'Davao del Sur',
             'incident_date' => '2026-07-17',
             'animal_type' => 'Cat',
             'who_category' => 'Category II',
@@ -253,6 +262,9 @@ class StructuredPatientDataTest extends TestCase
     {
         return array_merge($this->patientPayload(), [
             'patient_name' => 'This value is regenerated',
+            'location_scope' => 'outside_digos',
+            'incident_city_municipality' => 'Bansalan',
+            'incident_province' => 'Davao del Sur',
             'incident_date' => '2026-07-18',
             'animal_type' => 'Dog',
             'bite_site' => 'Left arm',

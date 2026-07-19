@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable([
     'patient_id',
     'barangay_id',
+    'location_scope',
     'incident_date',
     'incident_time',
     'animal_type',
@@ -19,6 +20,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'who_category',
     'location_lat',
     'location_lng',
+    'incident_city_municipality',
+    'incident_province',
+    'incident_specific_location',
     'status',
     'reported_by',
     'notes',
