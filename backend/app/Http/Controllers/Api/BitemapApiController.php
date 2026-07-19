@@ -2081,98 +2081,163 @@ class BitemapApiController extends Controller
         }
     }
 
-    public function publicHeatmap(Request $request): JsonResponse
+    public function gisHeatmap(Request $request): JsonResponse
     {
+        $validator = Validator::make($request->query(), $this->heatmapFilterRules(), [
+            'date_from.date_format' => 'Date From must use the YYYY-MM-DD format.',
+            'date_to.date_format' => 'Date To must use the YYYY-MM-DD format.',
+            'date_to.after_or_equal' => 'Date To must be on or after Date From.',
+            'animal_type.in' => 'Animal type must be Dog, Cat, Other, or All.',
+            'who_category.in' => 'WHO category must be Category I, II, III, or All.',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid GIS filter parameters.',
+                'error' => $validator->errors()->first(),
+                'errors' => $validator->errors(),
+                'code' => 'GIS_FILTER_VALIDATION_FAILED',
+            ], 422);
+        }
+
+        $filters = $validator->validated();
+
         try {
-            $filters = $request->validate([
-                'date_from' => ['nullable', 'date'],
-                'date_to' => ['nullable', 'date'],
-                'animal_type' => ['nullable', 'string'],
-                'who_category' => ['nullable', 'string'],
+            return response()->json($this->heatmapPayload($filters));
+        } catch (\Throwable $exception) {
+            Log::error('GIS heatmap request failed', [
+                'exception' => $exception,
+                'user_id' => $request->user()?->id,
+                'filters' => $filters,
             ]);
-
-            $query = Incident::with(['barangay', 'pepSchedules']);
-
-            if (! blank($filters['date_from'] ?? null)) {
-                $query->whereDate('incident_date', '>=', $filters['date_from']);
-            }
-
-            if (! blank($filters['date_to'] ?? null)) {
-                $query->whereDate('incident_date', '<=', $filters['date_to']);
-            }
-
-            if (! blank($filters['animal_type'] ?? null) && strtolower($filters['animal_type']) !== 'all') {
-                $query->where('animal_type', $this->normalizeAnimalType($filters['animal_type']));
-            }
-
-            if (! blank($filters['who_category'] ?? null) && strtolower($filters['who_category']) !== 'all') {
-                $query->where('who_category', $this->normalizeWhoCategory($filters['who_category']));
-            }
-
-            $incidents = $query->get()
-                ->filter(fn (Incident $incident) => $this->incidentMapLocation($incident) !== null)
-                ->values();
-
-            $data = $incidents
-                ->groupBy(fn (Incident $incident) => $incident->barangay->name)
-                ->map(function ($group, string $barangayName): array {
-                    $totalIncidents = $group->count();
-                    $pepSchedules = $group->flatMap(fn (Incident $incident) => $incident->pepSchedules);
-                    $pepScheduleCount = $pepSchedules->count();
-                    $pepDoneCount = $pepSchedules->where('status', 'Done')->count();
-                    $topAnimalType = $group
-                        ->groupBy('animal_type')
-                        ->map(fn ($animalGroup) => $animalGroup->count())
-                        ->sortDesc()
-                        ->keys()
-                        ->first() ?? 'N/A';
-                    $latestIncident = $group->sortByDesc('id')->first();
-                    $locations = $group
-                        ->map(fn (Incident $incident) => $this->incidentMapLocation($incident))
-                        ->filter()
-                        ->values();
-
-                    return [
-                        'incident_id' => $latestIncident?->id,
-                        'incident_ids' => $group->pluck('id')->values(),
-                        'barangay_name' => $barangayName,
-                        'latitude' => round((float) $locations->avg('lat'), 8),
-                        'longitude' => round((float) $locations->avg('lng'), 8),
-                        'total_incident_count' => $totalIncidents,
-                        'total_incidents' => $totalIncidents,
-                        'top_animal_type' => $topAnimalType,
-                        'pep_compliance_rate' => $pepScheduleCount > 0
-                            ? round(($pepDoneCount / $pepScheduleCount) * 100, 1)
-                            : 0,
-                        'risk_level' => $this->riskLevelForIncidentCount($totalIncidents),
-                    ];
-                })
-                ->sortByDesc('total_incident_count')
-                ->values();
-
-            $heatPoints = $data->map(fn (array $item) => [
-                'barangay_name' => $item['barangay_name'],
-                'latitude' => $item['latitude'],
-                'longitude' => $item['longitude'],
-                'intensity' => $this->heatIntensityForIncidentCount($item['total_incident_count']),
-                'total_incident_count' => $item['total_incident_count'],
-            ])->values();
 
             return response()->json([
-                'success' => true,
-                'data' => $data,
-                'heat_points' => $heatPoints,
-                'bounds' => [
-                    'southwest' => [self::DIGOS_BOUNDS['south'], self::DIGOS_BOUNDS['west']],
-                    'northeast' => [self::DIGOS_BOUNDS['north'], self::DIGOS_BOUNDS['east']],
-                ],
-                'center' => [self::DIGOS_CENTER['lat'], self::DIGOS_CENTER['lng']],
-                'zoom' => 13,
-                'generated_at' => now()->toDateTimeString(),
-            ]);
+                'success' => false,
+                'message' => 'Unable to load live GIS incident data.',
+                'error' => 'Unable to load live GIS incident data.',
+                'code' => 'GIS_HEATMAP_UNAVAILABLE',
+            ], 500);
+        }
+    }
+
+    public function publicHeatmap(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->query(), $this->heatmapFilterRules());
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid heatmap filter parameters.',
+                'error' => $validator->errors()->first(),
+                'errors' => $validator->errors(),
+                'code' => 'PUBLIC_MAP_FILTER_VALIDATION_FAILED',
+            ], 422);
+        }
+
+        try {
+            return response()->json($this->heatmapPayload($validator->validated()));
         } catch (\Throwable $exception) {
             return $this->publicApiFailure($exception, 'Unable to load map data.', 'PUBLIC_MAP_UNAVAILABLE');
         }
+    }
+
+    private function heatmapFilterRules(): array
+    {
+        return [
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
+            'animal_type' => ['nullable', Rule::in(['All', 'Dog', 'Cat', 'Other'])],
+            'who_category' => ['nullable', Rule::in(['All', 'I', 'II', 'III', 'Category I', 'Category II', 'Category III'])],
+        ];
+    }
+
+    private function heatmapPayload(array $filters): array
+    {
+        $query = Incident::with(['barangay', 'pepSchedules']);
+
+        if (! blank($filters['date_from'] ?? null)) {
+            $query->whereDate('incident_date', '>=', $filters['date_from']);
+        }
+
+        if (! blank($filters['date_to'] ?? null)) {
+            $query->whereDate('incident_date', '<=', $filters['date_to']);
+        }
+
+        if (! blank($filters['animal_type'] ?? null) && strtolower($filters['animal_type']) !== 'all') {
+            $query->where('animal_type', $this->normalizeAnimalType($filters['animal_type']));
+        }
+
+        if (! blank($filters['who_category'] ?? null) && strtolower($filters['who_category']) !== 'all') {
+            $query->where('who_category', $this->normalizeWhoCategory($filters['who_category']));
+        }
+
+        $incidents = $query->get()
+            ->map(fn (Incident $incident) => [
+                'incident' => $incident,
+                'location' => $this->incidentMapLocation($incident),
+            ])
+            ->filter(fn (array $item) => $item['incident']->barangay !== null
+                && filled($item['incident']->barangay->name)
+                && $item['location'] !== null)
+            ->values();
+
+        $data = $incidents
+            ->groupBy(fn (array $item) => $item['incident']->barangay->name)
+            ->map(function ($group, string $barangayName): array {
+                $totalIncidents = $group->count();
+                $pepSchedules = $group->flatMap(fn (array $item) => $item['incident']->pepSchedules);
+                $pepScheduleCount = $pepSchedules->count();
+                $pepDoneCount = $pepSchedules->where('status', 'Done')->count();
+                $topAnimalType = $group
+                    ->groupBy(fn (array $item) => $item['incident']->animal_type)
+                    ->map(fn ($animalGroup) => $animalGroup->count())
+                    ->sortDesc()
+                    ->keys()
+                    ->first() ?? 'N/A';
+                $latestIncident = $group->sortByDesc(fn (array $item) => $item['incident']->id)->first()['incident'] ?? null;
+                $locations = $group
+                    ->pluck('location')
+                    ->values();
+
+                return [
+                    'incident_id' => $latestIncident?->id,
+                    'incident_ids' => $group->map(fn (array $item) => $item['incident']->id)->values(),
+                    'barangay_name' => $barangayName,
+                    'latitude' => round((float) $locations->avg('lat'), 8),
+                    'longitude' => round((float) $locations->avg('lng'), 8),
+                    'total_incident_count' => $totalIncidents,
+                    'total_incidents' => $totalIncidents,
+                    'top_animal_type' => $topAnimalType,
+                    'pep_compliance_rate' => $pepScheduleCount > 0
+                        ? round(($pepDoneCount / $pepScheduleCount) * 100, 1)
+                        : 0,
+                    'risk_level' => $this->riskLevelForIncidentCount($totalIncidents),
+                ];
+            })
+            ->sortByDesc('total_incident_count')
+            ->values();
+
+        $heatPoints = $data->map(fn (array $item) => [
+            'barangay_name' => $item['barangay_name'],
+            'latitude' => $item['latitude'],
+            'longitude' => $item['longitude'],
+            'intensity' => $this->heatIntensityForIncidentCount($item['total_incident_count']),
+            'total_incident_count' => $item['total_incident_count'],
+        ])->values();
+
+        return [
+            'success' => true,
+            'data' => $data,
+            'heat_points' => $heatPoints,
+            'bounds' => [
+                'southwest' => [self::DIGOS_BOUNDS['south'], self::DIGOS_BOUNDS['west']],
+                'northeast' => [self::DIGOS_BOUNDS['north'], self::DIGOS_BOUNDS['east']],
+            ],
+            'center' => [self::DIGOS_CENTER['lat'], self::DIGOS_CENTER['lng']],
+            'zoom' => 13,
+            'generated_at' => now()->toDateTimeString(),
+        ];
     }
 
     public function publicBarangayStats(): JsonResponse
@@ -3211,11 +3276,19 @@ class BitemapApiController extends Controller
 
     private function incidentMapLocation(Incident $incident): ?array
     {
-        if ($this->isInsideDigosBounds($incident->location_lat, $incident->location_lng)) {
+        $incidentLatitude = $incident->getRawOriginal('location_lat');
+        $incidentLongitude = $incident->getRawOriginal('location_lng');
+        $hasExactCoordinateValue = filled($incidentLatitude) || filled($incidentLongitude);
+
+        if ($this->isInsideDigosBounds($incidentLatitude, $incidentLongitude)) {
             return [
-                'lat' => (float) $incident->location_lat,
-                'lng' => (float) $incident->location_lng,
+                'lat' => (float) $incidentLatitude,
+                'lng' => (float) $incidentLongitude,
             ];
+        }
+
+        if ($hasExactCoordinateValue) {
+            return null;
         }
 
         $barangay = $incident->barangay;
@@ -3223,10 +3296,13 @@ class BitemapApiController extends Controller
             return null;
         }
 
-        if ($this->isInsideDigosBounds($barangay->latitude, $barangay->longitude)) {
+        $barangayLatitude = $barangay->getRawOriginal('latitude');
+        $barangayLongitude = $barangay->getRawOriginal('longitude');
+
+        if ($this->isInsideDigosBounds($barangayLatitude, $barangayLongitude)) {
             return [
-                'lat' => (float) $barangay->latitude,
-                'lng' => (float) $barangay->longitude,
+                'lat' => (float) $barangayLatitude,
+                'lng' => (float) $barangayLongitude,
             ];
         }
 
@@ -3270,12 +3346,16 @@ class BitemapApiController extends Controller
 
     private function isInsideDigosBounds(mixed $latitude, mixed $longitude): bool
     {
-        if ($latitude === null || $longitude === null) {
+        if (! is_numeric($latitude) || ! is_numeric($longitude)) {
             return false;
         }
 
         $lat = (float) $latitude;
         $lng = (float) $longitude;
+
+        if (! is_finite($lat) || ! is_finite($lng) || $lat < -90 || $lat > 90 || $lng < -180 || $lng > 180) {
+            return false;
+        }
 
         return $lat >= self::DIGOS_BOUNDS['south']
             && $lat <= self::DIGOS_BOUNDS['north']

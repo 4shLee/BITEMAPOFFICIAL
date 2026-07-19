@@ -34,6 +34,72 @@ interface HeatPoint {
   total_incident_count: number;
 }
 
+const validCoordinate = (value: unknown, minimum: number, maximum: number): number | null => {
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
+
+  const coordinate = Number(value);
+  return Number.isFinite(coordinate) && coordinate >= minimum && coordinate <= maximum
+    ? coordinate
+    : null;
+};
+
+const validBarangayData = (value: unknown): BarangayData[] => {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+
+    const record = item as Record<string, unknown>;
+    const latitude = validCoordinate(record.latitude, -90, 90);
+    const longitude = validCoordinate(record.longitude, -180, 180);
+    const barangayName = typeof record.barangay_name === 'string' ? record.barangay_name.trim() : '';
+
+    if (latitude === null || longitude === null || !barangayName) return [];
+
+    return [{
+      ...record,
+      barangay_name: barangayName,
+      latitude,
+      longitude,
+      incident_id: typeof record.incident_id === 'number' ? record.incident_id : null,
+      incident_ids: Array.isArray(record.incident_ids)
+        ? record.incident_ids.filter((id): id is number => typeof id === 'number')
+        : [],
+      total_incident_count: Number(record.total_incident_count) || 0,
+      total_incidents: Number(record.total_incidents) || 0,
+      top_animal_type: typeof record.top_animal_type === 'string' ? record.top_animal_type : 'N/A',
+      pep_compliance_rate: Number(record.pep_compliance_rate) || 0,
+      risk_level: ['LOW RISK', 'MODERATE RISK', 'HIGH RISK'].includes(String(record.risk_level))
+        ? record.risk_level as BarangayData['risk_level']
+        : 'LOW RISK',
+    } as BarangayData];
+  });
+};
+
+const validHeatPoints = (value: unknown): HeatPoint[] => {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+
+    const record = item as Record<string, unknown>;
+    const latitude = validCoordinate(record.latitude, -90, 90);
+    const longitude = validCoordinate(record.longitude, -180, 180);
+    const barangayName = typeof record.barangay_name === 'string' ? record.barangay_name.trim() : '';
+
+    if (latitude === null || longitude === null || !barangayName) return [];
+
+    return [{
+      barangay_name: barangayName,
+      latitude,
+      longitude,
+      intensity: Math.min(1, Math.max(0, Number(record.intensity) || 0)),
+      total_incident_count: Number(record.total_incident_count) || 0,
+    }];
+  });
+};
+
 const DIGOS_CENTER: [number, number] = [6.7497, 125.3572];
 const DIGOS_BOUNDS: [[number, number], [number, number]] = [[6.63, 125.25], [6.88, 125.48]];
 
@@ -68,6 +134,7 @@ export function GISMap() {
   const [dateTo, setDateTo] = useState('');
   const [animalType, setAnimalType] = useState('All');
   const [category, setCategory] = useState('All');
+  const [retryRequest, setRetryRequest] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -138,6 +205,8 @@ export function GISMap() {
   }, [mapLoading]);
 
   useEffect(() => {
+    let cancelled = false;
+
     const loadHeatmapData = async () => {
       setLoading(true);
       setError(null);
@@ -150,9 +219,11 @@ export function GISMap() {
           who_category: category
         });
 
-        const nextData = (response.data || []) as BarangayData[];
+        if (cancelled) return;
+
+        const nextData = validBarangayData(response.data);
         setBarangayData(nextData);
-        setHeatPoints((response.heat_points || []) as HeatPoint[]);
+        setHeatPoints(validHeatPoints(response.heat_points));
         setSelectedBarangay((current) => {
           if (current && nextData.some((item) => item.barangay_name === current)) {
             return current;
@@ -161,17 +232,22 @@ export function GISMap() {
           return nextData[0]?.barangay_name ?? null;
         });
       } catch (loadError) {
-        setBarangayData([]);
-        setHeatPoints([]);
-        setSelectedBarangay(null);
-        setError('Unable to load live GIS incident data.');
+        if (!cancelled) {
+          setError(loadError instanceof Error && loadError.message
+            ? loadError.message
+            : 'Unable to load live GIS incident data.');
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     loadHeatmapData();
-  }, [dateFrom, dateTo, animalType, category]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dateFrom, dateTo, animalType, category, retryRequest]);
 
   useEffect(() => {
     const map = mapInstanceRef.current;
@@ -254,7 +330,7 @@ export function GISMap() {
   ];
 
   const selectedData = barangayData.find((item) => item.barangay_name === selectedBarangay) ?? null;
-  const emptyMessage = 'No incident data available yet.';
+  const emptyMessage = 'No incident data found for the selected filters.';
 
   return (
     <div className="min-h-screen flex-1 bg-[#f3f7f5]">
@@ -284,9 +360,18 @@ export function GISMap() {
             )}
 
             {error && (
-              <div className="absolute inset-0 z-[400] flex items-center justify-center bg-white/80">
-                <div className="rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
-                  <p className="text-sm text-destructive">{error}</p>
+              <div className={barangayData.length > 0
+                ? 'absolute left-1/2 top-4 z-[400] w-[calc(100%-2rem)] max-w-md -translate-x-1/2'
+                : 'absolute inset-0 z-[400] flex items-center justify-center bg-white/80'}>
+                <div className="rounded-2xl border border-rose-100 bg-white px-4 py-3 text-center shadow-sm">
+                  <p className="text-sm font-medium text-destructive">{error}</p>
+                  <button
+                    type="button"
+                    onClick={() => setRetryRequest((request) => request + 1)}
+                    className="mt-3 inline-flex h-9 items-center justify-center rounded-xl bg-primary px-4 text-xs font-bold text-primary-foreground transition-colors hover:bg-primary/90"
+                  >
+                    Retry
+                  </button>
                 </div>
               </div>
             )}

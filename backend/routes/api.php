@@ -42,6 +42,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/incidents/{incident}', [BitemapApiController::class, 'deleteIncident'])
         ->middleware('role:clinic_admin');
 
+    Route::get('/gis/heatmap', [BitemapApiController::class, 'gisHeatmap'])
+        ->middleware('role:clinic_admin,doctor,nurse_vaccinator');
+
     Route::get('/pep-schedule', [BitemapApiController::class, 'pepSchedule'])
         ->middleware('role:clinic_admin,doctor,nurse_vaccinator');
     Route::put('/pep-schedule/{schedule}', [BitemapApiController::class, 'updatePepSchedule'])
