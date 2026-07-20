@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const incidentReport = await readFile(new URL('../src/app/pages/IncidentReport.tsx', import.meta.url), 'utf8');
+const incidentLocationPicker = await readFile(new URL('../src/app/components/Incidents/IncidentLocationPicker.tsx', import.meta.url), 'utf8');
 const mainLayout = await readFile(new URL('../src/app/components/Layout/MainLayout.tsx', import.meta.url), 'utf8');
 const patientForm = await readFile(new URL('../src/app/pages/PatientRecordForm.tsx', import.meta.url), 'utf8');
 const apiService = await readFile(new URL('../src/lib/services/api.ts', import.meta.url), 'utf8');
@@ -48,4 +49,26 @@ test('validation scrolling is submit-driven and targets only the first invalid f
   assert.match(incidentReport, /querySelector<HTMLElement>\('\[aria-invalid="true"\]'\)/);
   assert.doesNotMatch(incidentReport, /querySelectorAll<HTMLElement>\('\[aria-invalid="true"\]'\)/);
   assert.equal((incidentReport.match(/focusFirstInvalidField\(\);/g) || []).length, 2);
+});
+
+test('suggested WHO category confirmation uses the same safe selection path as category cards', () => {
+  assert.match(incidentReport, /const selectWhoCategory = \(category: string\)/);
+  assert.match(incidentReport, /if \(whoSuggestion\?\.category\) selectWhoCategory\(whoSuggestion\.category\)/);
+  assert.match(incidentReport, /onChange=\{\(event\) => selectWhoCategory\(event\.target\.value\)\}/);
+  assert.match(incidentReport, /displayedCategory === cat\.value && !\(formData\.whoCategoryConfirmed && formData\.whoCategory === cat\.value\)/);
+  assert.match(incidentReport, /whoCategoryConfirmed: true,[\s\S]*whoCategoryOverrideReason: ''/);
+  assert.doesNotMatch(incidentReport, /name="whoCategory"[\s\S]{0,200}className="sr-only"/);
+});
+
+test('WHO overrides remain drafts until reasoned confirmation and can be canceled', () => {
+  assert.match(incidentReport, /const \[pendingWhoOverride, setPendingWhoOverride\]/);
+  assert.match(incidentReport, /const confirmCategoryOverride = \(\) =>/);
+  assert.match(incidentReport, /Reason for changing Category \{whoSuggestion\.category\} to Category \{pendingWhoOverride\.category\}/);
+  assert.match(incidentReport, /onClick=\{cancelCategoryOverride\}/);
+  assert.match(incidentReport, /whoCategory: pendingWhoOverride\.category,[\s\S]*whoCategoryOverrideReason: reason/);
+});
+
+test('incident map establishes a clipped local stacking context', () => {
+  assert.match(incidentLocationPicker, /relative isolate z-0 overflow-hidden rounded-xl/);
+  assert.match(incidentLocationPicker, /className="relative z-0 h-52 w-full"/);
 });

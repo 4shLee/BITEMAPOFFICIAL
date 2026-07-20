@@ -133,10 +133,10 @@ export function IncidentLocationPicker({
   }, [barangayCoordinates?.lat, barangayCoordinates?.lng, barangayName, exactPin, latitude, longitude, pendingLatitude, pendingLongitude]);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-emerald-100 bg-slate-100 shadow-inner">
+    <div className="relative isolate z-0 overflow-hidden rounded-xl border border-emerald-100 bg-slate-100 shadow-inner">
       <div
         ref={containerRef}
-        className="h-52 w-full"
+        className="relative z-0 h-52 w-full"
         role="application"
         aria-label="Incident location map. Click the map to set an exact incident pin."
       />

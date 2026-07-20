@@ -45,6 +45,11 @@ type PatientOption = {
   sms_consent?: boolean | number | null;
 };
 
+type PendingWhoOverride = {
+  category: string;
+  reason: string;
+};
+
 type BarangayOption = {
   id: number | string;
   name: string;
@@ -362,6 +367,7 @@ export function IncidentReport() {
   const [saving, setSaving] = useState(false);
   const [savedIncident, setSavedIncident] = useState<any>(null);
   const [pendingPin, setPendingPin] = useState<{ latitude: string; longitude: string } | null>(null);
+  const [pendingWhoOverride, setPendingWhoOverride] = useState<PendingWhoOverride | null>(null);
   const [hasStructuredAssessment, setHasStructuredAssessment] = useState(!isEditMode);
   const [isLegacyClassification, setIsLegacyClassification] = useState(false);
   const [persistedPepStartDate, setPersistedPepStartDate] = useState('');
@@ -403,6 +409,7 @@ export function IncidentReport() {
         setLoadingIncident(true);
         setLoadError(null);
         setPendingPin(null);
+        setPendingWhoOverride(null);
         const response = await incidentsAPI.getById(id);
         const incident = response.data;
         const patient = incident?.patient || {};
@@ -589,10 +596,12 @@ export function IncidentReport() {
   const updateAssessmentField = <K extends keyof IncidentFormData>(field: K, value: IncidentFormData[K]) => {
     setHasStructuredAssessment(true);
     setIsLegacyClassification(false);
+    setPendingWhoOverride(null);
     setFormData((current) => ({
       ...current,
       [field]: value,
       whoCategoryConfirmed: false,
+      whoCategoryOverrideReason: '',
     }));
     setErrors((current) => ({
       ...current,
@@ -605,6 +614,7 @@ export function IncidentReport() {
   const toggleExposureContact = (contactType: ExposureContactType) => {
     setHasStructuredAssessment(true);
     setIsLegacyClassification(false);
+    setPendingWhoOverride(null);
     setFormData((current) => {
       const nextTypes = current.exposureContactTypes.includes(contactType)
         ? current.exposureContactTypes.filter((value) => value !== contactType)
@@ -620,13 +630,54 @@ export function IncidentReport() {
         exposureSalivaContactSite: nextTypes.includes('lick') ? current.exposureSalivaContactSite : '',
         exposureDirectBatContact: nextTypes.includes('bat_contact') ? current.exposureDirectBatContact : '',
         whoCategoryConfirmed: false,
+        whoCategoryOverrideReason: '',
       };
     });
     setErrors((current) => ({ ...current, exposureContactTypes: undefined, whoCategoryConfirmed: undefined }));
   };
 
-  const selectFinalCategory = (category: string) => {
-    if (isLegacyClassification && category !== formData.whoCategory) {
+  const selectWhoCategory = (category: string) => {
+    const suggestedCategory = whoSuggestion?.category || '';
+    if (!category) return;
+
+    if (suggestedCategory && category === suggestedCategory) {
+      setPendingWhoOverride(null);
+      setFormData((current) => ({
+        ...current,
+        whoCategory: category,
+        whoCategoryConfirmed: true,
+        whoCategoryOverrideReason: '',
+      }));
+      setErrors((current) => ({
+        ...current,
+        whoCategory: undefined,
+        whoCategoryConfirmed: undefined,
+        whoCategoryOverrideReason: undefined,
+      }));
+      return;
+    }
+
+    if (suggestedCategory) {
+      setPendingWhoOverride((current) => ({
+        category,
+        reason: current?.category === category ? current.reason : '',
+      }));
+      setErrors((current) => ({
+        ...current,
+        whoCategory: undefined,
+        whoCategoryConfirmed: undefined,
+        whoCategoryOverrideReason: undefined,
+      }));
+      return;
+    }
+
+    setPendingWhoOverride(null);
+    if (isLegacyClassification && category === formData.whoCategory) {
+      setErrors((current) => ({ ...current, whoCategory: undefined, whoCategoryConfirmed: undefined }));
+      return;
+    }
+
+    if (isLegacyClassification) {
       setHasStructuredAssessment(true);
       setIsLegacyClassification(false);
     }
@@ -634,20 +685,42 @@ export function IncidentReport() {
       ...current,
       whoCategory: category,
       whoCategoryConfirmed: false,
-      whoCategoryOverrideReason: whoSuggestion.category === category ? '' : current.whoCategoryOverrideReason,
+      whoCategoryOverrideReason: '',
     }));
     setErrors((current) => ({ ...current, whoCategory: undefined, whoCategoryConfirmed: undefined }));
   };
 
   const confirmSuggestedCategory = () => {
-    if (!whoSuggestion.category) return;
+    if (whoSuggestion?.category) selectWhoCategory(whoSuggestion.category);
+  };
+
+  const confirmCategoryOverride = () => {
+    if (!pendingWhoOverride) return;
+
+    const reason = pendingWhoOverride.reason.trim();
+    if (!reason) {
+      setErrors((current) => ({ ...current, whoCategoryOverrideReason: 'Reason for changing the suggested category is required.' }));
+      return;
+    }
+
     setFormData((current) => ({
       ...current,
-      whoCategory: whoSuggestion.category || '',
+      whoCategory: pendingWhoOverride.category,
       whoCategoryConfirmed: true,
-      whoCategoryOverrideReason: '',
+      whoCategoryOverrideReason: reason,
     }));
-    setErrors((current) => ({ ...current, whoCategory: undefined, whoCategoryConfirmed: undefined, whoCategoryOverrideReason: undefined }));
+    setPendingWhoOverride(null);
+    setErrors((current) => ({
+      ...current,
+      whoCategory: undefined,
+      whoCategoryConfirmed: undefined,
+      whoCategoryOverrideReason: undefined,
+    }));
+  };
+
+  const cancelCategoryOverride = () => {
+    setPendingWhoOverride(null);
+    setErrors((current) => ({ ...current, whoCategoryOverrideReason: undefined }));
   };
 
   const confirmSelectedCategory = () => {
@@ -1438,28 +1511,36 @@ export function IncidentReport() {
               <p className="mb-3 mt-1 text-xs text-muted-foreground">Select the category to be clinically confirmed. The system suggestion is not a diagnosis or treatment order.</p>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                 {categoryCards.map((cat) => {
-                  const isSuggested = whoSuggestion.category === cat.value;
+                  const displayedCategory = pendingWhoOverride?.category || formData.whoCategory;
+                  const isSuggested = whoSuggestion?.category === cat.value;
                   const isConfirmed = hasStructuredAssessment && formData.whoCategoryConfirmed && formData.whoCategory === cat.value;
+                  const isPendingOverride = pendingWhoOverride?.category === cat.value;
 
                   return (
                     <label
                       key={cat.value}
-                      className={'border rounded-xl p-3 cursor-pointer transition-all ' + (formData.whoCategory === cat.value ? cat.activeClass : cat.idleClass)}
+                      className={'relative border rounded-xl p-3 cursor-pointer transition-all focus-within:ring-2 focus-within:ring-primary/30 ' + (displayedCategory === cat.value ? cat.activeClass : cat.idleClass)}
                     >
                       <input
                         type="radio"
                         name="whoCategory"
                         value={cat.value}
-                        checked={formData.whoCategory === cat.value}
-                        onChange={(event) => selectFinalCategory(event.target.value)}
-                        className="sr-only"
+                        checked={displayedCategory === cat.value}
+                        onClick={(event) => {
+                          if (displayedCategory === cat.value && !(formData.whoCategoryConfirmed && formData.whoCategory === cat.value)) {
+                            selectWhoCategory(event.currentTarget.value);
+                          }
+                        }}
+                        onChange={(event) => selectWhoCategory(event.target.value)}
+                        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                       />
                       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                         <div className="font-bold text-sm text-foreground">{cat.label}</div>
                         <div className="flex flex-wrap justify-end gap-1">
                           {isSuggested && <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">System Suggested</span>}
                           {isConfirmed && <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white">Clinically Confirmed</span>}
-                          {!isSuggested && !isConfirmed && <span className={'rounded-full px-2 py-0.5 text-[10px] font-bold ' + cat.badgeClass}>{cat.risk}</span>}
+                          {isPendingOverride && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">Pending Override</span>}
+                          {!isSuggested && !isConfirmed && !isPendingOverride && <span className={'rounded-full px-2 py-0.5 text-[10px] font-bold ' + cat.badgeClass}>{cat.risk}</span>}
                         </div>
                       </div>
                       <div className="text-xs text-muted-foreground leading-relaxed">{cat.desc}</div>
@@ -1470,29 +1551,37 @@ export function IncidentReport() {
               {errors.whoCategory && <p className="mt-2 text-xs font-medium text-destructive">{errors.whoCategory}</p>}
             </fieldset>
 
-            {hasStructuredAssessment && whoSuggestion.category && formData.whoCategory && whoSuggestion.category !== formData.whoCategory && (
-              <div className="mt-4">
+            {hasStructuredAssessment && whoSuggestion?.category && pendingWhoOverride && (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 p-3">
                 <label htmlFor="who-category-override-reason" className="mb-1.5 block text-sm font-semibold text-foreground">
-                  Reason for changing the suggested category *
+                  Reason for changing Category {whoSuggestion.category} to Category {pendingWhoOverride.category} *
                 </label>
                 <textarea
                   id="who-category-override-reason"
                   rows={3}
                   maxLength={1000}
-                  value={formData.whoCategoryOverrideReason}
+                  value={pendingWhoOverride.reason}
                   onChange={(event) => {
-                    updateField('whoCategoryOverrideReason', event.target.value);
-                    updateField('whoCategoryConfirmed', false);
+                    setPendingWhoOverride((current) => current ? { ...current, reason: event.target.value } : current);
+                    setErrors((current) => ({ ...current, whoCategoryOverrideReason: undefined }));
                   }}
                   placeholder="Briefly describe the clinical finding that changed the classification."
                   aria-invalid={Boolean(errors.whoCategoryOverrideReason)}
                   className="w-full rounded-xl border border-border bg-white px-3 py-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
                 />
                 {errors.whoCategoryOverrideReason && <p className="mt-1 text-xs font-medium text-destructive">{errors.whoCategoryOverrideReason}</p>}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button type="button" size="sm" onClick={confirmCategoryOverride}>
+                    Confirm Override to Category {pendingWhoOverride.category}
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" onClick={cancelCategoryOverride}>
+                    Cancel Override
+                  </Button>
+                </div>
               </div>
             )}
 
-            {hasStructuredAssessment && formData.whoCategory && !formData.whoCategoryConfirmed && (
+            {hasStructuredAssessment && formData.whoCategory && !formData.whoCategoryConfirmed && !pendingWhoOverride && (
               <Button type="button" className="mt-4" onClick={confirmSelectedCategory}>
                 Clinically Confirm Category {formData.whoCategory}
               </Button>

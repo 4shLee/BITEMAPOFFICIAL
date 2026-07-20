@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
-import { Bell, CalendarDays, Check, ClipboardCheck, Clock, Eye, History, MessageSquare, Phone, RefreshCw, ShieldCheck, Syringe, X } from 'lucide-react';
+import { Bell, CalendarDays, Check, ChevronsUpDown, ClipboardCheck, Clock, Eye, History, MessageSquare, Phone, RefreshCw, ShieldCheck, Syringe, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Header } from '../components/Layout/Header';
 import { Badge } from '../components/UI/Badge';
 import { Button } from '../components/UI/Button';
 import { Input } from '../components/UI/Input';
+import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { inventoryAPI, notificationsAPI, pepScheduleAPI } from '../../lib/services/api';
 import { canPerformAction, getStoredUser } from '../../lib/auth/roleAccess';
 import { getPatientDisplayName } from '../../lib/patient';
@@ -212,6 +214,159 @@ function isEligiblePepVaccineInventoryItem(item: InventoryItem) {
     && !itemName.includes('tetanus');
 }
 
+function getScheduleGroupStatus(group: ScheduleGroup) {
+  const completedDoses = group.doses.filter((dose) => dose.status === 'completed' || dose.status === 'completed_late').length;
+  const completedLateDoses = group.doses.filter((dose) => dose.status === 'completed_late').length;
+  const hasOverdueDose = group.doses.some((dose) => dose.status === 'overdue' || dose.status === 'missed');
+  const hasDueTodayDose = group.doses.some((dose) => dose.status === 'due_today');
+
+  if (completedDoses === group.doses.length) return completedLateDoses > 0 ? 'Completed Late' : 'Completed';
+  if (hasOverdueDose) return 'Overdue';
+  if (hasDueTodayDose) return 'Due Today';
+  return 'On Track';
+}
+
+function normalizeScheduleSearch(value: string) {
+  return value.toLocaleLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function compactScheduleSearch(value: string) {
+  return normalizeScheduleSearch(value).replace(/[^a-z0-9]/g, '');
+}
+
+function matchesScheduleSearch(group: ScheduleGroup, searchText: string) {
+  const normalizedQuery = normalizeScheduleSearch(searchText);
+  if (!normalizedQuery) return true;
+
+  const searchableText = normalizeScheduleSearch([
+    group.patient,
+    group.contact_number,
+    group.incidentId,
+    'Incident #' + group.incidentId,
+    group.category,
+    getScheduleGroupStatus(group),
+  ].filter(Boolean).join(' '));
+
+  return searchableText.includes(normalizedQuery)
+    || compactScheduleSearch(searchableText).includes(compactScheduleSearch(normalizedQuery));
+}
+
+function scheduleSearchRank(group: ScheduleGroup, searchText: string) {
+  const compactQuery = compactScheduleSearch(searchText);
+  if (compactQuery === group.incidentId || compactQuery === 'incident' + group.incidentId) return 0;
+  return 1;
+}
+
+type PatientIncidentComboboxProps = {
+  groups: ScheduleGroup[];
+  selectedIncidentId: string;
+  onSelect: (incidentId: string) => void;
+};
+
+function PatientIncidentCombobox({ groups, selectedIncidentId, onSelect }: PatientIncidentComboboxProps) {
+  const [open, setOpen] = useState(false);
+  const [searchText, setSearchText] = useState('');
+  const selectedGroup = groups.find((group) => group.incidentId === selectedIncidentId);
+  const filteredGroups = useMemo(
+    () => groups
+      .filter((group) => matchesScheduleSearch(group, searchText))
+      .sort((left, right) => scheduleSearchRank(left, searchText) - scheduleSearchRank(right, searchText)),
+    [groups, searchText]
+  );
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen);
+    if (!nextOpen) setSearchText('');
+  };
+
+  const handleSelect = (incidentId: string) => {
+    onSelect(incidentId);
+    setSearchText('');
+    setOpen(false);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          role="combobox"
+          aria-expanded={open}
+          aria-controls="pep-patient-incident-listbox"
+          aria-label="Patient Schedule"
+          className="mt-3 flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border border-input bg-input-background px-3 py-2 text-left text-sm text-foreground shadow-sm transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+        >
+          <span className={selectedGroup ? 'min-w-0 truncate font-semibold' : 'min-w-0 truncate text-muted-foreground'}>
+            {selectedGroup
+              ? selectedGroup.patient + ' — Incident #' + selectedGroup.incidentId
+              : 'Select a patient incident to view the PEP schedule.'}
+          </span>
+          <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        sideOffset={6}
+        collisionPadding={12}
+        className="z-50 w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-1.5rem)] overflow-hidden p-0"
+      >
+        <Command shouldFilter={false} label="Patient incident schedules">
+          <CommandInput
+            value={searchText}
+            onValueChange={setSearchText}
+            onKeyDownCapture={(event) => {
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                handleOpenChange(false);
+              }
+            }}
+            placeholder="Search patient name, contact number, or incident ID"
+            aria-label="Search patient name, contact number, or incident ID"
+          />
+          <CommandList id="pep-patient-incident-listbox" className="max-h-72 overscroll-contain">
+            {filteredGroups.length === 0 ? (
+              <div className="px-4 py-8 text-center text-sm font-medium text-muted-foreground">
+                No matching patient incidents found.
+              </div>
+            ) : (
+              <CommandGroup heading="Patient incidents">
+                {filteredGroups.map((group) => {
+                  const groupStatus = getScheduleGroupStatus(group);
+                  const isSelected = group.incidentId === selectedIncidentId;
+
+                  return (
+                    <CommandItem
+                      key={group.incidentId}
+                      value={'incident-' + group.incidentId}
+                      onSelect={() => handleSelect(group.incidentId)}
+                      className="items-start gap-3 px-3 py-3"
+                    >
+                      <Check className={'mt-0.5 h-4 w-4 shrink-0 text-primary ' + (isSelected ? 'opacity-100' : 'opacity-0')} aria-hidden="true" />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span className="font-bold text-foreground">{group.patient}</span>
+                          <span className="text-xs font-extrabold text-primary">Incident #{group.incidentId}</span>
+                        </span>
+                        {group.contact_number && <span className="mt-1 block text-xs text-muted-foreground">{group.contact_number}</span>}
+                        <span className="mt-1 flex flex-wrap gap-1.5 text-[11px] font-semibold text-muted-foreground">
+                          <span>{group.category}</span>
+                          <span aria-hidden="true">•</span>
+                          <span>{groupStatus}</span>
+                        </span>
+                      </span>
+                    </CommandItem>
+                  );
+                })}
+              </CommandGroup>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function PEPSchedule() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -222,6 +377,7 @@ export function PEPSchedule() {
   const [selectedIncidentId, setSelectedIncidentId] = useState<string>('');
   const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [recordDose, setRecordDose] = useState<Dose | null>(null);
   const [recordForm, setRecordForm] = useState<RecordDoseForm>({
     administeredDate: todayKey(),
@@ -244,11 +400,35 @@ export function PEPSchedule() {
 
   useEffect(() => {
     loadSchedule();
-  }, [requestedIncidentId]);
+  }, []);
+
+  useEffect(() => {
+    if (loading || loadError || groups.length === 0) return;
+
+    if (requestedIncidentId) {
+      const requestedGroup = groups.find((group) => group.incidentId === requestedIncidentId);
+      if (requestedGroup) {
+        setSelectedIncidentId(requestedGroup.incidentId);
+        setSelectionNotice(null);
+      } else {
+        setSelectedIncidentId(groups[0].incidentId);
+        setSelectionNotice('No PEP schedule found for the selected incident. Showing the first available schedule instead.');
+      }
+      return;
+    }
+
+    setSelectedIncidentId((current) => (
+      current && groups.some((group) => group.incidentId === current)
+        ? current
+        : groups[0].incidentId
+    ));
+    setSelectionNotice(null);
+  }, [groups, loadError, loading, requestedIncidentId]);
 
   const loadSchedule = async () => {
     try {
       setLoading(true);
+      setLoadError(null);
       const [scheduleResponse, inventoryResponse] = await Promise.all([
         pepScheduleAPI.getAll(),
         inventoryAPI.getAll().catch(() => null),
@@ -256,33 +436,27 @@ export function PEPSchedule() {
       if (scheduleResponse.success) {
         const nextGroups = buildScheduleGroups(scheduleResponse.data || []);
         setGroups(nextGroups);
-
-        if (requestedIncidentId) {
-          const requestedGroup = nextGroups.find((group) => group.incidentId === requestedIncidentId);
-          if (requestedGroup) {
-            setSelectedIncidentId(requestedGroup.incidentId);
-            setSelectionNotice(null);
-          } else {
-            setSelectedIncidentId(nextGroups[0]?.incidentId || '');
-            setSelectionNotice('No PEP schedule found for the selected incident. Showing the first available schedule instead.');
-          }
-        } else {
-          setSelectedIncidentId((current) => (
-            current && nextGroups.some((group) => group.incidentId === current)
-              ? current
-              : nextGroups[0]?.incidentId || ''
-          ));
-          setSelectionNotice(null);
-        }
+      } else {
+        throw new Error('Unable to load patient schedules.');
       }
       if (inventoryResponse?.success) {
         setInventoryItems(inventoryResponse.data || []);
       }
     } catch (error: any) {
+      setLoadError(error.message || 'Unable to load patient schedules.');
       toast.error(error.message || 'Failed to load PEP schedule.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleScheduleSelection = (incidentId: string) => {
+    setSelectedIncidentId(incidentId);
+    setSelectionNotice(null);
+
+    const params = new URLSearchParams(location.search);
+    params.set('incident_id', incidentId);
+    navigate(location.pathname + '?' + params.toString(), { replace: true });
   };
 
   const schedule = useMemo(
@@ -458,10 +632,15 @@ export function PEPSchedule() {
 
       <div className="px-5 py-5 lg:px-7 lg:py-6">
         {loading ? (
-          <div className="rounded-2xl border border-border bg-card p-8 text-center text-sm text-muted-foreground shadow-sm">Loading PEP schedules...</div>
-        ) : !schedule ? (
+          <div className="rounded-2xl border border-border bg-card p-8 text-center text-sm text-muted-foreground shadow-sm">Loading patient schedules…</div>
+        ) : loadError ? (
+          <div className="rounded-2xl border border-rose-200 bg-card p-8 text-center shadow-sm" role="alert">
+            <p className="text-sm font-semibold text-rose-900">Unable to load patient schedules.</p>
+            <Button type="button" variant="outline" size="sm" className="mt-3" onClick={loadSchedule}>Retry</Button>
+          </div>
+        ) : groups.length === 0 ? (
           <div className="rounded-2xl border border-border bg-card p-8 text-center text-sm text-muted-foreground shadow-sm">
-            No PEP schedules yet. Create an incident first so the Day 0, 3, 7, 14, and 28 schedule can be generated.
+            No PEP schedules available.
           </div>
         ) : (
           <div className="mx-auto max-w-[1480px] space-y-4">
@@ -475,18 +654,11 @@ export function PEPSchedule() {
               <div className="rounded-2xl border border-border bg-white p-4 shadow-sm">
                 <label className="block text-sm font-bold text-foreground">Patient Schedule</label>
                 <p className="mt-0.5 text-xs text-muted-foreground">Select a patient incident to view the PEP schedule.</p>
-                <select
-                  value={schedule.incidentId}
-                  onChange={(event) => {
-                    setSelectedIncidentId(event.target.value);
-                    setSelectionNotice(null);
-                  }}
-                  className="mt-3 w-full rounded-xl border border-input bg-input-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                >
-                  {groups.map((group) => (
-                    <option key={group.incidentId} value={group.incidentId}>{group.patient} - Incident #{group.incidentId}</option>
-                  ))}
-                </select>
+                <PatientIncidentCombobox
+                  groups={groups}
+                  selectedIncidentId={selectedIncidentId}
+                  onSelect={handleScheduleSelection}
+                />
               </div>
 
               <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm shadow-emerald-950/5">
