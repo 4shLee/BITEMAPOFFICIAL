@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
-import { Bell, CalendarDays, Check, ChevronsUpDown, ClipboardCheck, Clock, Eye, History, MessageSquare, Phone, RefreshCw, ShieldCheck, Syringe, X } from 'lucide-react';
+import { Bell, CalendarDays, Check, ChevronDown, ClipboardCheck, Clock, Eye, History, MessageSquare, Phone, RefreshCw, ShieldCheck, Syringe, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Header } from '../components/Layout/Header';
 import { Badge } from '../components/UI/Badge';
@@ -257,15 +257,32 @@ function scheduleSearchRank(group: ScheduleGroup, searchText: string) {
   return 1;
 }
 
+function scheduleCategoryTone(category: string) {
+  const normalizedCategory = category.trim().toLocaleLowerCase();
+  if (normalizedCategory.includes('iii')) return 'border-rose-200 bg-rose-50 text-rose-700';
+  if (normalizedCategory.includes('ii')) return 'border-amber-200 bg-amber-50 text-amber-800';
+  return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+}
+
+function scheduleStatusTone(status: string) {
+  if (status === 'Overdue') return 'border-rose-200 bg-rose-50 text-rose-700';
+  if (status === 'Completed Late' || status === 'Due Today') return 'border-amber-200 bg-amber-50 text-amber-800';
+  return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+}
+
 type PatientIncidentComboboxProps = {
   groups: ScheduleGroup[];
   selectedIncidentId: string;
   onSelect: (incidentId: string) => void;
+  loading: boolean;
+  loadError: string | null;
+  onRetry: () => void;
 };
 
-function PatientIncidentCombobox({ groups, selectedIncidentId, onSelect }: PatientIncidentComboboxProps) {
+function PatientIncidentCombobox({ groups, selectedIncidentId, onSelect, loading, loadError, onRetry }: PatientIncidentComboboxProps) {
   const [open, setOpen] = useState(false);
   const [searchText, setSearchText] = useState('');
+  const [keyboardNavigation, setKeyboardNavigation] = useState(false);
   const selectedGroup = groups.find((group) => group.incidentId === selectedIncidentId);
   const filteredGroups = useMemo(
     () => groups
@@ -276,7 +293,10 @@ function PatientIncidentCombobox({ groups, selectedIncidentId, onSelect }: Patie
 
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);
-    if (!nextOpen) setSearchText('');
+    if (!nextOpen) {
+      setSearchText('');
+      setKeyboardNavigation(false);
+    }
   };
 
   const handleSelect = (incidentId: string) => {
@@ -284,6 +304,16 @@ function PatientIncidentCombobox({ groups, selectedIncidentId, onSelect }: Patie
     setSearchText('');
     setOpen(false);
   };
+
+  const triggerLabel = selectedGroup
+    ? selectedGroup.patient + ' — Incident #' + selectedGroup.incidentId
+    : loading
+      ? 'Loading patient schedules…'
+      : loadError
+        ? 'Unable to load patient schedules.'
+        : groups.length === 0
+          ? 'No PEP schedules available.'
+          : 'Select a patient incident to view the PEP schedule.';
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
@@ -294,43 +324,65 @@ function PatientIncidentCombobox({ groups, selectedIncidentId, onSelect }: Patie
           aria-expanded={open}
           aria-controls="pep-patient-incident-listbox"
           aria-label="Patient Schedule"
-          className="mt-3 flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border border-input bg-input-background px-3 py-2 text-left text-sm text-foreground shadow-sm transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+          className="mt-3 flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm text-slate-900 shadow-sm transition-colors selection:bg-emerald-100 hover:border-emerald-500 focus-visible:border-emerald-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600/25"
         >
           <span className={selectedGroup ? 'min-w-0 truncate font-semibold' : 'min-w-0 truncate text-muted-foreground'}>
-            {selectedGroup
-              ? selectedGroup.patient + ' — Incident #' + selectedGroup.incidentId
-              : 'Select a patient incident to view the PEP schedule.'}
+            {triggerLabel}
           </span>
-          <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <ChevronDown className={'h-4 w-4 shrink-0 text-slate-500 transition-transform duration-200 ' + (open ? 'rotate-180' : '')} aria-hidden="true" />
         </button>
       </PopoverTrigger>
       <PopoverContent
         align="start"
         sideOffset={6}
         collisionPadding={12}
-        className="z-50 w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-1.5rem)] overflow-hidden p-0"
+        className="z-[9] w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-slate-200 bg-white p-0 shadow-xl shadow-slate-900/10"
       >
-        <Command shouldFilter={false} label="Patient incident schedules">
-          <CommandInput
-            value={searchText}
-            onValueChange={setSearchText}
-            onKeyDownCapture={(event) => {
-              if (event.key === 'Escape') {
-                event.preventDefault();
-                event.stopPropagation();
-                handleOpenChange(false);
-              }
-            }}
-            placeholder="Search patient name, contact number, or incident ID"
-            aria-label="Search patient name, contact number, or incident ID"
-          />
-          <CommandList id="pep-patient-incident-listbox" className="max-h-72 overscroll-contain">
-            {filteredGroups.length === 0 ? (
-              <div className="px-4 py-8 text-center text-sm font-medium text-muted-foreground">
+        <Command
+          shouldFilter={false}
+          label="Patient incident schedules"
+          className="rounded-xl bg-white selection:bg-emerald-100 [&_[data-slot=command-input-wrapper]]:h-10 [&_[data-slot=command-input-wrapper]]:border-slate-200 [&_[data-slot=command-input-wrapper]]:bg-slate-50/70 [&_[data-slot=command-input-wrapper]]:transition-shadow [&_[data-slot=command-input-wrapper]]:focus-within:ring-2 [&_[data-slot=command-input-wrapper]]:focus-within:ring-inset [&_[data-slot=command-input-wrapper]]:focus-within:ring-emerald-600/25 [&_[data-slot=command-input-wrapper]_svg]:text-emerald-700"
+        >
+          {!loading && !loadError && groups.length > 0 && (
+            <CommandInput
+              value={searchText}
+              onValueChange={setSearchText}
+              onKeyDownCapture={(event) => {
+                if (event.key === 'ArrowDown' || event.key === 'ArrowUp') setKeyboardNavigation(true);
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  handleOpenChange(false);
+                }
+              }}
+              placeholder="Search patient name, contact number, or incident ID"
+              aria-label="Search patient name, contact number, or incident ID"
+              className="text-slate-900 caret-emerald-700 selection:bg-emerald-100 placeholder:text-slate-500"
+            />
+          )}
+          <CommandList
+            id="pep-patient-incident-listbox"
+            className="max-h-64 overscroll-contain [scrollbar-color:rgb(167_196_181)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-emerald-200 [&::-webkit-scrollbar-track]:bg-transparent"
+          >
+            {loading ? (
+              <div className="px-4 py-5 text-center text-sm font-medium text-slate-600" role="status">
+                Loading patient schedules…
+              </div>
+            ) : loadError ? (
+              <div className="px-4 py-4 text-center" role="alert">
+                <p className="text-sm font-semibold text-rose-800">Unable to load patient schedules.</p>
+                <Button type="button" variant="outline" size="sm" className="mt-2 border-emerald-300 text-emerald-800 hover:border-emerald-500 hover:bg-emerald-50 focus-visible:ring-emerald-600/25" onClick={onRetry}>Retry</Button>
+              </div>
+            ) : groups.length === 0 ? (
+              <div className="px-4 py-5 text-center text-sm font-medium text-slate-600">
+                No PEP schedules available.
+              </div>
+            ) : filteredGroups.length === 0 ? (
+              <div className="px-4 py-5 text-center text-sm font-medium text-slate-600">
                 No matching patient incidents found.
               </div>
             ) : (
-              <CommandGroup heading="Patient incidents">
+              <CommandGroup className="space-y-0.5 p-1.5">
                 {filteredGroups.map((group) => {
                   const groupStatus = getScheduleGroupStatus(group);
                   const isSelected = group.incidentId === selectedIncidentId;
@@ -340,19 +392,27 @@ function PatientIncidentCombobox({ groups, selectedIncidentId, onSelect }: Patie
                       key={group.incidentId}
                       value={'incident-' + group.incidentId}
                       onSelect={() => handleSelect(group.incidentId)}
-                      className="items-start gap-3 px-3 py-3"
+                      onPointerMove={() => setKeyboardNavigation(false)}
+                      data-current={isSelected ? 'true' : undefined}
+                      aria-label={group.patient + ', Incident #' + group.incidentId + (group.contact_number ? ', ' + group.contact_number : '') + ', ' + group.category + ', ' + groupStatus}
+                      className={'min-h-[68px] items-center gap-2.5 rounded-lg border-l-2 px-2.5 py-2 text-slate-900! transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600/35 data-[current=true]:border-l-emerald-600 data-[current=true]:bg-emerald-50! data-[current=true]:shadow-[inset_0_0_0_1px_rgba(5,150,105,0.12)] data-[selected=true]:text-slate-900! ' + (keyboardNavigation
+                        ? 'data-[selected=true]:bg-emerald-50! data-[selected=true]:shadow-[inset_0_0_0_1px_rgba(5,150,105,0.45)]'
+                        : 'data-[selected=true]:bg-slate-50!')}
                     >
-                      <Check className={'mt-0.5 h-4 w-4 shrink-0 text-primary ' + (isSelected ? 'opacity-100' : 'opacity-0')} aria-hidden="true" />
+                      <Check className={'h-4 w-4 shrink-0 text-emerald-700 ' + (isSelected ? 'opacity-100' : 'opacity-0')} aria-hidden="true" />
                       <span className="min-w-0 flex-1">
-                        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                          <span className="font-bold text-foreground">{group.patient}</span>
-                          <span className="text-xs font-extrabold text-primary">Incident #{group.incidentId}</span>
+                        <span className="flex min-w-0 items-center justify-between gap-2">
+                          <span className="min-w-0 truncate font-bold text-slate-900" title={group.patient}>{group.patient}</span>
+                          <span className="shrink-0 rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] font-extrabold text-emerald-800">Incident #{group.incidentId}</span>
                         </span>
-                        {group.contact_number && <span className="mt-1 block text-xs text-muted-foreground">{group.contact_number}</span>}
-                        <span className="mt-1 flex flex-wrap gap-1.5 text-[11px] font-semibold text-muted-foreground">
-                          <span>{group.category}</span>
-                          <span aria-hidden="true">•</span>
-                          <span>{groupStatus}</span>
+                        <span className="mt-1.5 flex min-w-0 items-center justify-between gap-2">
+                          <span className="min-w-0 flex-1 truncate text-xs text-slate-500">
+                            {group.contact_number || 'No contact number'}
+                          </span>
+                          <span className="flex shrink-0 items-center gap-1">
+                            <span className={'rounded-full border px-1.5 py-0.5 text-[10px] font-bold leading-none ' + scheduleCategoryTone(group.category)}>{group.category}</span>
+                            <span className={'rounded-full border px-1.5 py-0.5 text-[10px] font-bold leading-none ' + scheduleStatusTone(groupStatus)}>{groupStatus}</span>
+                          </span>
                         </span>
                       </span>
                     </CommandItem>
@@ -631,36 +691,29 @@ export function PEPSchedule() {
       <Header title="PEP Schedule Management" breadcrumbs={['Patients', 'PEP Schedule']} />
 
       <div className="px-5 py-5 lg:px-7 lg:py-6">
-        {loading ? (
-          <div className="rounded-2xl border border-border bg-card p-8 text-center text-sm text-muted-foreground shadow-sm">Loading patient schedules…</div>
-        ) : loadError ? (
-          <div className="rounded-2xl border border-rose-200 bg-card p-8 text-center shadow-sm" role="alert">
-            <p className="text-sm font-semibold text-rose-900">Unable to load patient schedules.</p>
-            <Button type="button" variant="outline" size="sm" className="mt-3" onClick={loadSchedule}>Retry</Button>
+        <div className="mx-auto max-w-[1480px] space-y-4">
+          <div className="rounded-2xl border border-border bg-white p-4 shadow-sm">
+            <label className="block text-sm font-bold text-foreground">Patient Schedule</label>
+            <p className="mt-0.5 text-xs text-muted-foreground">Select a patient incident to view the PEP schedule.</p>
+            <PatientIncidentCombobox
+              groups={groups}
+              selectedIncidentId={selectedIncidentId}
+              onSelect={handleScheduleSelection}
+              loading={loading}
+              loadError={loadError}
+              onRetry={loadSchedule}
+            />
           </div>
-        ) : groups.length === 0 ? (
-          <div className="rounded-2xl border border-border bg-card p-8 text-center text-sm text-muted-foreground shadow-sm">
-            No PEP schedules available.
-          </div>
-        ) : (
-          <div className="mx-auto max-w-[1480px] space-y-4">
-            {selectionNotice && (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
-                {selectionNotice}
-              </div>
-            )}
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-              <main className="space-y-4">
-              <div className="rounded-2xl border border-border bg-white p-4 shadow-sm">
-                <label className="block text-sm font-bold text-foreground">Patient Schedule</label>
-                <p className="mt-0.5 text-xs text-muted-foreground">Select a patient incident to view the PEP schedule.</p>
-                <PatientIncidentCombobox
-                  groups={groups}
-                  selectedIncidentId={selectedIncidentId}
-                  onSelect={handleScheduleSelection}
-                />
-              </div>
 
+          {selectionNotice && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+              {selectionNotice}
+            </div>
+          )}
+          {!loading && !loadError && groups.length > 0 && (
+            <>
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+              <main className="space-y-4">
               <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm shadow-emerald-950/5">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <div>
@@ -839,9 +892,10 @@ export function PEPSchedule() {
                   </tbody>
                 </table>
               </div>
-            </div>
-          </div>
-        )}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {recordDose && (

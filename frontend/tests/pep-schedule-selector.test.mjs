@@ -3,6 +3,10 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const pepSchedule = await readFile(new URL('../src/app/pages/PEPSchedule.tsx', import.meta.url), 'utf8');
+const comboboxSource = pepSchedule.slice(
+  pepSchedule.indexOf('function PatientIncidentCombobox'),
+  pepSchedule.indexOf('export function PEPSchedule')
+);
 
 test('patient schedule selection uses an accessible searchable combobox', () => {
   assert.match(pepSchedule, /function PatientIncidentCombobox/);
@@ -10,7 +14,7 @@ test('patient schedule selection uses an accessible searchable combobox', () => 
   assert.match(pepSchedule, /aria-controls="pep-patient-incident-listbox"/);
   assert.match(pepSchedule, /Search patient name, contact number, or incident ID/);
   assert.match(pepSchedule, /No matching patient incidents found\./);
-  assert.match(pepSchedule, /<CommandList id="pep-patient-incident-listbox"/);
+  assert.match(pepSchedule, /<CommandList\s+[\s\S]*?id="pep-patient-incident-listbox"/);
   assert.doesNotMatch(pepSchedule, /<label className="block text-sm font-bold text-foreground">Patient Schedule<\/label>[\s\S]{0,300}<select/);
 });
 
@@ -43,5 +47,34 @@ test('Escape explicitly closes and clears the patient incident search', () => {
   assert.match(pepSchedule, /if \(event\.key === 'Escape'\)/);
   assert.match(pepSchedule, /event\.stopPropagation\(\)/);
   assert.match(pepSchedule, /handleOpenChange\(false\)/);
-  assert.match(pepSchedule, /if \(!nextOpen\) setSearchText\(''\)/);
+  assert.match(pepSchedule, /if \(!nextOpen\) \{[\s\S]*?setSearchText\(''\)/);
+});
+
+test('combobox interaction styling uses scoped green and neutral states without blue', () => {
+  assert.doesNotMatch(comboboxSource, /blue/i);
+  assert.match(comboboxSource, /hover:bg-slate-50/);
+  assert.match(comboboxSource, /data-\[selected=true\]:bg-emerald-50!/);
+  assert.match(comboboxSource, /data-\[current=true\]:border-l-emerald-600/);
+  assert.match(comboboxSource, /focus-visible:ring-emerald-600/);
+  assert.match(comboboxSource, /<Check /);
+});
+
+test('combobox panel and rows remain compact and responsive', () => {
+  assert.match(comboboxSource, /w-\[var\(--radix-popover-trigger-width\)\]/);
+  assert.match(comboboxSource, /max-w-\[calc\(100vw-1\.5rem\)\]/);
+  assert.match(comboboxSource, /max-h-64/);
+  assert.match(comboboxSource, /scrollbar-width:thin/);
+  assert.match(comboboxSource, /min-h-\[68px\]/);
+  assert.match(comboboxSource, /title=\{group\.patient\}/);
+});
+
+test('closed selector and compact states use the polished combobox surface', () => {
+  assert.match(comboboxSource, /<ChevronDown/);
+  assert.match(comboboxSource, /open \? 'rotate-180'/);
+  assert.doesNotMatch(comboboxSource, /ChevronsUpDown/);
+  assert.match(comboboxSource, /loading \? \(/);
+  assert.match(comboboxSource, /loadError \? \(/);
+  assert.match(comboboxSource, /groups\.length === 0 \? \(/);
+  assert.match(comboboxSource, /onClick=\{onRetry\}>Retry<\/Button>/);
+  assert.doesNotMatch(comboboxSource, /heading="Patient incidents"/);
 });
