@@ -137,6 +137,7 @@ export function IncidentDetail() {
       ? (outsideLocation ? 'Location: ' + outsideLocation : 'Outside Digos City')
       : barangayName ? 'Barangay: ' + barangayName : '',
   ].filter(Boolean).join(' • ');
+  const pepSchedules = [...(incident?.pep_schedules || [])].sort((a, b) => (a.dose_day ?? 0) - (b.dose_day ?? 0));
   const clinicalNotes = [
     ['Nature of Contact', exposureContacts],
     ...(hasStructuredAssessment ? [
@@ -149,10 +150,10 @@ export function IncidentDetail() {
     ['Animal Status', readNoteValue(incident?.notes, 'Animal Status')],
     ['Animal Condition', readNoteValue(incident?.notes, 'Animal Condition')],
     ['Wound Washed', readNoteValue(incident?.notes, 'Wound Washed')],
-    ['Date of First Consult', readNoteValue(incident?.notes, 'Date of First Consult')],
+    ['Date of First Consult', incident?.first_consult_date || readNoteValue(incident?.notes, 'Date of First Consult')],
+    ['PEP Start Date / Day 0', incident?.pep_start_date || pepSchedules.find((schedule: any) => Number(schedule.dose_day) === 0)?.scheduled_date || 'Legacy schedule date not recorded'],
     ['SMS Reminder Permission', readNoteValue(incident?.notes, 'SMS Consent')],
   ];
-  const pepSchedules = [...(incident?.pep_schedules || [])].sort((a, b) => (a.dose_day ?? 0) - (b.dose_day ?? 0));
 
   return (
     <div className="flex-1 bg-[#f6f8f7] min-h-screen">

@@ -123,7 +123,7 @@ function buildScheduleGroups(rows: any[]): ScheduleGroup[] {
       contact_number: patient.contact_number || '',
       smsConsent: incident.sms_consent === true,
       category: incident.who_category || 'Category II',
-      startDate: incident.incident_date || first.scheduled_date,
+      startDate: incident.pep_start_date || first.scheduled_date,
       barangay: incident.barangay?.name,
       doses: items
         .sort((a, b) => a.dose_day - b.dose_day)

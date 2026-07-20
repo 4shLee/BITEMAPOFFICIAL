@@ -7,7 +7,6 @@ use App\Models\Patient;
 use App\Models\PepSchedule;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Carbon;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -15,152 +14,161 @@ class IncidentDateScheduleSyncTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_updating_incident_date_recalculates_existing_schedule_without_losing_completion_data(): void
+    private User $user;
+
+    private Patient $patient;
+
+    protected function setUp(): void
     {
-        $user = User::factory()->create([
-            'role' => 'Nurse',
+        parent::setUp();
+
+        $this->user = User::factory()->create([
+            'role' => 'nurse_vaccinator',
             'is_active' => true,
             'approval_status' => 'approved',
         ]);
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($this->user);
 
-        $patient = Patient::create([
-            'full_name' => 'Schedule Sync Patient',
+        $this->patient = Patient::create([
+            'full_name' => 'Schedule Patient',
             'age' => 30,
             'sex' => 'Female',
             'address' => 'Digos City',
-            'contact_number' => '09171234567',
         ]);
+    }
 
-        $incident = Incident::create([
-            'patient_id' => $patient->id,
-            'incident_date' => '2026-07-05',
-            'animal_type' => 'Dog',
-            'bite_site' => 'Left arm',
-            'who_category' => 'II',
-            'status' => 'Active',
-        ]);
+    public function test_day_zero_and_follow_up_doses_use_pep_start_date_not_incident_date(): void
+    {
+        $response = $this->postJson('/api/incidents', $this->payload())
+            ->assertCreated()
+            ->assertJsonPath('data.incident_date', '2026-07-01')
+            ->assertJsonPath('data.pep_start_date', '2026-07-04');
 
-        foreach ([0, 3, 7, 14, 28] as $day) {
-            PepSchedule::create([
-                'incident_id' => $incident->id,
-                'dose_day' => $day,
-                'scheduled_date' => Carbon::parse('2026-07-05')->addDays($day)->toDateString(),
-                'status' => $day === 0 ? 'Done' : 'Pending',
-                'administered_date' => $day === 0 ? '2026-07-05' : null,
-                'administered_by' => $day === 0 ? $user->id : null,
-                'vaccine_lot_number' => $day === 0 ? 'LOT-001' : null,
-            ]);
-        }
-
-        $response = $this->putJson('/api/incidents/'.$incident->id, [
-            'patient_id' => $patient->id,
-            'location_scope' => 'outside_digos',
-            'incident_city_municipality' => 'Bansalan',
-            'incident_province' => 'Davao del Sur',
-            'incident_date' => '2026-07-06',
-            'animal_type' => 'Dog',
-            'bite_site' => 'Left arm',
-            'who_category' => 'Category II',
-            'status' => 'Active',
-        ]);
-
-        $response->assertOk()
-            ->assertJsonPath('data.incident_date', '2026-07-06')
-            ->assertJsonPath('data.pep_schedules.0.scheduled_date', '2026-07-06');
-
-        foreach ([0 => '2026-07-06', 3 => '2026-07-09', 7 => '2026-07-13', 14 => '2026-07-20', 28 => '2026-08-03'] as $day => $date) {
-            $schedule = PepSchedule::where('incident_id', $incident->id)
-                ->where('dose_day', $day)
-                ->firstOrFail();
-            $this->assertSame($date, $schedule->scheduled_date->toDateString());
-        }
-
-        $this->assertSame(5, PepSchedule::where('incident_id', $incident->id)->count());
-        $completedDose = PepSchedule::where('incident_id', $incident->id)
-            ->where('dose_day', 0)
-            ->firstOrFail();
-        $this->assertSame('Done', $completedDose->status);
-        $this->assertSame('2026-07-05', $completedDose->administered_date->toDateString());
-        $this->assertSame($user->id, $completedDose->administered_by);
-        $this->assertSame('LOT-001', $completedDose->vaccine_lot_number);
-
-        $patientResponse = $this->getJson('/api/patients/'.$patient->id);
-        $patientResponse->assertOk()
-            ->assertJsonPath('data.incidents.0.incident_date', '2026-07-06');
-
-        $scheduleResponse = $this->getJson('/api/pep-schedule');
-        $scheduleResponse->assertOk();
         $this->assertSame(
-            ['2026-07-06', '2026-07-09', '2026-07-13', '2026-07-20', '2026-08-03'],
-            collect($scheduleResponse->json('data'))->pluck('scheduled_date')->all()
+            ['2026-07-04', '2026-07-07', '2026-07-11', '2026-07-18', '2026-08-01'],
+            collect($response->json('data.pep_schedules'))->pluck('scheduled_date')->all()
+        );
+        $this->assertDatabaseHas('incidents', [
+            'id' => $response->json('data.id'),
+            'incident_date' => '2026-07-01',
+            'pep_start_date' => '2026-07-04',
+        ]);
+    }
+
+    public function test_changing_incident_date_does_not_move_an_established_pep_schedule(): void
+    {
+        $incidentId = $this->postJson('/api/incidents', $this->payload())->assertCreated()->json('data.id');
+
+        $this->putJson('/api/incidents/'.$incidentId, $this->payload([
+            'incident_date' => '2026-07-02',
+        ]))->assertOk()->assertJsonPath('data.incident_date', '2026-07-02');
+
+        $this->assertSame(
+            ['2026-07-04', '2026-07-07', '2026-07-11', '2026-07-18', '2026-08-01'],
+            PepSchedule::where('incident_id', $incidentId)->orderBy('dose_day')->get()
+                ->map(fn (PepSchedule $schedule) => $schedule->scheduled_date->toDateString())->all()
         );
     }
 
-    public function test_updating_an_already_corrected_incident_repairs_a_coherent_legacy_schedule(): void
+    public function test_pending_schedule_requires_confirmation_then_recalculates_from_new_day_zero(): void
     {
-        $user = User::factory()->create([
-            'role' => 'Nurse',
-            'is_active' => true,
-            'approval_status' => 'approved',
-        ]);
-        Sanctum::actingAs($user);
+        $incidentId = $this->postJson('/api/incidents', $this->payload())->assertCreated()->json('data.id');
+        $changed = $this->payload(['pep_start_date' => '2026-07-05']);
 
-        $patient = Patient::create([
-            'full_name' => 'Legacy Schedule Patient',
-            'age' => 51,
-            'sex' => 'Female',
-            'address' => 'Digos City',
-            'contact_number' => '09170000000',
+        $this->putJson('/api/incidents/'.$incidentId, $changed)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('pep_start_date')
+            ->assertJsonFragment(['Confirm recalculation of the pending PEP schedule from the new Day 0 date.']);
+
+        $this->putJson('/api/incidents/'.$incidentId, array_merge($changed, [
+            'confirm_pep_schedule_recalculation' => true,
+        ]))->assertOk();
+
+        $this->assertSame(
+            ['2026-07-05', '2026-07-08', '2026-07-12', '2026-07-19', '2026-08-02'],
+            PepSchedule::where('incident_id', $incidentId)->orderBy('dose_day')->get()
+                ->map(fn (PepSchedule $schedule) => $schedule->scheduled_date->toDateString())->all()
+        );
+    }
+
+    public function test_completed_dose_history_blocks_day_zero_rewrite(): void
+    {
+        $incidentId = $this->postJson('/api/incidents', $this->payload())->assertCreated()->json('data.id');
+        $dayZero = PepSchedule::where('incident_id', $incidentId)->where('dose_day', 0)->firstOrFail();
+        $dayZero->update([
+            'status' => 'Done',
+            'administered_date' => '2026-07-04',
+            'administered_by' => $this->user->id,
+            'vaccine_lot_number' => 'LOT-001',
         ]);
+
+        $this->putJson('/api/incidents/'.$incidentId, $this->payload([
+            'pep_start_date' => '2026-07-05',
+            'confirm_pep_schedule_recalculation' => true,
+        ]))->assertUnprocessable()->assertJsonValidationErrors('pep_start_date');
+
+        $completedDose = $dayZero->fresh();
+        $this->assertSame('2026-07-04', $completedDose->scheduled_date->toDateString());
+        $this->assertSame('2026-07-04', $completedDose->administered_date->toDateString());
+        $this->assertSame('LOT-001', $completedDose->vaccine_lot_number);
+    }
+
+    public function test_legacy_incident_without_pep_start_date_still_loads_without_rewriting_schedule(): void
+    {
         $incident = Incident::create([
-            'patient_id' => $patient->id,
-            'incident_date' => '2026-07-13',
+            'patient_id' => $this->patient->id,
+            'incident_date' => '2026-06-01',
             'animal_type' => 'Dog',
             'bite_site' => 'Left hand',
-            'who_category' => 'III',
-            'status' => 'Active',
+            'who_category' => 'II',
+        ]);
+        PepSchedule::create([
+            'incident_id' => $incident->id,
+            'dose_day' => 0,
+            'scheduled_date' => '2026-06-03',
+            'status' => 'Done',
+            'administered_date' => '2026-06-03',
         ]);
 
-        foreach ([0, 3, 7, 14, 28] as $day) {
-            PepSchedule::create([
-                'incident_id' => $incident->id,
-                'dose_day' => $day,
-                'scheduled_date' => Carbon::parse('1975-06-22')->addDays($day)->toDateString(),
-                'status' => $day === 0 ? 'Done' : 'Pending',
-                'administered_date' => $day === 0 ? '2026-07-13' : null,
-                'administered_by' => $day === 0 ? $user->id : null,
-                'vaccine_lot_number' => $day === 0 ? 'LEGACY-LOT' : null,
-            ]);
-        }
+        $this->getJson('/api/incidents/'.$incident->id)
+            ->assertOk()
+            ->assertJsonPath('data.pep_start_date', null)
+            ->assertJsonPath('data.pep_schedules.0.scheduled_date', '2026-06-03');
 
         $this->putJson('/api/incidents/'.$incident->id, [
-            'patient_id' => $patient->id,
+            'patient_id' => $this->patient->id,
             'location_scope' => 'outside_digos',
             'incident_city_municipality' => 'Bansalan',
             'incident_province' => 'Davao del Sur',
-            'incident_date' => '2026-07-13',
+            'incident_date' => '2026-06-02',
             'animal_type' => 'Dog',
-            'bite_site' => 'Left hand',
-            'who_category' => 'Category III',
+            'who_category' => 'Category II',
+        ])->assertOk();
+
+        $this->assertNull($incident->fresh()->pep_start_date);
+        $this->assertSame('2026-06-03', PepSchedule::firstOrFail()->scheduled_date->toDateString());
+    }
+
+    private function payload(array $overrides = []): array
+    {
+        return array_merge([
+            'patient_type' => 'existing',
+            'patient_id' => $this->patient->id,
+            'location_scope' => 'outside_digos',
+            'incident_city_municipality' => 'Bansalan',
+            'incident_province' => 'Davao del Sur',
+            'incident_date' => '2026-07-01',
+            'first_consult_date' => '2026-07-03',
+            'pep_start_date' => '2026-07-04',
+            'animal_type' => 'Dog',
+            'bite_site' => 'Left arm',
+            'exposure_contact_types' => ['scratch'],
+            'exposure_skin_condition' => 'broken',
+            'exposure_bleeding_present' => false,
+            'exposure_transdermal' => false,
+            'who_category' => 'Category II',
+            'who_category_confirmed' => true,
             'status' => 'Active',
-        ])->assertOk()
-            ->assertJsonPath('data.pep_schedules.4.scheduled_date', '2026-08-10');
-
-        $this->assertSame(
-            ['2026-07-13', '2026-07-16', '2026-07-20', '2026-07-27', '2026-08-10'],
-            PepSchedule::where('incident_id', $incident->id)
-                ->orderBy('dose_day')
-                ->get()
-                ->map(fn (PepSchedule $schedule) => $schedule->scheduled_date->toDateString())
-                ->all()
-        );
-        $this->assertSame(5, PepSchedule::where('incident_id', $incident->id)->count());
-
-        $completedDose = PepSchedule::where('incident_id', $incident->id)->where('dose_day', 0)->firstOrFail();
-        $this->assertSame('Done', $completedDose->status);
-        $this->assertSame('2026-07-13', $completedDose->administered_date->toDateString());
-        $this->assertSame($user->id, $completedDose->administered_by);
-        $this->assertSame('LEGACY-LOT', $completedDose->vaccine_lot_number);
+        ], $overrides);
     }
 }

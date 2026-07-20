@@ -225,3 +225,9 @@
     line-height: 1.5;
   }
 }
+
+html.bitemap-app-shell,
+body.bitemap-app-shell {
+  height: 100%;
+  overflow: hidden;
+}

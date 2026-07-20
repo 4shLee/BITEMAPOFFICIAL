@@ -309,9 +309,13 @@ class BitemapApiController extends Controller
 
     public function storeIncident(Request $request): JsonResponse
     {
-        $patient = $this->resolveIncidentPatient($request);
-        $incident = Incident::create($this->incidentData($request, $patient));
-        $this->createPepScheduleForIncident($incident);
+        $incident = DB::transaction(function () use ($request): Incident {
+            $patient = $this->resolveIncidentPatient($request);
+            $incident = Incident::create($this->incidentData($request, $patient));
+            $this->createPepScheduleForIncident($incident);
+
+            return $incident;
+        });
 
         return response()->json([
             'success' => true,
@@ -324,12 +328,25 @@ class BitemapApiController extends Controller
         DB::transaction(function () use ($request, $incident): void {
             $patient = $this->resolveIncidentPatient($request, $incident->patient);
             $incidentData = $this->incidentData($request, $patient, $incident);
-            $incidentDateChanged = $incident->incident_date?->toDateString() !== $incidentData['incident_date'];
+            $pepStartDateChanged = $incident->pep_start_date?->toDateString() !== $incidentData['pep_start_date'];
+
+            if ($pepStartDateChanged && $incident->pepSchedules()->where(function ($query): void {
+                $query->whereNotNull('administered_date')->orWhereIn('status', ['Done', 'Completed']);
+            })->exists()) {
+                throw ValidationException::withMessages([
+                    'pep_start_date' => 'PEP Start Date cannot be changed after a dose has been completed.',
+                ]);
+            }
+
+            if ($pepStartDateChanged && $incident->pepSchedules()->exists() && ! $request->boolean('confirm_pep_schedule_recalculation')) {
+                throw ValidationException::withMessages([
+                    'pep_start_date' => 'Confirm recalculation of the pending PEP schedule from the new Day 0 date.',
+                ]);
+            }
 
             $incident->update($incidentData);
             $updatedIncident = $incident->fresh();
-            $shouldRecalculateSchedule = $incidentDateChanged || $this->hasStaleStandardPepSchedule($updatedIncident);
-            $this->syncPepScheduleForIncident($updatedIncident, $shouldRecalculateSchedule);
+            $this->syncPepScheduleForIncident($updatedIncident, $pepStartDateChanged);
         });
 
         return response()->json([
@@ -2569,8 +2586,15 @@ class BitemapApiController extends Controller
 
     private function resolveIncidentPatient(Request $request, ?Patient $fallback = null): Patient
     {
-        if ($request->filled('patient_id')) {
-            return Patient::findOrFail($request->input('patient_id'));
+        if ($request->filled('patient_id') || $request->input('patient_type') === 'existing') {
+            $data = $request->validate([
+                'patient_id' => ['required', 'integer', 'exists:patients,id'],
+            ], [
+                'patient_id.required' => 'Select an existing patient.',
+                'patient_id.exists' => 'The selected patient could not be found.',
+            ]);
+
+            return Patient::findOrFail($data['patient_id']);
         }
 
         if ($fallback) {
@@ -2588,10 +2612,13 @@ class BitemapApiController extends Controller
         $hasStoredAssessment = $incident?->exposure_contact_types !== null;
         $hasAssessmentInput = $request->exists('exposure_contact_types');
         $requiresStructuredAssessment = $incident === null || $hasStoredAssessment || $hasAssessmentInput;
+        $requiresPepStartDate = $incident === null || $incident->pep_start_date !== null || $request->exists('pep_start_date');
 
         $validator = Validator::make($request->all(), [
             'incident_date' => ['required', 'date', 'before_or_equal:today'],
             'incident_time' => ['nullable'],
+            'first_consult_date' => ['nullable', 'date', 'after_or_equal:incident_date', 'before_or_equal:today'],
+            'pep_start_date' => [Rule::requiredIf($requiresPepStartDate), 'nullable', 'date', 'after_or_equal:incident_date'],
             'animal_type' => ['nullable', 'string'],
             'bite_location' => ['nullable', 'string', 'max:150'],
             'bite_site' => ['nullable', 'string', 'max:150'],
@@ -2667,10 +2694,21 @@ class BitemapApiController extends Controller
             'incident_province.required' => 'Province of Incident is required for incidents outside Digos City.',
             'exposure_contact_types.required' => 'Select at least one nature of contact for the exposure assessment.',
             'who_category.required' => 'A clinic professional must select the final WHO category.',
+            'pep_start_date.required' => 'Enter the first vaccine dose date to generate the PEP schedule.',
+            'pep_start_date.after_or_equal' => 'PEP Start Date cannot be earlier than Date of Incident.',
+            'first_consult_date.after_or_equal' => 'Date of First Consult cannot be earlier than Date of Incident.',
         ]);
 
         $data = $validator->validate();
         $incidentDate = Carbon::parse($data['incident_date'])->toDateString();
+        $firstConsultDate = blank($data['first_consult_date'] ?? null) ? null : Carbon::parse($data['first_consult_date'])->toDateString();
+        $pepStartDate = blank($data['pep_start_date'] ?? null) ? null : Carbon::parse($data['pep_start_date'])->toDateString();
+
+        if ($firstConsultDate && $pepStartDate && Carbon::parse($pepStartDate)->lt(Carbon::parse($firstConsultDate))) {
+            throw ValidationException::withMessages([
+                'pep_start_date' => 'PEP Start Date cannot be earlier than Date of First Consult.',
+            ]);
+        }
 
         if (! $requiresStructuredAssessment && $incident && $request->filled('who_category')) {
             $submittedCategory = $this->normalizeWhoCategory($request->string('who_category')->toString());
@@ -2704,6 +2742,8 @@ class BitemapApiController extends Controller
             'barangay_id' => $data['location_scope'] === 'within_digos' ? $data['barangay_id'] : null,
             'incident_date' => $incidentDate,
             'incident_time' => $data['incident_time'] ?? null,
+            'first_consult_date' => $firstConsultDate,
+            'pep_start_date' => $pepStartDate,
             'animal_type' => $this->normalizeAnimalType($data['animal_type'] ?? 'Dog'),
             'animal_description' => $request->input('animal_description'),
             'bite_site' => $data['bite_site'] ?? $data['bite_location'] ?? 'Not specified',
@@ -2825,7 +2865,11 @@ class BitemapApiController extends Controller
 
     private function syncPepScheduleForIncident(Incident $incident, bool $updateExisting = false): void
     {
-        $startDate = Carbon::parse($incident->incident_date);
+        if (! $incident->pep_start_date) {
+            return;
+        }
+
+        $startDate = Carbon::parse($incident->pep_start_date);
 
         foreach (self::PEP_DOSE_DAY_OFFSETS as $day) {
             $schedule = PepSchedule::firstOrNew([
@@ -2842,32 +2886,6 @@ class BitemapApiController extends Controller
                 $schedule->save();
             }
         }
-    }
-
-    private function hasStaleStandardPepSchedule(Incident $incident): bool
-    {
-        $schedules = $incident->pepSchedules()
-            ->whereIn('dose_day', self::PEP_DOSE_DAY_OFFSETS)
-            ->get()
-            ->keyBy('dose_day');
-
-        if ($schedules->count() !== count(self::PEP_DOSE_DAY_OFFSETS) || ! $schedules->has(0)) {
-            return false;
-        }
-
-        $scheduleStartDate = Carbon::parse($schedules->get(0)->scheduled_date);
-        if ($scheduleStartDate->isSameDay(Carbon::parse($incident->incident_date))) {
-            return false;
-        }
-
-        foreach (self::PEP_DOSE_DAY_OFFSETS as $day) {
-            $schedule = $schedules->get($day);
-            if (! $schedule || ! Carbon::parse($schedule->scheduled_date)->isSameDay($scheduleStartDate->copy()->addDays($day))) {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     private function storeNotificationLog(Request $request, string $channel): JsonResponse
@@ -3356,6 +3374,8 @@ class BitemapApiController extends Controller
             'barangay' => $incident->barangay,
             'location_scope' => $incident->location_scope,
             'incident_date' => optional($incident->incident_date)->toDateString(),
+            'first_consult_date' => optional($incident->first_consult_date)->toDateString(),
+            'pep_start_date' => optional($incident->pep_start_date)->toDateString(),
             'incident_time' => $incident->incident_time,
             'animal_type' => $incident->animal_type,
             'animal_description' => $incident->animal_description,
@@ -3432,6 +3452,7 @@ class BitemapApiController extends Controller
         return [
             'id' => $incident->id,
             'incident_date' => optional($incident->incident_date)->toDateString(),
+            'pep_start_date' => optional($incident->pep_start_date)->toDateString(),
             'who_category' => $this->displayCategory($incident->who_category),
             'status' => $incident->status,
             'barangay' => $incident->barangay,

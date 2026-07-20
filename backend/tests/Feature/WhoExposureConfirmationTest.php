@@ -121,6 +121,7 @@ class WhoExposureConfirmationTest extends TestCase
         $legacy = Incident::create([
             'patient_id' => $this->patient->id,
             'incident_date' => now()->toDateString(),
+            'pep_start_date' => now()->toDateString(),
             'animal_type' => 'Dog',
             'bite_site' => 'Left arm',
             'who_category' => 'III',
@@ -167,6 +168,7 @@ class WhoExposureConfirmationTest extends TestCase
             'incident_city_municipality' => 'Bansalan',
             'incident_province' => 'Davao del Sur',
             'incident_date' => now()->toDateString(),
+            'pep_start_date' => now()->toDateString(),
             'animal_type' => 'Dog',
             'bite_site' => 'Left arm',
             'exposure_contact_types' => ['scratch'],

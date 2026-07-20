@@ -257,7 +257,7 @@ export function PatientRecordForm() {
   }
 
   return (
-    <div className="min-h-screen flex-1 bg-[#f6f8f7] max-md:fixed max-md:inset-0 max-md:z-30 max-md:overflow-y-auto">
+    <div className="min-h-full flex-1 bg-[#f6f8f7]">
       <Header title={isEditMode ? 'Edit Patient Record' : 'New Patient Record'} breadcrumbs={isEditMode ? ['Patients', 'Edit Patient'] : ['Patients', 'New Patient']} />
 
       <div className="px-5 py-5 lg:px-7 lg:py-6">

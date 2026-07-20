@@ -231,6 +231,7 @@ class SmsConsentReminderWorkflowTest extends TestCase
             'incident_city_municipality' => 'Bansalan',
             'incident_province' => 'Davao del Sur',
             'incident_date' => '2026-07-18',
+            'pep_start_date' => '2026-07-18',
             'animal_type' => 'Dog',
             'bite_site' => 'Left arm',
             'exposure_contact_types' => ['scratch'],

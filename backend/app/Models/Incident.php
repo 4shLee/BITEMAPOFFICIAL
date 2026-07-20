@@ -13,6 +13,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'barangay_id',
     'location_scope',
     'incident_date',
+    'first_consult_date',
+    'pep_start_date',
     'incident_time',
     'animal_type',
     'animal_description',
@@ -76,6 +78,8 @@ class Incident extends Model
     {
         return [
             'incident_date' => 'date',
+            'first_consult_date' => 'date',
+            'pep_start_date' => 'date',
             'exposure_contact_types' => 'array',
             'exposure_bleeding_present' => 'boolean',
             'exposure_transdermal' => 'boolean',

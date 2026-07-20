@@ -7,7 +7,7 @@ import { IncidentLocationPicker } from '../components/Incidents/IncidentLocation
 import { Input } from '../components/UI/Input';
 import { Select } from '../components/UI/Select';
 import { Button } from '../components/UI/Button';
-import { barangaysAPI, incidentsAPI, patientsAPI } from '../../lib/services/api';
+import { ApiError, barangaysAPI, incidentsAPI, patientsAPI } from '../../lib/services/api';
 import { getStoredUser, normalizeRoleKey } from '../../lib/auth/roleAccess';
 import {
   PATIENT_SUFFIX_OPTIONS,
@@ -74,6 +74,7 @@ type IncidentFormData = {
   incidentDate: string;
   incidentTime: string;
   firstConsultDate: string;
+  pepStartDate: string;
   animalType: string;
   exposureContactTypes: ExposureContactType[];
   exposureSkinCondition: '' | 'intact' | 'broken' | 'unknown';
@@ -148,6 +149,7 @@ const initialFormData: IncidentFormData = {
   incidentDate: '',
   incidentTime: '',
   firstConsultDate: '',
+  pepStartDate: '',
   animalType: '',
   exposureContactTypes: [],
   exposureSkinCondition: '',
@@ -290,6 +292,59 @@ function normalizeCategoryForForm(category?: string) {
   return (category || '').replace('Category ', '') || '';
 }
 
+const backendFieldMap: Record<string, keyof FormErrors> = {
+  patient_id: 'patientSelection',
+  first_name: 'firstName',
+  middle_name: 'middleName',
+  last_name: 'lastName',
+  suffix: 'suffix',
+  age: 'age',
+  sex: 'sex',
+  address_line: 'addressLine',
+  residence_barangay: 'residenceBarangay',
+  city_municipality: 'cityMunicipality',
+  province: 'province',
+  contact_number: 'contact',
+  incident_date: 'incidentDate',
+  incident_time: 'incidentTime',
+  first_consult_date: 'firstConsultDate',
+  pep_start_date: 'pepStartDate',
+  animal_type: 'animalType',
+  bite_site: 'biteSite',
+  exposure_contact_types: 'exposureContactTypes',
+  exposure_skin_condition: 'exposureSkinCondition',
+  exposure_bleeding_present: 'exposureBleedingPresent',
+  exposure_transdermal: 'exposureTransdermal',
+  exposure_saliva_contact_site: 'exposureSalivaContactSite',
+  exposure_direct_bat_contact: 'exposureDirectBatContact',
+  who_category: 'whoCategory',
+  who_category_confirmed: 'whoCategoryConfirmed',
+  who_category_override_reason: 'whoCategoryOverrideReason',
+  location_scope: 'locationScope',
+  barangay_id: 'barangayId',
+  location_lat: 'locationLat',
+  location_lng: 'locationLng',
+  incident_city_municipality: 'incidentCityMunicipality',
+  incident_province: 'incidentProvince',
+  incident_specific_location: 'incidentSpecificLocation',
+};
+
+function mapBackendErrors(errors: Record<string, string[]>): FormErrors {
+  return Object.entries(errors).reduce<FormErrors>((mapped, [backendField, messages]) => {
+    const formField = backendFieldMap[backendField.replace(/\.\d+$/, '')];
+    if (formField && messages[0]) mapped[formField] = messages[0];
+    return mapped;
+  }, {});
+}
+
+function focusFirstInvalidField() {
+  requestAnimationFrame(() => {
+    const firstInvalidField = document.querySelector<HTMLElement>('[aria-invalid="true"]');
+    firstInvalidField?.focus({ preventScroll: true });
+    firstInvalidField?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+}
+
 export function IncidentReport() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -309,6 +364,9 @@ export function IncidentReport() {
   const [pendingPin, setPendingPin] = useState<{ latitude: string; longitude: string } | null>(null);
   const [hasStructuredAssessment, setHasStructuredAssessment] = useState(!isEditMode);
   const [isLegacyClassification, setIsLegacyClassification] = useState(false);
+  const [persistedPepStartDate, setPersistedPepStartDate] = useState('');
+  const [initialPepStartDate, setInitialPepStartDate] = useState('');
+  const [hasCompletedPepDose, setHasCompletedPepDose] = useState(false);
 
   useEffect(() => {
     async function loadOptions() {
@@ -360,6 +418,10 @@ export function IncidentReport() {
           : [];
         const hasStoredAssessment = structuredContactTypes.length > 0;
 
+        const dayZeroSchedule = (incident?.pep_schedules || []).find((schedule: any) => Number(schedule.dose_day) === 0);
+        const storedPepStartDate = incident?.pep_start_date || '';
+        const displayedPepStartDate = storedPepStartDate || dayZeroSchedule?.scheduled_date || '';
+
         setFormData({
           patientType: 'existing',
           patientId: incident?.patient_id ? String(incident.patient_id) : '',
@@ -379,7 +441,8 @@ export function IncidentReport() {
           smsConsent: patient?.sms_consent === true || Number(patient?.sms_consent) === 1,
           incidentDate: incident?.incident_date || '',
           incidentTime: incident?.incident_time || '',
-          firstConsultDate: readNoteValue(notes, 'Date of First Consult') === 'Not specified' ? '' : readNoteValue(notes, 'Date of First Consult'),
+          firstConsultDate: incident?.first_consult_date || (readNoteValue(notes, 'Date of First Consult') === 'Not specified' ? '' : readNoteValue(notes, 'Date of First Consult')),
+          pepStartDate: displayedPepStartDate,
           animalType: incident?.animal_type || '',
           exposureContactTypes: structuredContactTypes,
           exposureSkinCondition: incident?.exposure_skin_condition || '',
@@ -408,6 +471,11 @@ export function IncidentReport() {
         });
         setHasStructuredAssessment(hasStoredAssessment);
         setIsLegacyClassification(!hasStoredAssessment);
+        setPersistedPepStartDate(storedPepStartDate);
+        setInitialPepStartDate(displayedPepStartDate);
+        setHasCompletedPepDose((incident?.pep_schedules || []).some((schedule: any) => (
+          Boolean(schedule.administered_date) || ['Done', 'Completed'].includes(schedule.status)
+        )));
       } catch (error: any) {
         setLoadError(error.message || 'Unable to load incident report.');
       } finally {
@@ -502,6 +570,20 @@ export function IncidentReport() {
   const updateField = <K extends keyof IncidentFormData>(field: K, value: IncidentFormData[K]) => {
     setFormData((current) => ({ ...current, [field]: value }));
     setErrors((current) => ({ ...current, [field]: undefined }));
+  };
+
+  const handleFirstConsultDateChange = (firstConsultDate: string) => {
+    setFormData((current) => {
+      const shouldDefaultPepStart = current.pepStartDate.trim() === ''
+        || current.pepStartDate === current.firstConsultDate;
+
+      return {
+        ...current,
+        firstConsultDate,
+        pepStartDate: shouldDefaultPepStart ? firstConsultDate : current.pepStartDate,
+      };
+    });
+    setErrors((current) => ({ ...current, firstConsultDate: undefined, pepStartDate: undefined }));
   };
 
   const updateAssessmentField = <K extends keyof IncidentFormData>(field: K, value: IncidentFormData[K]) => {
@@ -673,7 +755,7 @@ export function IncidentReport() {
       nextErrors.patientSelection = 'Select an existing patient.';
     }
 
-    if (!isEditMode) {
+    if (!isEditMode && formData.patientType === 'new') {
       if (!isValidPatientName(formData.firstName, 2)) nextErrors.firstName = 'Enter 2–50 letters; spaces, hyphens, and apostrophes are allowed.';
       if (formData.middleName && !isValidPatientName(formData.middleName, 1)) nextErrors.middleName = 'Enter a valid middle name using letters, spaces, hyphens, or apostrophes.';
       if (!isValidPatientName(formData.lastName, 2)) nextErrors.lastName = 'Enter 2–50 letters; spaces, hyphens, and apostrophes are allowed.';
@@ -684,7 +766,8 @@ export function IncidentReport() {
       }
 
       if (!formData.sex) nextErrors.sex = 'Sex is required.';
-      nextErrors.contact = contactNumberError(formData.contact, formData.smsConsent);
+      const contactError = contactNumberError(formData.contact, formData.smsConsent);
+      if (contactError) nextErrors.contact = contactError;
       const addressLineLength = normalizePatientText(formData.addressLine).length;
       const residenceBarangayLength = normalizePatientText(formData.residenceBarangay).length;
       const cityMunicipalityLength = normalizePatientText(formData.cityMunicipality).length;
@@ -704,6 +787,20 @@ export function IncidentReport() {
     if (formData.incidentDate === today && formData.incidentTime) {
       const selectedTime = new Date(today + 'T' + formData.incidentTime);
       if (selectedTime > new Date()) nextErrors.incidentTime = 'Time of incident cannot be in the future.';
+    }
+
+    if (formData.firstConsultDate && formData.incidentDate && formData.firstConsultDate < formData.incidentDate) {
+      nextErrors.firstConsultDate = 'Date of First Consult cannot be earlier than Date of Incident.';
+    }
+
+    if (!formData.pepStartDate) {
+      nextErrors.pepStartDate = 'Enter the first vaccine dose date to generate the PEP schedule.';
+    } else if (formData.incidentDate && formData.pepStartDate < formData.incidentDate) {
+      nextErrors.pepStartDate = 'PEP Start Date cannot be earlier than Date of Incident.';
+    } else if (formData.firstConsultDate && formData.pepStartDate < formData.firstConsultDate) {
+      nextErrors.pepStartDate = 'PEP Start Date cannot be earlier than Date of First Consult.';
+    } else if (isEditMode && hasCompletedPepDose && formData.pepStartDate !== initialPepStartDate) {
+      nextErrors.pepStartDate = 'PEP Start Date cannot be changed after a dose has been completed.';
     }
 
     if (!formData.animalType) nextErrors.animalType = 'Animal type is required.';
@@ -736,7 +833,7 @@ export function IncidentReport() {
 
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
-      requestAnimationFrame(() => document.querySelector('[aria-invalid="true"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+      focusFirstInvalidField();
     }
     return Object.keys(nextErrors).length === 0;
   };
@@ -752,6 +849,12 @@ export function IncidentReport() {
       return;
     }
 
+    const pepStartDateChanged = isEditMode && formData.pepStartDate !== initialPepStartDate;
+    const confirmPepScheduleRecalculation = pepStartDateChanged
+      ? window.confirm('Recalculate all pending PEP dose dates from the new Day 0 date?')
+      : false;
+    if (pepStartDateChanged && !confirmPepScheduleRecalculation) return;
+
     const fullName = composePatientName(formData);
     const structuredAssessmentPayload = hasStructuredAssessment ? {
       exposure_contact_types: formData.exposureContactTypes,
@@ -765,11 +868,17 @@ export function IncidentReport() {
       who_category_override_reason: formData.whoCategoryOverrideReason.trim() || null,
     } : {};
     const incidentPayload = {
+      patient_type: isEditMode || formData.patientType === 'existing' ? 'existing' : 'new',
       patient_id: formData.patientId || undefined,
       location_scope: formData.locationScope,
       barangay_id: formData.locationScope === 'within_digos' ? formData.barangayId : null,
       incident_date: formData.incidentDate,
       incident_time: formData.incidentTime || null,
+      first_consult_date: formData.firstConsultDate || null,
+      pep_start_date: isEditMode && !persistedPepStartDate && formData.pepStartDate === initialPepStartDate
+        ? undefined
+        : formData.pepStartDate,
+      confirm_pep_schedule_recalculation: confirmPepScheduleRecalculation,
       animal_type: formData.animalType,
       animal_description: 'Status: ' + formData.animalStatus + '; Condition: ' + formData.animalCondition,
       bite_site: formData.biteSite || 'Not specified',
@@ -789,7 +898,7 @@ export function IncidentReport() {
       notes: buildNotes(formData),
       ...structuredAssessmentPayload,
     };
-    const payload = isEditMode ? incidentPayload : {
+    const payload = isEditMode || formData.patientType === 'existing' ? incidentPayload : {
       ...incidentPayload,
       patient_name: fullName,
       full_name: fullName,
@@ -819,7 +928,14 @@ export function IncidentReport() {
         toast.success('Incident report saved successfully.');
       }
     } catch (error: any) {
-      toast.error(error.message || (isEditMode ? 'Failed to update incident report.' : 'Failed to save incident report.'));
+      if (error instanceof ApiError && Object.keys(error.errors).length > 0) {
+        const backendErrors = mapBackendErrors(error.errors);
+        setErrors((current) => ({ ...current, ...backendErrors }));
+        focusFirstInvalidField();
+        toast.error(Object.values(backendErrors)[0] || error.message);
+      } else {
+        toast.error(error.message || (isEditMode ? 'Failed to update incident report.' : 'Failed to save incident report.'));
+      }
     } finally {
       setSaving(false);
     }
@@ -860,10 +976,10 @@ export function IncidentReport() {
     },
   ];
   const doseSchedulePreview = useMemo(
-    () => formData.incidentDate
-      ? pepDoseDayOffsets.map((day) => ({ day, date: addDaysToDateKey(formData.incidentDate, day) }))
+    () => formData.pepStartDate
+      ? pepDoseDayOffsets.map((day) => ({ day, date: addDaysToDateKey(formData.pepStartDate, day) }))
       : [],
-    [formData.incidentDate]
+    [formData.pepStartDate]
   );
   const locationHelperText = pendingPin
     ? 'Review the selected location before confirming it as the exact incident pin.'
@@ -899,7 +1015,7 @@ export function IncidentReport() {
 
   if (loadingIncident) {
     return (
-      <div className="flex-1 bg-[#f6f8f7] min-h-screen">
+      <div className="min-h-full flex-1 bg-[#f6f8f7]">
         <Header title="Edit Incident Report" breadcrumbs={['Incidents', 'Edit Incident']} />
         <div className="px-5 py-5 lg:px-7 lg:py-6">
           <div className="rounded-2xl border border-border bg-card p-8 text-center text-sm text-muted-foreground shadow-sm">
@@ -912,7 +1028,7 @@ export function IncidentReport() {
 
   if (loadError) {
     return (
-      <div className="flex-1 bg-[#f6f8f7] min-h-screen">
+      <div className="min-h-full flex-1 bg-[#f6f8f7]">
         <Header title="Edit Incident Report" breadcrumbs={['Incidents', 'Edit Incident']} />
         <div className="px-5 py-5 lg:px-7 lg:py-6">
           <div className="rounded-2xl border border-destructive/20 bg-destructive-bg p-8 text-center shadow-sm">
@@ -927,7 +1043,7 @@ export function IncidentReport() {
   }
 
   return (
-    <div className="min-h-screen flex-1 bg-[#f6f8f7] max-md:fixed max-md:inset-0 max-md:z-30 max-md:overflow-y-auto">
+    <div className="min-h-full flex-1 bg-[#f6f8f7]">
       <Header title={isEditMode ? 'Edit Incident Report' : 'New Incident Report'} breadcrumbs={isEditMode ? ['Incidents', 'Edit Incident'] : ['Incidents', 'New Report']} />
 
       <div className="px-5 py-5 lg:px-7 lg:py-6">
@@ -1050,72 +1166,11 @@ export function IncidentReport() {
                 </section>
               </div>
             ) : (
-              <div className="space-y-3">
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
-                <div className="md:col-span-2">
-                  <Input
-                    label="First Name"
-                    placeholder="First name"
-                    value={formData.firstName}
-                    onChange={(e) => updateField('firstName', e.target.value)}
-                    disabled={Boolean(formData.patientId)}
-                  />
-                </div>
-                <Input
-                  label="Middle Name"
-                  placeholder="Enter full middle name"
-                  value={formData.middleName}
-                  onChange={(e) => updateField('middleName', e.target.value)}
-                  disabled={Boolean(formData.patientId)}
-                />
-                <div className="md:col-span-2">
-                  <Input
-                    label="Last Name"
-                    placeholder="Last name"
-                    value={formData.lastName}
-                    onChange={(e) => updateField('lastName', e.target.value)}
-                    disabled={Boolean(formData.patientId)}
-                  />
-                </div>
-                <Select label="Suffix" options={PATIENT_SUFFIX_OPTIONS} value={formData.suffix} onChange={(e) => updateField('suffix', e.target.value)} disabled={Boolean(formData.patientId)} />
-              </div>
-              {selectedPatient?.full_name && (
-                <p className="text-xs text-muted-foreground">
-                  Existing record name: <span className="font-semibold text-foreground">{selectedPatient.full_name}</span>
-                </p>
-              )}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <Input
-                  label="Age *"
-                  type="number"
-                  min={0}
-                  max={120}
-                  step={1}
-                  inputMode="numeric"
-                  placeholder="Age"
-                  value={formData.age}
-                  onChange={(e) => updateField('age', e.target.value)}
-                  error={errors.age}
-                />
-                <Select
-                  label="Sex *"
-                  options={selectOptions.sex}
-                  value={formData.sex}
-                  onChange={(e) => updateField('sex', e.target.value)}
-                  error={errors.sex}
-                />
-                <Input
-                  label={formData.smsConsent ? 'Contact Number *' : 'Contact Number (Optional)'}
-                  type="tel"
-                  inputMode="numeric"
-                  maxLength={11}
-                  placeholder="09XXXXXXXXX"
-                  value={formData.contact}
-                  onChange={(e) => updateField('contact', e.target.value)}
-                  error={errors.contact}
-                />
-              </div>
-              {selectedPatient && <ReadOnlyPatientItem label="Patient Residential Address" value={patientResidentialAddress} />}
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <ReadOnlyPatientItem label="Full Name" value={selectedPatient ? linkedPatientName : 'Select an existing patient above'} />
+                <ReadOnlyPatientItem label="Age / Sex" value={selectedPatient ? linkedPatientAgeSex : ''} />
+                <ReadOnlyPatientItem label="Contact Number" value={selectedPatient ? formData.contact : ''} />
+                <ReadOnlyPatientItem label="Patient Residential Address" value={selectedPatient ? patientResidentialAddress : ''} />
               </div>
             )}
 
@@ -1162,7 +1217,16 @@ export function IncidentReport() {
                 type="date"
                 max={todayKey()}
                 value={formData.firstConsultDate}
-                onChange={(e) => updateField('firstConsultDate', e.target.value)}
+                onChange={(e) => handleFirstConsultDateChange(e.target.value)}
+                error={errors.firstConsultDate}
+              />
+              <Input
+                label="PEP Start Date / First Vaccine Dose (Day 0) *"
+                type="date"
+                min={formData.firstConsultDate || formData.incidentDate || undefined}
+                value={formData.pepStartDate}
+                onChange={(e) => updateField('pepStartDate', e.target.value)}
+                error={errors.pepStartDate}
               />
               <Select
                 label="Animal Type *"
@@ -1258,6 +1322,7 @@ export function IncidentReport() {
                     ]}
                     value={formData.exposureSkinCondition}
                     onChange={(event) => updateAssessmentField('exposureSkinCondition', event.target.value as IncidentFormData['exposureSkinCondition'])}
+                    error={errors.exposureSkinCondition}
                   />
                   <Select
                     label="Did bleeding occur? *"
@@ -1268,6 +1333,7 @@ export function IncidentReport() {
                     ]}
                     value={formData.exposureBleedingPresent}
                     onChange={(event) => updateAssessmentField('exposureBleedingPresent', event.target.value as IncidentFormData['exposureBleedingPresent'])}
+                    error={errors.exposureBleedingPresent}
                   />
                   <Select
                     label="Was it transdermal / puncturing? *"
@@ -1278,6 +1344,7 @@ export function IncidentReport() {
                     ]}
                     value={formData.exposureTransdermal}
                     onChange={(event) => updateAssessmentField('exposureTransdermal', event.target.value as IncidentFormData['exposureTransdermal'])}
+                    error={errors.exposureTransdermal}
                   />
                 </div>
               )}
@@ -1295,6 +1362,7 @@ export function IncidentReport() {
                     ]}
                     value={formData.exposureSalivaContactSite}
                     onChange={(event) => updateAssessmentField('exposureSalivaContactSite', event.target.value as IncidentFormData['exposureSalivaContactSite'])}
+                    error={errors.exposureSalivaContactSite}
                   />
                 </div>
               )}
@@ -1310,6 +1378,7 @@ export function IncidentReport() {
                     ]}
                     value={formData.exposureDirectBatContact}
                     onChange={(event) => updateAssessmentField('exposureDirectBatContact', event.target.value as IncidentFormData['exposureDirectBatContact'])}
+                    error={errors.exposureDirectBatContact}
                   />
                 </div>
               )}
@@ -1561,11 +1630,11 @@ export function IncidentReport() {
               <h3 className="text-base font-bold text-foreground">Dose Schedule</h3>
             </div>
             <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
-              Dose dates are recalculated when the incident date is corrected. Completed dose records keep their administration history.
+              Schedule based on PEP Start Date. Changing Date of Incident does not move an established schedule.
             </p>
             {doseSchedulePreview.length === 0 ? (
               <p className="rounded-xl border border-dashed border-border px-3 py-4 text-center text-xs text-muted-foreground">
-                Select the Date of Incident to preview the PEP schedule.
+                Enter the first vaccine dose date to generate the PEP schedule.
               </p>
             ) : (
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-5 xl:grid-cols-1">

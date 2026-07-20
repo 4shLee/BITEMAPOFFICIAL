@@ -195,6 +195,7 @@ class IncidentLocationScopeTest extends TestCase
         return [
             'patient_id' => $this->patient->id,
             'incident_date' => now()->toDateString(),
+            'pep_start_date' => now()->toDateString(),
             'animal_type' => 'Dog',
             'bite_site' => 'Left arm',
             'who_category' => 'Category II',
