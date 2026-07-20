@@ -1642,3 +1642,137 @@ No existing records were deleted or clinically backfilled.
 - Manual browser testing passed for Patient Registry, Patient Detail, Incident Report, search, API failure, and Retry behavior.
 
 Existing PEP intervals, completed-dose history, missed-appointment rules, SMS provider behavior, RBAC, Inventory, and Reports remained unchanged.
+
+# Progress Log — July 20, 2026
+
+## PEP Schedule Backend
+
+- Added the dedicated authenticated endpoint:
+  `POST /api/pep-schedule/{schedule}/record-dose`
+- Prevented the general PEP update endpoint from bypassing the dedicated dose-recording workflow.
+- Added database row locking and duplicate-completion protection.
+- Kept dose completion, batch traceability, and audit logging within one database transaction.
+- Preserved existing dose intervals, schedule generation, missed-dose, and rescheduling behavior.
+- Maintained RBAC:
+  - Clinic Administrator: allowed
+  - Nurse/Vaccinator: allowed
+  - Doctor: denied
+  - System Administrator: denied
+
+## Vaccine Administration Data
+
+- Added structured administration routes:
+  - Intradermal
+  - Intramuscular
+- Added a direct nullable link from a PEP schedule to its selected inventory batch.
+- Vaccine product and lot/batch number are derived from inventory instead of accepting free-text values for new doses.
+- Existing completed doses with only legacy `vaccine_type` and `vaccine_lot_number` remain compatible.
+- Legacy records without a route display `Not recorded`.
+
+## Inventory Safety
+
+- Initially implemented atomic one-unit vaccine deduction, then removed it after identifying that ABC intradermal and intramuscular vial-consumption rules are not yet validated.
+- The final workflow does not:
+  - Decrement parent inventory stock
+  - Decrement batch remaining stock
+  - Create an automatic `Used` transaction
+  - Assume any consumed quantity
+- Actual vaccine consumption remains under the existing manual Inventory workflow.
+- Retained the previously added nullable unique `inventory_transactions.pep_schedule_id` field for possible future use.
+- Preserved existing manual adjustments, usage transactions, restocking, batch management, and inventory history.
+
+## Vaccine Product and Batch Selection
+
+- Replaced the read-only Vaccine Type field with a required Vaccine Product dropdown.
+- Vaccine products are populated dynamically from inventory items classified as `Vaccine`.
+- Differently named vaccine products, such as Verorab, are supported.
+- Excluded:
+  - Rabies Immunoglobulin/RIG
+  - Tetanus Toxoid
+  - Medicines
+  - Supplies
+- The Lot/Batch dropdown now displays only batches belonging to the selected product.
+- Only batches with available stock and valid expiry dates are displayed.
+- Changing the Vaccine Product clears the previously selected batch.
+- Backend validation rejects any product/batch ownership mismatch.
+
+## Record Dose Modal
+
+- Updated the title to:
+  `Record Anti-rabies Vaccine Dose — Day {day}`
+- Required fields now include:
+  - Date Administered
+  - Administration Route
+  - Vaccine Product
+  - Vaccine Lot/Batch
+- Added inline messages under missing required fields.
+- Save remains disabled until all required selections are complete.
+- Duplicate submissions are prevented while saving.
+- Backend validation errors keep the modal open and are shown to the user.
+- Added an inventory notice explaining that actual stock usage must be recorded manually.
+- Updated the success message to:
+  `Dose recorded successfully. Record the actual vaccine stock consumed in the Inventory module.`
+
+## Dose History
+
+- Dose History now displays:
+  - Vaccine Type
+  - Administration Route
+  - Lot/Batch Number
+  - Date Administered
+  - Administered By
+  - Status
+- Legacy free-text lot numbers continue to display.
+- Missing legacy route values display `Not recorded`.
+- Missing direct batch linkage displays an unavailable/not-recorded indicator without causing server errors.
+- Completed doses remain read-only.
+
+## Database Migrations
+
+Created and applied:
+
+1. `2026_07_20_000001_link_inventory_transactions_to_pep_schedules.php`
+   - Adds a nullable unique PEP schedule reference to inventory transactions.
+
+2. `2026_07_20_000002_add_administration_route_and_batch_to_pep_schedules.php`
+   - Adds nullable `administration_route`.
+   - Adds nullable `inventory_batch_id` with safe `nullOnDelete` behavior.
+
+## Testing and Verification
+
+- Expanded `PepDoseInventoryWorkflowTest` to cover:
+  - Authorized and denied roles
+  - Intradermal and intramuscular routes
+  - Missing and invalid required fields
+  - Dynamic vaccine products
+  - Product/batch mismatch
+  - Expired and unavailable batches
+  - RIG, tetanus, medicine, and supply exclusion
+  - Duplicate requests
+  - Legacy completed records
+  - Audit rollback
+  - Unchanged parent and batch stock
+  - Absence of automatic inventory transactions
+  - Existing manual Inventory usage
+- Updated overdue-dose regression tests to verify route and batch traceability without stock deduction.
+- Results:
+  - PEP dose workflow: 26 tests passed, 219 assertions
+  - Overdue/rescheduling workflow: 3 tests passed, 22 assertions
+  - Frontend production build passed
+  - Changed-file Pint validation passed
+  - `git diff --check` passed
+- Repository-wide Pint still reports unrelated pre-existing formatting issues in three older files.
+
+## Manual Verification
+
+- Recorded an Intradermal Day 14 dose using batch `ARV-2026-001`.
+- Confirmed the route, product, lot, date, administrator, and completed status appeared in Dose History.
+- Confirmed parent inventory remained at 183.
+- Confirmed batch inventory remained at 65.
+- Confirmed no automatic inventory transaction was created.
+- Confirmed RIG was absent from the vaccine selector.
+- Refreshed the completed record and confirmed it was not processed again.
+
+## Remaining Limitation
+
+Automatic vaccine consumption remains intentionally disabled. ABC personnel must validate intradermal, intramuscular, shared-vial, open-vial, and wastage rules before a reliable automatic deduction workflow can be implemented.
