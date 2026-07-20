@@ -1643,7 +1643,6 @@ No existing records were deleted or clinically backfilled.
 
 Existing PEP intervals, completed-dose history, missed-appointment rules, SMS provider behavior, RBAC, Inventory, and Reports remained unchanged.
 
-# Progress Log — July 20, 2026
 
 ## PEP Schedule Backend
 
@@ -1776,3 +1775,98 @@ Created and applied:
 ## Remaining Limitation
 
 Automatic vaccine consumption remains intentionally disabled. ABC personnel must validate intradermal, intramuscular, shared-vial, open-vial, and wastage rules before a reliable automatic deduction workflow can be implemented.
+
+# Progress Log — July 20, 2026
+
+## Incident Report Submission and Validation
+
+- Fixed the generic required-fields failure affecting both Existing Patient and New Patient incident submissions.
+- Limited new-patient validation to New Patient mode; Existing Patient mode now requires only the selected patient and incident-specific fields.
+- Fixed an undefined contact-number error entry that incorrectly caused otherwise complete forms to fail validation.
+- Separated existing-patient and new-patient request payloads to prevent accidental patient duplication or overwriting.
+- Preserved Laravel validation details in the API client and mapped backend field errors to their visible frontend controls.
+- Added inline validation messages and one-time focus/scroll to the first invalid field while retaining entered data.
+
+## Application Scrolling and Layout
+
+- Removed the double vertical scrollbar by establishing one primary content scroll container.
+- Locked document-level scrolling while the authenticated application shell is active.
+- Removed conflicting nested mobile scroll behavior.
+- Updated route navigation to reset the real content container instead of calling `window.scrollTo`.
+- Preserved the fixed sidebar, responsive layouts, and sticky page content.
+
+## PEP Start Date and Day 0 Scheduling
+
+- Added dedicated `first_consult_date` and `pep_start_date` incident fields through an additive migration.
+- Defined PEP Day 0 as the first vaccine dose date rather than the incident date.
+- Generated Day 0/3/7/14/28 schedules from `pep_start_date`.
+- Added the editable “PEP Start Date / First Vaccine Dose (Day 0)” field and updated the schedule preview.
+- Added validation preventing PEP Start Date from preceding the incident or first-consult dates.
+- Added confirmation before recalculating a pending schedule after changing Day 0.
+- Prevented changes to Day 0 after a dose has been completed.
+- Kept legacy incidents compatible without automatically rewriting historical schedules.
+- Preserved Date of Incident for reporting and GIS purposes.
+
+## WHO Category Workflow
+
+- Fixed the blank-page crash caused by direct WHO category-card selection.
+- Root cause: category cards and the confirmation button used different state paths, including unsafe access to `whoSuggestion.category` when the suggestion could be nullable.
+- Centralized category selection through one safe handler.
+- Directly selecting the suggested category now produces the same clinically confirmed state as the confirmation button.
+- Selecting a different category now creates a draft override requiring a reason.
+- Canceling an override retains the previous valid category.
+- Cleared stale override state when assessment answers change.
+- Added null-safe handling for legacy incidents without structured assessment data.
+
+## Incident Location GIS Map
+
+- Fixed Leaflet tiles and controls appearing above the sticky header.
+- Added a clipped, isolated local stacking context to the map container.
+- Preserved rounded corners while keeping map controls clickable.
+- Kept the map below the global header without introducing excessive z-index values or another scrollbar.
+
+## PEP Schedule Patient Selector
+
+- Replaced the native Patient Schedule dropdown with an accessible searchable patient/incident combobox.
+- Kept filtering client-side because the page already retrieves all schedule summaries in one response.
+- Added case-insensitive partial search by:
+
+  - Patient name
+  - Contact number
+  - Incident ID, including formats such as `7` and `Incident #7`
+
+- Displayed patient name, incident number, contact number, WHO category, and schedule status.
+- Preserved schedule selection, compliance, dose history, reminders, inventory behavior, and RBAC.
+- Preserved `incident_id` deep links and refresh behavior.
+- Cleared search text after selection or closing without changing the selected schedule.
+- Added distinct loading, API-error, empty-list, and no-match states.
+
+## PEP Selector Visual and Accessibility Polish
+
+- Removed the shared component library’s bright-blue active-result styling using selector-scoped overrides.
+- Introduced distinct neutral, mint-green, and BITEMAP-green states for hover, keyboard highlight, focus, and selection.
+- Added a green left border and check icon so selection is not communicated by color alone.
+- Reduced result rows to approximately 68px.
+- Improved hierarchy using bold patient names, green incident badges, muted contact numbers, and semantic category/status badges.
+- Added truncation and full-name title/accessibility labels for long names.
+- Reduced the dropdown height to approximately 260px with a narrow internal scrollbar.
+- Kept the search field visible while results scroll.
+- Added a single rotating chevron and green focus indicators.
+- Verified focus return, Arrow navigation, Enter selection, Escape closing, mouse selection, and touch-friendly row sizes.
+
+## Verification
+
+- Frontend production build passed.
+- All 17 frontend regression tests passed.
+- `git diff --check` passed.
+- Browser verification completed on desktop, tablet, and 390px mobile.
+- Verified patient-name, contact-number, incident-ID, and no-result searches.
+- Verified mouse and keyboard selection, focus return, internal scrolling, deep links, and refresh retention.
+- Confirmed no application Console errors or horizontal overflow during browser checks.
+- Confirmed compliance summaries, dose cards, history, reminders, and schedule actions remained available after selection changes.
+
+## Remaining Limitations
+
+- The available test data did not include one patient with multiple incidents or an unusually long name; these cases are covered structurally through incident-based keys, truncation, title labels, and focused tests.
+- The selected 41 Laravel PEP regression tests could not run assertions in the current PHP environment because the SQLite PDO driver was unavailable (`could not find driver`).
+- The production build still reports the existing large JavaScript bundle-size warning.
