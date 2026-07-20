@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['inventory_id', 'inventory_batch_id', 'transaction_type', 'quantity', 'transaction_date', 'notes', 'created_by'])]
+#[Fillable(['inventory_id', 'inventory_batch_id', 'pep_schedule_id', 'transaction_type', 'quantity', 'transaction_date', 'notes', 'created_by'])]
 class InventoryTransaction extends Model
 {
     use HasFactory;
@@ -25,6 +25,11 @@ class InventoryTransaction extends Model
     public function batch(): BelongsTo
     {
         return $this->belongsTo(InventoryBatch::class, 'inventory_batch_id');
+    }
+
+    public function pepSchedule(): BelongsTo
+    {
+        return $this->belongsTo(PepSchedule::class);
     }
 
     protected function casts(): array

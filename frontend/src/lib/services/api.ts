@@ -177,6 +177,19 @@ export const pepScheduleAPI = {
     });
   },
 
+  async recordDose(id: string, doseData: {
+    administered_date: string;
+    administration_route: 'Intradermal' | 'Intramuscular';
+    inventory_id: number;
+    inventory_batch_id: number;
+    remarks?: string;
+  }) {
+    return apiRequest('/pep-schedule/' + id + '/record-dose', {
+      method: 'POST',
+      body: JSON.stringify(doseData),
+    });
+  },
+
   async reschedule(id: string, scheduledDate: string, reason: string) {
     return apiRequest('/pep-schedule/' + id + '/reschedule', {
       method: 'PUT',

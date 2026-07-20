@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\Incident;
+use App\Models\Inventory;
+use App\Models\InventoryBatch;
 use App\Models\Patient;
 use App\Models\PepSchedule;
 use App\Models\User;
@@ -25,7 +27,7 @@ class PepScheduleOverdueWorkflowTest extends TestCase
     {
         Carbon::setTestNow('2026-07-15 09:00:00');
         $user = User::factory()->create([
-            'role' => 'Nurse',
+            'role' => 'nurse_vaccinator',
             'is_active' => true,
             'approval_status' => 'approved',
         ]);
@@ -53,7 +55,7 @@ class PepScheduleOverdueWorkflowTest extends TestCase
     {
         Carbon::setTestNow('2026-07-16 09:00:00');
         $user = User::factory()->create([
-            'role' => 'Nurse',
+            'role' => 'nurse_vaccinator',
             'is_active' => true,
             'approval_status' => 'approved',
         ]);
@@ -61,26 +63,49 @@ class PepScheduleOverdueWorkflowTest extends TestCase
 
         [, $doses] = $this->createSchedule($user);
 
-        $this->putJson('/api/pep-schedule/'.$doses[7]->id, [
-            'status' => 'Completed',
+        $inventory = Inventory::create([
+            'item_name' => 'Anti-rabies Vaccine',
+            'item_type' => 'Vaccine',
+            'current_stock' => 5,
+            'unit' => 'dose',
+            'reorder_level' => 1,
+        ]);
+        $batch = InventoryBatch::create([
+            'inventory_id' => $inventory->id,
+            'batch_number' => 'LATE-LOT-7',
+            'quantity_received' => 5,
+            'quantity_remaining' => 5,
+            'expiry_date' => '2028-07-16',
+            'received_date' => '2026-07-01',
+            'created_by' => $user->id,
+        ]);
+
+        $this->postJson('/api/pep-schedule/'.$doses[7]->id.'/record-dose', [
             'administered_date' => '2026-07-16',
-            'vaccine_lot_number' => 'LATE-LOT-7',
-            'notes' => 'Patient returned after the scheduled date.',
+            'administration_route' => 'Intramuscular',
+            'inventory_id' => $inventory->id,
+            'inventory_batch_id' => $batch->id,
+            'remarks' => 'Patient returned after the scheduled date.',
         ])->assertOk();
 
         $recorded = $doses[7]->fresh();
         $this->assertSame('2026-07-14', $recorded->scheduled_date->toDateString());
         $this->assertSame('2026-07-16', $recorded->administered_date->toDateString());
         $this->assertSame('Done', $recorded->status);
+        $this->assertSame('Intramuscular', $recorded->administration_route);
         $this->assertSame($user->id, $recorded->administered_by);
         $this->assertSame('LATE-LOT-7', $recorded->vaccine_lot_number);
+        $this->assertSame($batch->id, $recorded->inventory_batch_id);
+        $this->assertSame(5, $inventory->fresh()->current_stock);
+        $this->assertSame(5, $batch->fresh()->quantity_remaining);
+        $this->assertDatabaseCount('inventory_transactions', 0);
     }
 
     public function test_completed_and_non_overdue_doses_cannot_be_rescheduled(): void
     {
         Carbon::setTestNow('2026-07-15 09:00:00');
         $user = User::factory()->create([
-            'role' => 'Nurse',
+            'role' => 'nurse_vaccinator',
             'is_active' => true,
             'approval_status' => 'approved',
         ]);

@@ -359,7 +359,7 @@ class BitemapApiController extends Controller
 
     public function pepSchedule(): JsonResponse
     {
-        $schedule = PepSchedule::with(['incident.patient', 'incident.barangay', 'administrator'])
+        $schedule = PepSchedule::with(['incident.patient', 'incident.barangay', 'administrator', 'inventoryBatch.inventory', 'inventoryTransaction.batch'])
             ->orderBy('scheduled_date')
             ->get()
             ->map(fn (PepSchedule $item) => $this->pepSchedulePayload($item))
@@ -379,10 +379,18 @@ class BitemapApiController extends Controller
             'notes' => ['nullable', 'string'],
         ]);
 
-        if (($data['status'] ?? null) === 'Completed' || ($data['status'] ?? null) === 'Done') {
-            $data['status'] = 'Done';
-            $data['administered_date'] = $data['administered_date'] ?? now()->toDateString();
-            $data['administered_by'] = $request->user()?->id;
+        if ($schedule->administered_date || in_array($schedule->status, ['Done', 'Completed'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Completed doses are read-only.',
+            ], 409);
+        }
+
+        if (in_array($data['status'] ?? null, ['Done', 'Completed'], true) || ! empty($data['administered_date'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Use the record-dose operation to complete a PEP dose.',
+            ], 422);
         }
 
         $schedule->update($data);
@@ -396,7 +404,122 @@ class BitemapApiController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $this->pepSchedulePayload($schedule->fresh(['incident.patient', 'administrator'])),
+            'data' => $this->pepSchedulePayload($schedule->fresh(['incident.patient', 'administrator', 'inventoryBatch.inventory', 'inventoryTransaction.batch'])),
+        ]);
+    }
+
+    public function recordPepDose(Request $request, PepSchedule $schedule): JsonResponse
+    {
+        $data = $request->validate([
+            'administered_date' => ['required', 'date', 'before_or_equal:today'],
+            'administration_route' => ['required', Rule::in(['Intradermal', 'Intramuscular'])],
+            'inventory_id' => ['required', 'integer'],
+            'inventory_batch_id' => ['required', 'integer'],
+            'remarks' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $result = DB::transaction(function () use ($request, $schedule, $data) {
+            $lockedSchedule = PepSchedule::query()
+                ->whereKey($schedule->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($lockedSchedule->administered_date || in_array($lockedSchedule->status, ['Done', 'Completed'], true)) {
+                abort(response()->json([
+                    'success' => false,
+                    'message' => 'This dose has already been recorded.',
+                ], 409));
+            }
+
+            $inventory = Inventory::query()
+                ->whereKey($data['inventory_id'])
+                ->lockForUpdate()
+                ->first();
+
+            if (! $inventory) {
+                throw ValidationException::withMessages([
+                    'inventory_id' => 'The selected vaccine inventory item does not exist.',
+                ]);
+            }
+
+            $batch = InventoryBatch::query()
+                ->whereKey($data['inventory_batch_id'])
+                ->lockForUpdate()
+                ->first();
+
+            if (! $batch) {
+                throw ValidationException::withMessages([
+                    'inventory_batch_id' => 'The selected vaccine batch does not exist.',
+                ]);
+            }
+
+            if ((int) $batch->inventory_id !== (int) $inventory->id) {
+                throw ValidationException::withMessages([
+                    'inventory_batch_id' => 'The selected batch does not belong to this inventory item.',
+                ]);
+            }
+
+            if ($inventory->item_type !== 'Vaccine') {
+                throw ValidationException::withMessages([
+                    'inventory_id' => 'The selected inventory item is not classified as a vaccine.',
+                ]);
+            }
+
+            if (! $this->isEligiblePepVaccineInventory($inventory)) {
+                throw ValidationException::withMessages([
+                    'inventory_id' => 'The selected inventory item is not an eligible vaccine product for this PEP dose.',
+                ]);
+            }
+
+            $administeredDate = Carbon::parse($data['administered_date'])->startOfDay();
+            if (! $batch->expiry_date || $batch->expiry_date->startOfDay()->lt($administeredDate)) {
+                throw ValidationException::withMessages([
+                    'inventory_batch_id' => 'The selected vaccine batch has expired.',
+                ]);
+            }
+
+            if ((int) $batch->quantity_remaining <= 0) {
+                throw ValidationException::withMessages([
+                    'inventory_batch_id' => 'The selected vaccine batch is out of stock.',
+                ]);
+            }
+
+            if ((int) $inventory->current_stock <= 0) {
+                throw ValidationException::withMessages([
+                    'inventory_id' => 'The selected vaccine inventory item is out of stock.',
+                ]);
+            }
+
+            $lockedSchedule->update([
+                'status' => 'Done',
+                'administered_date' => $administeredDate->toDateString(),
+                'administration_route' => $data['administration_route'],
+                'administered_by' => $request->user()->id,
+                'vaccine_type' => $inventory->item_name,
+                'vaccine_lot_number' => $batch->batch_number,
+                'inventory_batch_id' => $batch->id,
+                'notes' => blank($data['remarks'] ?? null) ? null : trim($data['remarks']),
+            ]);
+
+            $this->writeAudit(
+                $request,
+                'Mark vaccination as completed',
+                'PEP Schedule',
+                $lockedSchedule->id,
+                'Recorded PEP dose day '.$lockedSchedule->dose_day.' via '.$data['administration_route'].' using vaccine batch '.$batch->batch_number.'. Inventory consumption must be recorded manually.'
+            );
+
+            return [
+                'schedule' => $lockedSchedule->fresh(['incident.patient', 'incident.barangay', 'administrator', 'inventoryBatch.inventory', 'inventoryTransaction.batch']),
+            ];
+        }, 3);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Dose recorded successfully. Record the actual vaccine stock consumed in the Inventory module.',
+            'already_recorded' => false,
+            'inventory_automatically_deducted' => false,
+            'data' => $this->pepSchedulePayload($result['schedule']),
         ]);
     }
 
@@ -3270,7 +3393,11 @@ class BitemapApiController extends Controller
 
     private function pepSchedulePayload(PepSchedule $schedule): array
     {
-        $schedule->loadMissing(['incident.patient', 'incident.barangay', 'administrator']);
+        $schedule->loadMissing(['incident.patient', 'incident.barangay', 'administrator', 'inventoryBatch.inventory', 'inventoryTransaction.batch']);
+
+        $isCompleted = $schedule->administered_date || in_array($schedule->status, ['Done', 'Completed'], true);
+        $inventoryBatch = $schedule->inventoryBatch;
+        $inventoryTransaction = $schedule->inventoryTransaction;
 
         return [
             'id' => $schedule->id,
@@ -3278,12 +3405,21 @@ class BitemapApiController extends Controller
             'dose_day' => $schedule->dose_day,
             'scheduled_date' => optional($schedule->scheduled_date)->toDateString(),
             'administered_date' => optional($schedule->administered_date)->toDateString(),
+            'administration_route' => $schedule->administration_route,
             'vaccine_type' => $schedule->vaccine_type,
             'vaccine_lot_number' => $schedule->vaccine_lot_number,
             'administered_by' => $schedule->administered_by,
             'administrator' => $schedule->administrator,
             'status' => $schedule->status,
             'notes' => $schedule->notes,
+            'inventory_transaction_id' => $inventoryTransaction?->id,
+            'inventory_batch_id' => $inventoryBatch?->id,
+            'inventory_batch' => $inventoryBatch ? $this->inventoryBatchPayload($inventoryBatch) : null,
+            'inventory_linkage_status' => $inventoryBatch
+                ? 'Recorded'
+                : ($inventoryTransaction
+                    ? 'Legacy inventory transaction'
+                    : ($isCompleted ? 'Unavailable / not recorded' : 'Not recorded')),
             'patient' => $schedule->incident?->patient,
             'incident' => $schedule->incident ? $this->incidentSummaryPayload($schedule->incident) : null,
             'created_at' => $schedule->created_at,
@@ -3627,6 +3763,19 @@ class BitemapApiController extends Controller
             'Vaccine', 'Immunoglobulin', 'Supply', 'Medicine' => $type,
             default => 'Supply',
         };
+    }
+
+    private function isEligiblePepVaccineInventory(Inventory $inventory): bool
+    {
+        if ($inventory->item_type !== 'Vaccine') {
+            return false;
+        }
+
+        $itemName = strtolower(trim($inventory->item_name));
+
+        return ! str_contains($itemName, 'immunoglobulin')
+            && preg_match('/(^|[^a-z])(?:e|h)?rig([^a-z]|$)/i', $itemName) !== 1
+            && ! str_contains($itemName, 'tetanus');
     }
 
     private function normalizeTransactionType(?string $type): string

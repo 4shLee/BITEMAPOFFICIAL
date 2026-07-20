@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
-import { Bell, CalendarDays, Check, ClipboardCheck, Clock, Edit, Eye, History, MessageSquare, Phone, RefreshCw, ShieldCheck, Syringe, X } from 'lucide-react';
+import { Bell, CalendarDays, Check, ClipboardCheck, Clock, Eye, History, MessageSquare, Phone, RefreshCw, ShieldCheck, Syringe, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Header } from '../components/Layout/Header';
 import { Badge } from '../components/UI/Badge';
@@ -20,9 +20,11 @@ type Dose = {
   rawStatus: string;
   status: DoseStatus;
   vaccineType: string;
+  administrationRoute?: string;
   lotNo: string;
   administeredBy: string;
   notes?: string;
+  inventoryLinkageStatus?: string;
   patientId?: string;
   incidentId?: string;
 };
@@ -41,10 +43,9 @@ type ScheduleGroup = {
 
 type RecordDoseForm = {
   administeredDate: string;
-  vaccineType: string;
-  lotNo: string;
+  administrationRoute: string;
   inventoryItemId: string;
-  administeredBy: string;
+  inventoryBatchId: string;
   remarks: string;
 };
 
@@ -55,14 +56,23 @@ type RescheduleDoseForm = {
 
 type InventoryBatch = {
   id: number | string;
+  inventory_id: number | string;
+  batch_number?: string;
+  lot_number?: string;
+  quantity_remaining?: number;
+  expiry_date?: string;
+};
+
+type InventoryItem = {
+  id: number | string;
   item_name?: string;
   item_type?: string;
   current_stock?: number;
-  unit?: string;
-  batch_number?: string;
-  lot_number?: string;
-  vaccine_lot_number?: string;
-  expiry_date?: string;
+  batches?: InventoryBatch[];
+};
+
+type VaccineBatchOption = InventoryBatch & {
+  inventoryItemId: string;
 };
 
 function todayKey() {
@@ -125,9 +135,11 @@ function buildScheduleGroups(rows: any[]): ScheduleGroup[] {
           rawStatus: item.status,
           status: evaluateDoseStatus(item),
           vaccineType: item.vaccine_type || 'Anti-rabies Vaccine',
+          administrationRoute: item.administration_route || undefined,
           lotNo: item.vaccine_lot_number || '',
           administeredBy: item.administrator?.name || '',
           notes: item.notes || '',
+          inventoryLinkageStatus: item.inventory_linkage_status,
           patientId: patient.id ? String(patient.id) : undefined,
           incidentId,
         })),
@@ -187,22 +199,17 @@ function formatDate(value?: string) {
 }
 
 function getBatchLotNumber(item: InventoryBatch) {
-  return item.batch_number || item.lot_number || item.vaccine_lot_number || '';
+  return item.batch_number || item.lot_number || '';
 }
 
-function getBatchVaccineType(item: InventoryBatch) {
-  return item.item_name || item.item_type || 'Anti-rabies Vaccine';
-}
+function isEligiblePepVaccineInventoryItem(item: InventoryItem) {
+  const itemType = String(item.item_type || '').trim().toLowerCase();
+  const itemName = String(item.item_name || '').trim().toLowerCase();
 
-function isAvailableVaccineBatch(item: InventoryBatch) {
-  const stock = Number(item.current_stock || 0);
-  const lotNumber = getBatchLotNumber(item);
-  const expiryDate = item.expiry_date;
-  const name = String(item.item_name || '').toLowerCase();
-  const type = String(item.item_type || '').toLowerCase();
-  const isVaccine = name.includes('vaccine') || name.includes('rabies') || type.includes('vaccine');
-
-  return isVaccine && Boolean(lotNumber) && Boolean(expiryDate) && stock > 0 && String(expiryDate) >= todayKey();
+  return itemType === 'vaccine'
+    && !itemName.includes('immunoglobulin')
+    && !/(^|[^a-z])(?:e|h)?rig([^a-z]|$)/i.test(itemName)
+    && !itemName.includes('tetanus');
 }
 
 export function PEPSchedule() {
@@ -218,17 +225,16 @@ export function PEPSchedule() {
   const [recordDose, setRecordDose] = useState<Dose | null>(null);
   const [recordForm, setRecordForm] = useState<RecordDoseForm>({
     administeredDate: todayKey(),
-    vaccineType: 'Anti-rabies Vaccine',
-    lotNo: '',
+    administrationRoute: '',
     inventoryItemId: '',
-    administeredBy: currentUser?.name || currentUser?.full_name || '',
+    inventoryBatchId: '',
     remarks: '',
   });
   const [savingDose, setSavingDose] = useState(false);
   const [rescheduleDose, setRescheduleDose] = useState<Dose | null>(null);
   const [rescheduleForm, setRescheduleForm] = useState<RescheduleDoseForm>({ scheduledDate: todayKey(), reason: '' });
   const [savingReschedule, setSavingReschedule] = useState(false);
-  const [inventoryItems, setInventoryItems] = useState<InventoryBatch[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const requestedIncidentId = useMemo(() => {
     const queryIncidentId = new URLSearchParams(location.search).get('incident_id');
     const stateIncidentId = (location.state as { incidentId?: string | number } | null)?.incidentId;
@@ -299,21 +305,34 @@ export function PEPSchedule() {
       : dueTodayDose
         ? 'Due Today'
         : 'On Track';
-  const availableVaccineBatches = useMemo(
-    () => inventoryItems.filter(isAvailableVaccineBatch),
-    [inventoryItems]
-  );
-  const selectedInventoryBatch = availableVaccineBatches.find((item) => String(item.id) === recordForm.inventoryItemId);
+  const eligibleVaccineProducts = useMemo(() => inventoryItems
+    .filter((item) => isEligiblePepVaccineInventoryItem(item) && Number(item.current_stock || 0) > 0), [inventoryItems]);
+  const selectedVaccineProduct = eligibleVaccineProducts.find((item) => String(item.id) === recordForm.inventoryItemId);
+  const availableVaccineBatches = useMemo<VaccineBatchOption[]>(() => selectedVaccineProduct
+    ? (selectedVaccineProduct.batches || [])
+      .filter((batch) => (
+        Number(batch.quantity_remaining || 0) > 0
+        && Boolean(batch.expiry_date)
+        && String(batch.expiry_date) >= todayKey()
+      ))
+      .map((batch) => ({
+        ...batch,
+        inventoryItemId: String(selectedVaccineProduct.id),
+      }))
+    : [], [selectedVaccineProduct]);
+  const selectedInventoryBatch = availableVaccineBatches.find((batch) => (
+    String(batch.id) === recordForm.inventoryBatchId
+    && batch.inventoryItemId === recordForm.inventoryItemId
+  ));
 
   const openRecordDose = (dose: Dose) => {
-    const matchingBatch = availableVaccineBatches.find((item) => getBatchLotNumber(item) === dose.lotNo);
+    if (dose.status === 'completed' || dose.status === 'completed_late') return;
     setRecordDose(dose);
     setRecordForm({
       administeredDate: dose.administeredDate || todayKey(),
-      vaccineType: matchingBatch ? getBatchVaccineType(matchingBatch) : dose.vaccineType || 'Anti-rabies Vaccine',
-      lotNo: matchingBatch ? getBatchLotNumber(matchingBatch) : dose.lotNo || '',
-      inventoryItemId: matchingBatch ? String(matchingBatch.id) : '',
-      administeredBy: dose.administeredBy || currentUser?.name || currentUser?.full_name || '',
+      administrationRoute: '',
+      inventoryItemId: '',
+      inventoryBatchId: '',
       remarks: dose.notes || '',
     });
   };
@@ -342,33 +361,29 @@ export function PEPSchedule() {
 
   const handleRecordDose = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!recordDose) return;
+    if (
+      !recordDose
+      || savingDose
+      || !recordForm.administeredDate
+      || !recordForm.administrationRoute
+      || !recordForm.inventoryItemId
+      || !selectedInventoryBatch
+    ) return;
 
     try {
       setSavingDose(true);
-      await pepScheduleAPI.update(String(recordDose.id), {
-        status: 'Completed',
+      await pepScheduleAPI.recordDose(String(recordDose.id), {
         administered_date: recordForm.administeredDate,
-        vaccine_type: recordForm.vaccineType,
-        vaccine_lot_number: recordForm.lotNo,
-        notes: [
-          recordForm.administeredBy ? 'Administered by: ' + recordForm.administeredBy : '',
-          recordForm.remarks ? 'Remarks: ' + recordForm.remarks : '',
-        ].filter(Boolean).join('\n'),
+        administration_route: recordForm.administrationRoute as 'Intradermal' | 'Intramuscular',
+        inventory_id: Number(recordForm.inventoryItemId),
+        inventory_batch_id: Number(recordForm.inventoryBatchId),
+        remarks: recordForm.remarks || undefined,
       });
 
-      if (selectedInventoryBatch) {
-        await inventoryAPI.update(String(selectedInventoryBatch.id), {
-          current_stock: Math.max(Number(selectedInventoryBatch.current_stock || 0) - 1, 0),
-          transaction_type: 'Out',
-          notes: 'Dose recorded for PEP Day ' + recordDose.day,
-        });
-      }
-
       // TODO: Add a manual Adjust Schedule workflow later. Late dose recording must not automatically regenerate remaining dose dates.
-      toast.success('Dose recorded successfully.');
+      toast.success('Dose recorded successfully. Record the actual vaccine stock consumed in the Inventory module.');
       setRecordDose(null);
-      loadSchedule();
+      await loadSchedule();
     } catch (error: any) {
       toast.error(error.message || 'Failed to record dose.');
     } finally {
@@ -598,9 +613,10 @@ export function PEPSchedule() {
                       <th className="w-[8%] px-3 py-3 text-left">Dose</th>
                       <th className="w-[13%] px-3 py-3 text-left">Scheduled Date</th>
                       <th className="w-[14%] px-3 py-3 text-left">Date Administered</th>
-                      <th className="w-[16%] px-3 py-3 text-left">Vaccine Type</th>
-                      <th className="w-[14%] px-3 py-3 text-left">Lot/Batch Number</th>
-                      <th className="w-[14%] px-3 py-3 text-left">Administered By</th>
+                      <th className="w-[14%] px-3 py-3 text-left">Vaccine Type</th>
+                      <th className="w-[12%] px-3 py-3 text-left">Administration Route</th>
+                      <th className="w-[13%] px-3 py-3 text-left">Lot/Batch Number</th>
+                      <th className="w-[13%] px-3 py-3 text-left">Administered By</th>
                       <th className="w-[10%] px-3 py-3 text-left">Status</th>
                       {(canUpdatePep || canSendNotifications) && <th className="w-[11%] px-3 py-3 text-left">Actions</th>}
                     </tr>
@@ -612,7 +628,15 @@ export function PEPSchedule() {
                         <td className="px-3 py-3 text-sm text-muted-foreground">{formatDate(dose.date)}</td>
                         <td className="px-3 py-3 text-sm text-muted-foreground">{dose.administeredDate ? formatDate(dose.administeredDate) : '-'}</td>
                         <td className="px-3 py-3 text-sm text-muted-foreground">{dose.vaccineType || '-'}</td>
-                        <td className="px-3 py-3 text-sm text-muted-foreground">{dose.lotNo || '-'}</td>
+                        <td className="px-3 py-3 text-sm text-muted-foreground">
+                          {dose.administrationRoute || ((dose.status === 'completed' || dose.status === 'completed_late') ? 'Not recorded' : '-')}
+                        </td>
+                        <td className="px-3 py-3 text-sm text-muted-foreground">
+                          <span>{dose.lotNo || '-'}</span>
+                          {dose.inventoryLinkageStatus === 'Unavailable / not recorded' && (
+                            <span className="mt-1 block text-xs text-amber-700">Batch link unavailable / not recorded</span>
+                          )}
+                        </td>
                         <td className="px-3 py-3 text-sm text-muted-foreground">{dose.administeredBy || '-'}</td>
                         <td className="px-3 py-3"><Badge variant={statusVariant(dose.status)}>{statusLabel(dose.status)}</Badge></td>
                         {(canUpdatePep || canSendNotifications) && (
@@ -635,12 +659,6 @@ export function PEPSchedule() {
                                   Reschedule
                                 </Button>
                               )}
-                              {(dose.status === 'completed' || dose.status === 'completed_late') && canUpdatePep && (
-                                <Button type="button" variant="outline" size="sm" onClick={() => openRecordDose(dose)}>
-                                  <Edit className="h-4 w-4" />
-                                  Edit
-                                </Button>
-                              )}
                             </div>
                           </td>
                         )}
@@ -659,7 +677,7 @@ export function PEPSchedule() {
           <div className="w-full max-w-lg rounded-2xl border border-border bg-card shadow-2xl">
             <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-5">
               <div>
-                <h2 className="text-lg font-bold text-foreground">Record Dose - Day {recordDose.day}</h2>
+                <h2 className="text-lg font-bold text-foreground">Record Anti-rabies Vaccine Dose — Day {recordDose.day}</h2>
                 <p className="mt-1 text-sm text-muted-foreground">Encode administered vaccine details for this dose.</p>
               </div>
               <button type="button" onClick={() => setRecordDose(null)} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted" aria-label="Close record dose modal">
@@ -667,37 +685,73 @@ export function PEPSchedule() {
               </button>
             </div>
             <form onSubmit={handleRecordDose} className="space-y-4 p-6">
-              <Input label="Date Administered" type="date" value={recordForm.administeredDate} onChange={(event) => setRecordForm((current) => ({ ...current, administeredDate: event.target.value }))} required />
-              <Input label="Vaccine Type" value={recordForm.vaccineType} onChange={(event) => setRecordForm((current) => ({ ...current, vaccineType: event.target.value }))} required />
-              {availableVaccineBatches.length > 0 ? (
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-foreground">Lot / Batch Number</label>
-                  <select
-                    value={recordForm.inventoryItemId}
-                    onChange={(event) => {
-                      const batch = availableVaccineBatches.find((item) => String(item.id) === event.target.value);
-                      setRecordForm((current) => ({
-                        ...current,
-                        inventoryItemId: event.target.value,
-                        vaccineType: batch ? getBatchVaccineType(batch) : current.vaccineType,
-                        lotNo: batch ? getBatchLotNumber(batch) : '',
-                      }));
-                    }}
-                    className="h-10 w-full rounded-lg border border-input bg-input-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                  >
-                    <option value="">Select available vaccine batch</option>
-                    {availableVaccineBatches.map((batch) => (
-                      <option key={batch.id} value={batch.id}>
-                        {getBatchVaccineType(batch)} - Lot {getBatchLotNumber(batch)} - Exp {formatDate(batch.expiry_date)} - Stock {batch.current_stock}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : (
-                // TODO: Replace this fallback with inventory batch selection when batch-level inventory data is available.
-                <Input label="Lot / Batch Number" value={recordForm.lotNo} onChange={(event) => setRecordForm((current) => ({ ...current, lotNo: event.target.value }))} placeholder="Enter lot or batch number" />
-              )}
-              <Input label="Administered By" value={recordForm.administeredBy} onChange={(event) => setRecordForm((current) => ({ ...current, administeredBy: event.target.value }))} placeholder="Staff name" />
+              <div>
+                <Input label="Date Administered" type="date" max={todayKey()} value={recordForm.administeredDate} onChange={(event) => setRecordForm((current) => ({ ...current, administeredDate: event.target.value }))} required />
+                {!recordForm.administeredDate && <p className="mt-1.5 text-xs font-medium text-destructive">Date administered is required.</p>}
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-foreground">Administration Route</label>
+                <select
+                  value={recordForm.administrationRoute}
+                  onChange={(event) => setRecordForm((current) => ({ ...current, administrationRoute: event.target.value }))}
+                  disabled={savingDose}
+                  required
+                  className="h-10 w-full rounded-lg border border-input bg-input-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <option value="">Select administration route</option>
+                  <option value="Intradermal">Intradermal</option>
+                  <option value="Intramuscular">Intramuscular</option>
+                </select>
+                {!recordForm.administrationRoute && <p className="mt-1.5 text-xs font-medium text-destructive">Administration route is required.</p>}
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-foreground">Vaccine Product</label>
+                <select
+                  value={recordForm.inventoryItemId}
+                  onChange={(event) => setRecordForm((current) => ({
+                    ...current,
+                    inventoryItemId: event.target.value,
+                    inventoryBatchId: '',
+                  }))}
+                  disabled={savingDose || eligibleVaccineProducts.length === 0}
+                  required
+                  className="h-10 w-full rounded-lg border border-input bg-input-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <option value="">Select vaccine product</option>
+                  {eligibleVaccineProducts.map((item) => (
+                    <option key={item.id} value={item.id}>{item.item_name || 'Unnamed vaccine'}</option>
+                  ))}
+                </select>
+                {!recordForm.inventoryItemId && <p className="mt-1.5 text-xs font-medium text-destructive">Vaccine product is required.</p>}
+                {eligibleVaccineProducts.length === 0 && (
+                  <p className="mt-2 text-sm text-amber-700">No eligible vaccine product is currently available.</p>
+                )}
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-foreground">Vaccine Lot / Batch</label>
+                <select
+                  value={recordForm.inventoryBatchId}
+                  onChange={(event) => setRecordForm((current) => ({ ...current, inventoryBatchId: event.target.value }))}
+                  disabled={savingDose || !selectedVaccineProduct || availableVaccineBatches.length === 0}
+                  required
+                  className="h-10 w-full rounded-lg border border-input bg-input-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <option value="">Select available vaccine batch</option>
+                  {availableVaccineBatches.map((batch) => (
+                    <option key={batch.id} value={batch.id}>
+                      Lot/Batch {getBatchLotNumber(batch)} — Exp {formatDate(batch.expiry_date)} — Available stock {batch.quantity_remaining}
+                    </option>
+                  ))}
+                </select>
+                {!recordForm.inventoryBatchId && <p className="mt-1.5 text-xs font-medium text-destructive">Vaccine lot/batch is required.</p>}
+                {selectedVaccineProduct && availableVaccineBatches.length === 0 && (
+                  <p className="mt-2 text-sm text-amber-700">No unexpired vaccine batch with available stock is currently available.</p>
+                )}
+              </div>
+              <Input label="Administered By" value={currentUser?.name || currentUser?.full_name || ''} readOnly />
+              <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm leading-6 text-sky-900">
+                <span className="font-semibold">Inventory notice:</span> This records the vaccine product and batch used. Stock is not automatically deducted because the clinic’s intradermal and intramuscular vial-consumption rules are still under validation. Record actual stock usage in the Inventory module.
+              </div>
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-foreground">Remarks</label>
                 <textarea
@@ -709,7 +763,7 @@ export function PEPSchedule() {
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="outline" onClick={() => setRecordDose(null)} disabled={savingDose}>Cancel</Button>
-                <Button type="submit" disabled={savingDose}>{savingDose ? 'Saving...' : 'Save Dose Record'}</Button>
+                <Button type="submit" disabled={savingDose || !recordForm.administeredDate || !recordForm.administrationRoute || !recordForm.inventoryItemId || !selectedInventoryBatch}>{savingDose ? 'Saving...' : 'Save Dose Record'}</Button>
               </div>
             </form>
           </div>
