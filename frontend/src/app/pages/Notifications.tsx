@@ -1065,7 +1065,7 @@ export function Notifications() {
   ];
 
   return (
-    <div className="min-h-screen flex-1 bg-[#f4f7f5]">
+    <div className="min-h-screen flex-1 bg-background">
       <Header title="Notifications & Reminders" breadcrumbs={['Clinic Workflow', 'Notifications']} />
 
       <main className="space-y-6 px-4 py-5 sm:px-6 lg:px-8">
@@ -1097,30 +1097,35 @@ export function Notifications() {
 
         <div className="flex flex-col gap-6">
           <section aria-labelledby="notification-history-heading" className="order-2 space-y-4">
-            <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-              <div className="flex flex-col gap-4 bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-800 px-5 py-4 text-white shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-6">
-                <div className="flex items-center gap-3">
-                  <div>
-                    <div className="flex items-center gap-2"><History className="h-4 w-4" /><h2 id="notification-history-heading" className="text-base font-bold text-white">Notification History</h2></div>
-                    <p className="mt-1 text-xs text-emerald-50/80">SMS delivery records linked to patient vaccination schedules.</p>
+            <div className="overflow-hidden rounded-3xl border border-border/80 bg-card shadow-sm shadow-slate-900/5">
+              <div className="flex flex-col gap-3 border-b border-border px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-primary-bg text-primary">
+                    <History className="h-4 w-4" />
                   </div>
-                  {pendingCount > 0 && (
-                    <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs font-semibold text-emerald-50 ring-1 ring-white/20">
-                      {pendingCount} pending
-                    </span>
-                  )}
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 id="notification-history-heading" className="text-base font-extrabold text-foreground">Notification History</h2>
+                      {pendingCount > 0 && (
+                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">
+                          {pendingCount} pending
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-0.5 text-xs font-medium text-muted-foreground">SMS delivery records linked to patient vaccination schedules.</p>
+                  </div>
                 </div>
-                <div className="flex max-w-full overflow-x-auto rounded-lg bg-white/12 p-0.5 text-xs ring-1 ring-white/15">
+                <div className="flex max-w-full overflow-x-auto rounded-xl border border-border bg-muted/60 p-1 text-xs">
                   {(['all', 'pending', 'sent', 'failed'] as const).map((item) => (
                     <button
                       key={item}
                       onClick={() => handleFilterChange(item)}
                       className={
-                        'px-2.5 py-1 rounded-md transition-colors font-medium capitalize ' +
-                        (filter === item ? 'bg-white text-emerald-900 shadow-sm' : 'text-emerald-50/80 hover:text-white')
+                        'shrink-0 rounded-lg border px-2.5 py-1.5 font-semibold capitalize transition-colors ' +
+                        (filter === item ? 'border-primary/15 bg-card text-primary shadow-sm' : 'border-transparent text-muted-foreground hover:text-foreground')
                       }
                     >
-                      {item} <span className={(filter === item ? 'text-emerald-700' : 'text-emerald-50/70') + ' text-[10px]'}>({filterCounts[item]})</span>
+                      {item} <span className={(filter === item ? 'text-primary/80' : 'text-muted-foreground') + ' text-[10px]'}>({filterCounts[item]})</span>
                     </button>
                   ))}
                 </div>
@@ -1225,13 +1230,29 @@ export function Notifications() {
           </section>
 
           <section aria-labelledby="upcoming-reminders-heading" className="order-1 space-y-4">
-            <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-              <div className="flex items-center gap-2 bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-800 px-5 py-4 text-white shadow-sm">
-                <Bell className="w-4 h-4 text-emerald-50" />
-                <div>
-                  <h2 id="upcoming-reminders-heading" className="text-base font-bold text-white">Upcoming Reminders</h2>
-                  <p className="mt-1 text-xs text-emerald-50/80">Overdue, due today, and upcoming doses within seven days.</p>
+            <div className="overflow-hidden rounded-3xl border border-border/80 bg-card shadow-sm shadow-slate-900/5">
+              <div className="flex flex-col gap-3 border-b border-border border-l-4 border-l-primary px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-primary-bg text-primary">
+                    <Bell className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <h2 id="upcoming-reminders-heading" className="text-base font-extrabold text-foreground">Upcoming Reminders</h2>
+                    <p className="mt-0.5 text-xs font-medium text-muted-foreground">Overdue, due today, and upcoming doses within seven days.</p>
+                  </div>
                 </div>
+                {canSendNotifications && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="w-full shrink-0 sm:w-auto"
+                    onClick={() => setBulkModalOpen(true)}
+                    disabled={bulkSending || (overduePatientCount === 0 && dueTodayCount === 0)}
+                  >
+                    <Bell className="mr-2 h-4 w-4" />
+                    {bulkSending ? 'Processing...' : smsService.enabled ? 'Send Bulk Reminder' : 'Queue Bulk Reminders'}
+                  </Button>
+                )}
               </div>
               <div className="relative p-2 sm:p-5">
                 <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
@@ -1330,18 +1351,6 @@ export function Notifications() {
               </div>
             </div>
 
-            {canSendNotifications && (
-              <Button
-                variant="primary"
-                size="md"
-                className="h-auto min-h-10 w-full max-w-full !whitespace-normal px-2 py-2 leading-4 sm:px-4"
-                onClick={() => setBulkModalOpen(true)}
-                disabled={bulkSending || (overduePatientCount === 0 && dueTodayCount === 0)}
-              >
-                <Bell className="mr-2 hidden h-4 w-4 sm:block" />
-                {bulkSending ? 'Processing...' : smsService.enabled ? 'Send Bulk Reminder' : 'Queue Bulk Reminders'}
-              </Button>
-            )}
           </section>
         </div>
       </main>
