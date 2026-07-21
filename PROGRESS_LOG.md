@@ -1870,3 +1870,71 @@ Automatic vaccine consumption remains intentionally disabled. ABC personnel must
 - The available test data did not include one patient with multiple incidents or an unusually long name; these cases are covered structurally through incident-based keys, truncation, title labels, and focused tests.
 - The selected 41 Laravel PEP regression tests could not run assertions in the current PHP environment because the SQLite PDO driver was unavailable (`could not find driver`).
 - The production build still reports the existing large JavaScript bundle-size warning.
+
+
+# July 21, 2026
+
+## Notifications & Reminders
+
+- Aligned the Notifications & Reminders page with BITEMAP’s white-card visual system.
+- Replaced the large solid-green Upcoming Reminders and Notification History headers with white headers, restrained green accents, dark headings, muted descriptions, and subtle borders.
+- Added compact green icon containers and retained the pending-count badge.
+- Restyled history filters as a compact, horizontally scrollable segmented control.
+- Moved Queue Bulk Reminders into a conventional compact action button, with full-width behavior only on smaller screens.
+- Preserved dashboard counts, reminder records, semantic status colors, history filtering, pagination, SMS modes, queue behavior, and confirmation actions.
+
+## Public Portal
+
+- Added a shared Public Portal layout covering:
+
+  - `/public`
+  - `/public/clinics`
+  - `/public/heatmap`
+  - `/public/statistics`
+
+- Hid the visible vertical scrollbar across all Public Portal routes while retaining full mouse-wheel, touchpad, keyboard, and mobile-touch scrolling.
+- Added route-specific document classes that are applied while public routes are mounted and removed when leaving them.
+- Prevented the scrollbar rules from affecting authenticated staff pages.
+- Preserved the public header, maps, clinic filters, cards, statistics, footer, and responsive layouts.
+
+## Account Request and Structured Names
+
+- Replaced the single Full Name field with:
+
+  - First Name — required
+  - Middle Name — optional
+  - Last Name — required
+  - Suffix — optional
+
+- Updated both the dedicated account-request page and the Request Account Approval form accessible from sign-in.
+- Added consistent whitespace trimming and repeated-space normalization.
+- Continued generating a normalized full display name for compatibility.
+- Added structured-name fields to the users table through an additive migration.
+- Preserved legacy users and account requests containing only the original full-name value.
+- Updated backend validation and API responses to support both structured and legacy names.
+- Updated the administrator user approval and editing interface to display and edit structured names.
+- Updated user searching, sorting, initials, account details, and display components.
+- Added frontend and backend name-composition helpers to ensure consistent formatting.
+- Preserved role requests, approvals, login, passwords, and existing user-management behavior.
+- Added regression coverage for structured names, optional middle names and suffixes, whitespace normalization, and legacy records.
+
+## Request Account Approval Scrolling
+
+- Added a dedicated hidden-scrollbar treatment to the account-request page and sign-in account-request state.
+- Kept the page fully scrollable without using `overflow: hidden`.
+- Added temporary route classes to `html` and `body`, with cleanup when leaving the page.
+- Confirmed required fields, validation messages, buttons, and lower-page content remain reachable.
+- Confirmed authenticated dashboard and unrelated public-page scrollbar behavior remains unchanged.
+
+## Verification
+
+- Production frontend build passed.
+- `git diff --check` passed.
+- Browser checks were completed at desktop, tablet, and 390px mobile sizes, including 1920×1080 and 1366×768.
+- Confirmed no horizontal overflow or double scrollbar.
+- Confirmed account-request forms scroll completely to the bottom and back to the top.
+- Confirmed required-field validation remains visible and reachable.
+- Confirmed Public Portal routes retain scrolling with hidden scrollbar chrome.
+- Confirmed authenticated dashboard scrollbar behavior remains unchanged.
+- No console errors were observed during final browser checks.
+- The existing production bundle-size warning remains informational and unrelated to these changes.
