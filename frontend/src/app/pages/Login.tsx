@@ -11,7 +11,10 @@ const DEMO_MODE = false;
 const REQUESTABLE_ROLES = ASSIGNABLE_ROLES.filter((role) => role.value !== 'system_admin');
 
 const initialRequestForm = {
-  fullName: "",
+  firstName: "",
+  middleName: "",
+  lastName: "",
+  suffix: "",
   email: "",
   phone: "",
   role: "",
@@ -115,6 +118,18 @@ export function Login() {
     }
   }, [navigate]);
 
+  useEffect(() => {
+    if (!showRequestModal) return;
+
+    document.documentElement.classList.add("request-account-route");
+    document.body.classList.add("request-account-route");
+
+    return () => {
+      document.documentElement.classList.remove("request-account-route");
+      document.body.classList.remove("request-account-route");
+    };
+  }, [showRequestModal]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -156,7 +171,12 @@ export function Login() {
       const result = await authAPI.signUp(
         requestForm.email.trim(),
         requestForm.password,
-        requestForm.fullName.trim(),
+        {
+          firstName: requestForm.firstName,
+          middleName: requestForm.middleName,
+          lastName: requestForm.lastName,
+          suffix: requestForm.suffix,
+        },
         requestForm.role,
         requestForm.phone.trim() || undefined
       );
@@ -187,7 +207,7 @@ export function Login() {
 
   return (
     <div
-      className="relative isolate flex min-h-screen flex-col overflow-hidden bg-slate-50"
+      className={`relative isolate flex min-h-screen flex-col bg-slate-50 ${showRequestModal ? "request-account-scroll" : "overflow-hidden"}`}
       style={{
         fontFamily: BITEMAP_FONT_FAMILY,
       }}
@@ -256,16 +276,53 @@ export function Login() {
               </div>
 
               <form onSubmit={handleRequestSubmit} className="space-y-3">
-                <div>
-                  <label className="mb-1.5 block text-sm font-semibold text-slate-800">Full Name</label>
-                  <input
-                    type="text"
-                    value={requestForm.fullName}
-                    onChange={(e) => setRequestForm({ ...requestForm, fullName: e.target.value })}
-                    required
-                    placeholder="Enter your full name"
-                    className="w-full rounded-xl border border-slate-200 bg-white/90 px-3.5 py-2.5 text-sm text-slate-900 shadow-sm shadow-slate-900/5 placeholder:text-slate-400 focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
-                  />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1.5 block text-sm font-semibold text-slate-800">First Name</label>
+                    <input
+                      type="text"
+                      autoComplete="given-name"
+                      value={requestForm.firstName}
+                      onChange={(e) => setRequestForm({ ...requestForm, firstName: e.target.value })}
+                      required
+                      placeholder="First name"
+                      className="w-full rounded-xl border border-slate-200 bg-white/90 px-3.5 py-2.5 text-sm text-slate-900 shadow-sm shadow-slate-900/5 placeholder:text-slate-400 focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-semibold text-slate-800">Middle Name <span className="font-normal text-slate-400">(optional)</span></label>
+                    <input
+                      type="text"
+                      autoComplete="additional-name"
+                      value={requestForm.middleName}
+                      onChange={(e) => setRequestForm({ ...requestForm, middleName: e.target.value })}
+                      placeholder="Middle name"
+                      className="w-full rounded-xl border border-slate-200 bg-white/90 px-3.5 py-2.5 text-sm text-slate-900 shadow-sm shadow-slate-900/5 placeholder:text-slate-400 focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-semibold text-slate-800">Last Name</label>
+                    <input
+                      type="text"
+                      autoComplete="family-name"
+                      value={requestForm.lastName}
+                      onChange={(e) => setRequestForm({ ...requestForm, lastName: e.target.value })}
+                      required
+                      placeholder="Last name"
+                      className="w-full rounded-xl border border-slate-200 bg-white/90 px-3.5 py-2.5 text-sm text-slate-900 shadow-sm shadow-slate-900/5 placeholder:text-slate-400 focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-semibold text-slate-800">Suffix <span className="font-normal text-slate-400">(optional)</span></label>
+                    <input
+                      type="text"
+                      autoComplete="honorific-suffix"
+                      value={requestForm.suffix}
+                      onChange={(e) => setRequestForm({ ...requestForm, suffix: e.target.value })}
+                      placeholder="Jr., Sr., II, III, IV"
+                      className="w-full rounded-xl border border-slate-200 bg-white/90 px-3.5 py-2.5 text-sm text-slate-900 shadow-sm shadow-slate-900/5 placeholder:text-slate-400 focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                    />
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

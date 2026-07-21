@@ -12,12 +12,36 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password', 'role', 'phone', 'is_active', 'approval_status', 'last_login_at'])]
+#[Fillable(['name', 'first_name', 'middle_name', 'last_name', 'suffix', 'email', 'password', 'role', 'phone', 'is_active', 'approval_status', 'last_login_at'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable;
+
+    public static function normalizeNamePart(?string $value): ?string
+    {
+        $normalized = preg_replace('/\s+/u', ' ', trim((string) $value));
+
+        return $normalized === '' ? null : $normalized;
+    }
+
+    public static function composeDisplayName(array $attributes): string
+    {
+        return implode(' ', array_filter([
+            self::normalizeNamePart($attributes['first_name'] ?? null),
+            self::normalizeNamePart($attributes['middle_name'] ?? null),
+            self::normalizeNamePart($attributes['last_name'] ?? null),
+            self::normalizeNamePart($attributes['suffix'] ?? null),
+        ], fn (?string $part) => filled($part)));
+    }
+
+    public function displayName(): string
+    {
+        $structured = self::composeDisplayName($this->getAttributes());
+
+        return $structured !== '' ? $structured : (self::normalizeNamePart($this->name) ?? 'Unknown User');
+    }
 
     public function reportedIncidents(): HasMany
     {

@@ -26,3 +26,28 @@ body.public-portal-route::-webkit-scrollbar {
   width: 0;
   height: 0;
 }
+
+.request-account-scroll {
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.request-account-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+html.request-account-route,
+body.request-account-route {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html.request-account-route::-webkit-scrollbar,
+body.request-account-route::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}

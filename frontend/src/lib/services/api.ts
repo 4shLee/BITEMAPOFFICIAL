@@ -66,10 +66,27 @@ async function publicApiRequest(endpoint: string) {
 
 // ============ AUTHENTICATION API ============
 export const authAPI = {
-  async signUp(email: string, password: string, fullName: string, role: string, phone?: string) {
+  async signUp(email: string, password: string, name: { firstName: string; middleName?: string; lastName: string; suffix?: string }, role: string, phone?: string) {
+    const normalize = (value?: string) => String(value || '').trim().replace(/\s+/g, ' ');
+    const firstName = normalize(name.firstName);
+    const middleName = normalize(name.middleName);
+    const lastName = normalize(name.lastName);
+    const suffix = normalize(name.suffix);
+    const fullName = [firstName, middleName, lastName, suffix].filter(Boolean).join(' ');
+
     return apiRequest('/auth/signup', {
       method: 'POST',
-      body: JSON.stringify({ email, password, fullName, role, phone }),
+      body: JSON.stringify({
+        email,
+        password,
+        first_name: firstName,
+        middle_name: middleName || null,
+        last_name: lastName,
+        suffix: suffix || null,
+        full_name: fullName,
+        role,
+        phone,
+      }),
     }, false);
   },
 

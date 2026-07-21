@@ -134,16 +134,37 @@ class BitemapApiController extends Controller
 
     public function signUp(Request $request): JsonResponse
     {
+        $request->merge([
+            'full_name' => $request->input('full_name', $request->input('fullName')),
+        ]);
+        $hasStructuredName = $request->filled('first_name')
+            || $request->filled('middle_name')
+            || $request->filled('last_name')
+            || $request->filled('suffix');
+
         $data = $request->validate([
             'email' => ['required', 'email', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8'],
-            'fullName' => ['required', 'string', 'max:255'],
+            'first_name' => [$hasStructuredName ? 'required' : 'nullable', 'string', 'max:80'],
+            'middle_name' => ['nullable', 'string', 'max:80'],
+            'last_name' => [$hasStructuredName ? 'required' : 'nullable', 'string', 'max:80'],
+            'suffix' => ['nullable', 'string', 'max:20'],
+            'full_name' => [$hasStructuredName ? 'nullable' : 'required', 'string', 'max:255'],
             'role' => ['required', Rule::in(self::PUBLIC_SIGNUP_ROLE_OPTIONS)],
             'phone' => ['nullable', 'string', 'max:30'],
         ]);
 
+        $structuredName = $hasStructuredName ? User::composeDisplayName($data) : '';
+        $displayName = $structuredName !== ''
+            ? $structuredName
+            : (User::normalizeNamePart($data['full_name'] ?? null) ?? '');
+
         $values = [
-            'name' => $data['fullName'],
+            'name' => $displayName,
+            'first_name' => User::normalizeNamePart($data['first_name'] ?? null),
+            'middle_name' => User::normalizeNamePart($data['middle_name'] ?? null),
+            'last_name' => User::normalizeNamePart($data['last_name'] ?? null),
+            'suffix' => User::normalizeNamePart($data['suffix'] ?? null),
             'email' => strtolower(trim($data['email'])),
             'password' => $data['password'],
             'role' => $this->storableUserRole($data['role']),
@@ -753,10 +774,16 @@ class BitemapApiController extends Controller
             $query->orderBy('is_active');
         }
 
+        if (Schema::hasColumn('users', 'last_name')) {
+            $query->orderByRaw("CASE WHEN last_name IS NULL OR last_name = '' THEN name ELSE last_name END")
+                ->orderByRaw("CASE WHEN first_name IS NULL OR first_name = '' THEN name ELSE first_name END");
+        } else {
+            $query->orderBy('name');
+        }
+
         return response()->json([
             'success' => true,
             'data' => $query
-                ->orderBy('name')
                 ->get()
                 ->map(fn (User $user) => $this->userPayload($user))
                 ->values(),
@@ -801,6 +828,10 @@ class BitemapApiController extends Controller
     {
         $data = $request->validate([
             'name' => ['sometimes', 'string', 'max:255'],
+            'first_name' => ['sometimes', 'nullable', 'string', 'max:80'],
+            'middle_name' => ['sometimes', 'nullable', 'string', 'max:80'],
+            'last_name' => ['sometimes', 'nullable', 'string', 'max:80'],
+            'suffix' => ['sometimes', 'nullable', 'string', 'max:20'],
             'email' => ['sometimes', 'email', Rule::unique('users', 'email')->ignore($user->id)],
             'role' => ['sometimes', Rule::in(self::USER_ROLE_OPTIONS)],
             'phone' => ['nullable', 'string', 'max:30'],
@@ -817,6 +848,33 @@ class BitemapApiController extends Controller
         if (array_key_exists('status', $data)) {
             $data['is_active'] = $data['status'] === 'Active';
             unset($data['status']);
+        }
+
+        $structuredNameFields = ['first_name', 'middle_name', 'last_name', 'suffix'];
+        $hasStructuredNameUpdate = collect($structuredNameFields)->contains(fn (string $field) => array_key_exists($field, $data));
+
+        if ($hasStructuredNameUpdate) {
+            $nameAttributes = array_merge($user->only($structuredNameFields), $data);
+            $nameAttributes = array_map(
+                fn ($value) => User::normalizeNamePart(is_string($value) ? $value : null),
+                array_intersect_key($nameAttributes, array_flip($structuredNameFields))
+            );
+
+            if (blank($nameAttributes['first_name'] ?? null) || blank($nameAttributes['last_name'] ?? null)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'First name and last name are required when using structured name fields.',
+                    'errors' => [
+                        'first_name' => blank($nameAttributes['first_name'] ?? null) ? ['The first name field is required.'] : [],
+                        'last_name' => blank($nameAttributes['last_name'] ?? null) ? ['The last name field is required.'] : [],
+                    ],
+                ], 422);
+            }
+
+            $data = array_merge($data, $nameAttributes);
+            $data['name'] = User::composeDisplayName($nameAttributes);
+        } elseif (array_key_exists('name', $data)) {
+            $data['name'] = User::normalizeNamePart($data['name']) ?? '';
         }
 
         $oldRole = $user->role;
@@ -3539,10 +3597,17 @@ class BitemapApiController extends Controller
             ? ($user->approval_status ?? 'approved')
             : ($user->is_active ? 'approved' : 'pending');
 
+        $displayName = $user->displayName();
+
         return [
             'id' => $user->id,
-            'name' => $user->name,
-            'full_name' => $user->name,
+            'name' => $displayName,
+            'full_name' => $displayName,
+            'display_name' => $displayName,
+            'first_name' => $user->first_name,
+            'middle_name' => $user->middle_name,
+            'last_name' => $user->last_name,
+            'suffix' => $user->suffix,
             'email' => $user->email,
             'role' => $this->canonicalUserRole($user->role),
             'phone' => $user->phone,

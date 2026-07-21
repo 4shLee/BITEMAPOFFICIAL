@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { AlertCircle, ArrowLeft, Eye, EyeOff, Lock, ShieldCheck, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
@@ -10,7 +10,10 @@ const CLINIC_REQUESTABLE_ROLES = REQUESTABLE_ROLES.filter((role) => role.value !
 
 export function Signup() {
   const [form, setForm] = useState({
-    fullName: '',
+    firstName: '',
+    middleName: '',
+    lastName: '',
+    suffix: '',
     email: '',
     phone: '',
     role: '',
@@ -20,6 +23,16 @@ export function Signup() {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+
+  useEffect(() => {
+    document.documentElement.classList.add('request-account-route');
+    document.body.classList.add('request-account-route');
+
+    return () => {
+      document.documentElement.classList.remove('request-account-route');
+      document.body.classList.remove('request-account-route');
+    };
+  }, []);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -39,7 +52,12 @@ export function Signup() {
       const result = await authAPI.signUp(
         form.email.trim(),
         form.password,
-        form.fullName.trim(),
+        {
+          firstName: form.firstName,
+          middleName: form.middleName,
+          lastName: form.lastName,
+          suffix: form.suffix,
+        },
         form.role,
         form.phone.trim() || undefined
       );
@@ -56,7 +74,7 @@ export function Signup() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="request-account-scroll min-h-screen bg-background flex flex-col">
       <header className="bg-card border-b border-border">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
@@ -123,16 +141,23 @@ export function Signup() {
                   </div>
 
                   <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-foreground mb-1.5">Full Name</label>
-                      <input
-                        type="text"
-                        value={form.fullName}
-                        onChange={(e) => setForm({ ...form, fullName: e.target.value })}
-                        required
-                        placeholder="Enter your full name"
-                        className="w-full px-3.5 py-2.5 text-sm bg-input-background border border-input rounded-lg text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
-                      />
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="block text-sm font-medium text-foreground mb-1.5">First Name</label>
+                        <input type="text" autoComplete="given-name" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} required placeholder="First name" className="w-full px-3.5 py-2.5 text-sm bg-input-background border border-input rounded-lg text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-foreground mb-1.5">Middle Name <span className="font-normal text-muted-foreground">(optional)</span></label>
+                        <input type="text" autoComplete="additional-name" value={form.middleName} onChange={(e) => setForm({ ...form, middleName: e.target.value })} placeholder="Middle name" className="w-full px-3.5 py-2.5 text-sm bg-input-background border border-input rounded-lg text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-foreground mb-1.5">Last Name</label>
+                        <input type="text" autoComplete="family-name" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} required placeholder="Last name" className="w-full px-3.5 py-2.5 text-sm bg-input-background border border-input rounded-lg text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-foreground mb-1.5">Suffix <span className="font-normal text-muted-foreground">(optional)</span></label>
+                        <input type="text" autoComplete="honorific-suffix" value={form.suffix} onChange={(e) => setForm({ ...form, suffix: e.target.value })} placeholder="Jr., Sr., II, III, IV" className="w-full px-3.5 py-2.5 text-sm bg-input-background border border-input rounded-lg text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors" />
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

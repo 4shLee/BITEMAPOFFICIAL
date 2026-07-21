@@ -6,13 +6,18 @@ import { Button } from '../components/UI/Button';
 import { toast } from 'sonner';
 import { usersAPI } from '../../lib/services/api';
 import { ASSIGNABLE_ROLES, getRoleLabel, getStoredUser, isSystemAdminRole, normalizeRoleKey } from '../../lib/auth/roleAccess';
+import { composeUserName, getUserDisplayName } from '../../lib/userName';
 
 const ROLES = ASSIGNABLE_ROLES;
 const USERS_PER_PAGE = 10;
 
 function UserModal({ user, roles, isCurrentUser, onClose, onSave }: { user: any; roles: typeof ASSIGNABLE_ROLES; isCurrentUser: boolean; onClose: () => void; onSave: (data: any) => void; }) {
   const [form, setForm] = useState({
-    name: user.name || '',
+    name: getUserDisplayName(user),
+    firstName: user.first_name || '',
+    middleName: user.middle_name || '',
+    lastName: user.last_name || '',
+    suffix: user.suffix || '',
     email: user.email || '',
     phone: user.phone || '',
     role: normalizeRoleKey(user.role || 'nurse_vaccinator'),
@@ -22,7 +27,8 @@ function UserModal({ user, roles, isCurrentUser, onClose, onSave }: { user: any;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim() || !form.email.trim()) {
+    const hasStructuredName = Boolean(form.firstName.trim() || form.middleName.trim() || form.lastName.trim() || form.suffix.trim());
+    if ((hasStructuredName && (!form.firstName.trim() || !form.lastName.trim())) || (!hasStructuredName && !form.name.trim()) || !form.email.trim()) {
       toast.error('Name and email are required.');
       return;
     }
@@ -30,30 +36,52 @@ function UserModal({ user, roles, isCurrentUser, onClose, onSave }: { user: any;
       toast.error('You cannot deactivate your own account.');
       return;
     }
-    const { password, ...userData } = form;
+    const { password, firstName, middleName, lastName, suffix, ...baseUserData } = form;
+    const userData = hasStructuredName
+      ? {
+          ...baseUserData,
+          name: composeUserName({ firstName, middleName, lastName, suffix }),
+          first_name: firstName,
+          middle_name: middleName,
+          last_name: lastName,
+          suffix,
+        }
+      : baseUserData;
     onSave(password.trim() ? { ...userData, password: password.trim() } : userData);
   };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-card border border-border rounded-xl w-full max-w-md shadow-xl">
+      <div className="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-xl border border-border bg-card shadow-xl">
         <div className="px-6 py-4 border-b border-border flex items-center justify-between">
           <h2 className="text-base font-semibold text-foreground">Edit User</h2>
           <button onClick={onClose} className="p-1.5 hover:bg-muted rounded-lg transition-colors">
             <X className="w-4 h-4 text-muted-foreground" />
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1.5">Full Name</label>
-            <input
-              type="text"
-              value={form.name}
-              onChange={e => setForm({ ...form, name: e.target.value })}
-              required
-              placeholder="Enter full name"
-              className="w-full px-3.5 py-2.5 bg-input-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
-            />
+        <form onSubmit={handleSubmit} className="space-y-4 overflow-y-auto p-6">
+          {!user.first_name && !user.last_name && (
+            <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+              Legacy name: <span className="font-semibold text-foreground">{getUserDisplayName(user)}</span>. Add structured fields to modernize this record, or leave them blank to preserve it.
+            </div>
+          )}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1.5">First Name</label>
+              <input type="text" value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} placeholder="First name" className="w-full px-3.5 py-2.5 bg-input-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1.5">Middle Name <span className="font-normal text-muted-foreground">(optional)</span></label>
+              <input type="text" value={form.middleName} onChange={e => setForm({ ...form, middleName: e.target.value })} placeholder="Middle name" className="w-full px-3.5 py-2.5 bg-input-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1.5">Last Name</label>
+              <input type="text" value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} placeholder="Last name" className="w-full px-3.5 py-2.5 bg-input-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1.5">Suffix <span className="font-normal text-muted-foreground">(optional)</span></label>
+              <input type="text" value={form.suffix} onChange={e => setForm({ ...form, suffix: e.target.value })} placeholder="Jr., Sr., II, III, IV" className="w-full px-3.5 py-2.5 bg-input-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors" />
+            </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-foreground mb-1.5">Email Address</label>
@@ -200,7 +228,11 @@ export function Users() {
     const status = u.status || '';
     const term = searchTerm.toLowerCase();
     return (
-      u.name?.toLowerCase().includes(term) ||
+      getUserDisplayName(u).toLowerCase().includes(term) ||
+      u.first_name?.toLowerCase().includes(term) ||
+      u.middle_name?.toLowerCase().includes(term) ||
+      u.last_name?.toLowerCase().includes(term) ||
+      u.suffix?.toLowerCase().includes(term) ||
       u.email?.toLowerCase().includes(term) ||
       u.role?.toLowerCase().includes(term) ||
       getRoleLabel(u.role).toLowerCase().includes(term) ||
@@ -371,6 +403,7 @@ export function Users() {
                   <tr><td colSpan={7} className="px-6 py-10 text-center text-sm text-muted-foreground">No users found.</td></tr>
                 ) : paginatedUsers.map(user => {
                   const approval = user.approval_status || 'approved';
+                  const displayName = getUserDisplayName(user);
                   const isPending = approval === 'pending';
                   const isRejected = approval === 'rejected';
                   const userCanBeManaged = canManageUser(user);
@@ -381,9 +414,9 @@ export function Users() {
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-white text-sm font-semibold shrink-0">
-                            {user.name?.charAt(0)}
+                            {displayName.charAt(0)}
                           </div>
-                          <span className="text-sm font-medium text-foreground">{user.name}</span>
+                          <span className="text-sm font-medium text-foreground">{displayName}</span>
                         </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-muted-foreground">{user.email}</td>
