@@ -1,3 +1,28 @@
 @import './fonts.css';
 @import './tailwind.css';
 @import './theme.css';
+
+.public-portal-scroll {
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.public-portal-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+html.public-portal-route,
+body.public-portal-route {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html.public-portal-route::-webkit-scrollbar,
+body.public-portal-route::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}

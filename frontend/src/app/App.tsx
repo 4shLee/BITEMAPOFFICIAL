@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router';
+import { useEffect, type ReactNode } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router';
 import { Toaster } from 'sonner';
 import { Dashboard } from './pages/Dashboard';
 import { IncidentReport } from './pages/IncidentReport';
@@ -47,6 +47,24 @@ function RequireAuth() {
   return <MainLayout />;
 }
 
+function PublicPortalLayout() {
+  useEffect(() => {
+    document.documentElement.classList.add('public-portal-route');
+    document.body.classList.add('public-portal-route');
+
+    return () => {
+      document.documentElement.classList.remove('public-portal-route');
+      document.body.classList.remove('public-portal-route');
+    };
+  }, []);
+
+  return (
+    <div className="public-portal-scroll">
+      <Outlet />
+    </div>
+  );
+}
+
 function RoleRoute({ children }: { children: ReactNode }) {
   const location = useLocation();
   const user = getStoredUser();
@@ -72,10 +90,12 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
 
-          <Route path="/public" element={<PublicPortal />} />
-          <Route path="/public/heatmap" element={<PublicHeatmap />} />
-          <Route path="/public/statistics" element={<PublicStatistics />} />
-          <Route path="/public/clinics" element={<PublicClinics />} />
+          <Route path="/public" element={<PublicPortalLayout />}>
+            <Route index element={<PublicPortal />} />
+            <Route path="heatmap" element={<PublicHeatmap />} />
+            <Route path="statistics" element={<PublicStatistics />} />
+            <Route path="clinics" element={<PublicClinics />} />
+          </Route>
 
           <Route path="/mobile-map" element={<MobileGISMap />} />
 
