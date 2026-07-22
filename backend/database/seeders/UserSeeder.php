@@ -60,7 +60,6 @@ class UserSeeder extends Seeder
             ],
         ];
 
-
         $inactiveUpdates = ['is_active' => false];
 
         if (Schema::hasColumn('users', 'approval_status')) {

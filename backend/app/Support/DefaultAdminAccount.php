@@ -9,9 +9,13 @@ use Illuminate\Support\Facades\Schema;
 class DefaultAdminAccount
 {
     public const EMAIL = 'admin@bitemap.local';
+
     public const PASSWORD = 'password';
+
     public const NAME = 'System Administrator';
+
     public const PHONE = '09170000000';
+
     public const ROLE = 'system_admin';
 
     public static function shouldRepairForLogin(string $email, string $password): bool
