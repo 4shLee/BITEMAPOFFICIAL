@@ -1938,3 +1938,18 @@ Automatic vaccine consumption remains intentionally disabled. ABC personnel must
 - Confirmed authenticated dashboard scrollbar behavior remains unchanged.
 - No console errors were observed during final browser checks.
 - The existing production bundle-size warning remains informational and unrelated to these changes.
+
+# July 22, 2026
+
+## Environment & Dependency Fixes
+
+- Resolved frontend development environment blockers by adding `@eslint/js`, `typescript`, `globals`, and related ESLint React plugins to `package.json` devDependencies.
+- Fixed `eslint` and `tsc` commands failing due to missing packages.
+- Enforced required backend PHP extensions (`ext-pdo_sqlite` and `ext-openssl`) in `composer.json` to prevent silent test failures or runtime crashes in environments lacking these extensions.
+- Formatted backend PHP code utilizing Laravel Pint, fixing style violations in user models, seeders, and migrations.
+
+## Verification
+
+- `npm run test` passed all 17 tests successfully.
+- Code style formatting passed for the backend.
+- `eslint` and `tsc` successfully execute and surface codebase diagnostics.
