@@ -9,9 +9,9 @@ return new class extends Migration
 {
     public function up(): void
     {
-        $isMySql = Schema::getConnection()->getDriverName() === 'mysql';
+        $isMySqlFamily = in_array(Schema::getConnection()->getDriverName(), ['mysql', 'mariadb'], true);
 
-        if ($isMySql && Schema::hasTable('users')) {
+        if ($isMySqlFamily && Schema::hasTable('users')) {
             DB::statement("ALTER TABLE users MODIFY role ENUM('Admin','Health Officer','Doctor','Nurse','Vaccinator','Encoder','BHW') NOT NULL DEFAULT 'Nurse'");
         }
 
@@ -38,20 +38,20 @@ return new class extends Migration
             });
         }
 
-        if ($isMySql && Schema::hasTable('pep_schedules')) {
+        if ($isMySqlFamily && Schema::hasTable('pep_schedules')) {
             DB::statement("ALTER TABLE pep_schedules MODIFY status ENUM('Pending','Upcoming','Done','Completed','Missed','Skipped','Rescheduled','Cancelled') NOT NULL DEFAULT 'Pending'");
         }
     }
 
     public function down(): void
     {
-        $isMySql = Schema::getConnection()->getDriverName() === 'mysql';
+        $isMySqlFamily = in_array(Schema::getConnection()->getDriverName(), ['mysql', 'mariadb'], true);
 
-        if ($isMySql && Schema::hasTable('pep_schedules')) {
+        if ($isMySqlFamily && Schema::hasTable('pep_schedules')) {
             DB::statement("ALTER TABLE pep_schedules MODIFY status ENUM('Pending','Upcoming','Done','Missed','Skipped') NOT NULL DEFAULT 'Pending'");
         }
 
-        if ($isMySql && Schema::hasTable('users')) {
+        if ($isMySqlFamily && Schema::hasTable('users')) {
             DB::statement("ALTER TABLE users MODIFY role ENUM('Admin','Health Officer','Doctor','Nurse','Vaccinator','BHW') NOT NULL DEFAULT 'Nurse'");
         }
 

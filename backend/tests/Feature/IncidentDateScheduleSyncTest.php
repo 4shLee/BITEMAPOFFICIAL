@@ -48,11 +48,9 @@ class IncidentDateScheduleSyncTest extends TestCase
             ['2026-07-04', '2026-07-07', '2026-07-11', '2026-07-18', '2026-08-01'],
             collect($response->json('data.pep_schedules'))->pluck('scheduled_date')->all()
         );
-        $this->assertDatabaseHas('incidents', [
-            'id' => $response->json('data.id'),
-            'incident_date' => '2026-07-01',
-            'pep_start_date' => '2026-07-04',
-        ]);
+        $incident = Incident::findOrFail($response->json('data.id'));
+        $this->assertSame('2026-07-01', $incident->incident_date->toDateString());
+        $this->assertSame('2026-07-04', $incident->pep_start_date->toDateString());
     }
 
     public function test_changing_incident_date_does_not_move_an_established_pep_schedule(): void

@@ -17,7 +17,7 @@ class IncidentLocationPersistenceTest extends TestCase
     public function test_exact_incident_coordinates_are_saved_loaded_and_cleared_without_removing_barangay(): void
     {
         $user = User::factory()->create([
-            'role' => 'Nurse',
+            'role' => 'nurse_vaccinator',
             'is_active' => true,
             'approval_status' => 'approved',
         ]);

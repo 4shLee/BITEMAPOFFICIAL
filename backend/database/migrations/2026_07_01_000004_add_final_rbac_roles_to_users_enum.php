@@ -8,14 +8,14 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (Schema::getConnection()->getDriverName() === 'mysql') {
+        if (in_array(Schema::getConnection()->getDriverName(), ['mysql', 'mariadb'], true)) {
             DB::statement("ALTER TABLE users MODIFY role ENUM('Admin','system_admin','Clinic Admin','Health Officer','Doctor','Nurse/Vaccinator','Nurse','Vaccinator','Encoder','BHW') NOT NULL DEFAULT 'Nurse/Vaccinator'");
         }
     }
 
     public function down(): void
     {
-        if (Schema::getConnection()->getDriverName() === 'mysql') {
+        if (in_array(Schema::getConnection()->getDriverName(), ['mysql', 'mariadb'], true)) {
             DB::statement("ALTER TABLE users MODIFY role ENUM('Admin','system_admin','Health Officer','Doctor','Nurse','Vaccinator','Encoder','BHW') NOT NULL DEFAULT 'Nurse'");
         }
     }

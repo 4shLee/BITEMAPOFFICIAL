@@ -22,7 +22,7 @@ class WhoExposureConfirmationTest extends TestCase
         parent::setUp();
 
         $this->user = User::factory()->create([
-            'role' => 'Nurse',
+            'role' => 'nurse_vaccinator',
             'is_active' => true,
             'approval_status' => 'approved',
         ]);

@@ -24,7 +24,7 @@ class SmsConsentReminderWorkflowTest extends TestCase
     public function test_declined_consent_keeps_pep_schedule_but_blocks_sms_notification(): void
     {
         Sanctum::actingAs(User::factory()->create([
-            'role' => 'Nurse',
+            'role' => 'nurse_vaccinator',
             'is_active' => true,
             'approval_status' => 'approved',
         ]));
@@ -62,7 +62,7 @@ class SmsConsentReminderWorkflowTest extends TestCase
         ]);
 
         Sanctum::actingAs(User::factory()->create([
-            'role' => 'Nurse',
+            'role' => 'nurse_vaccinator',
             'is_active' => true,
             'approval_status' => 'approved',
         ]));
@@ -200,7 +200,7 @@ class SmsConsentReminderWorkflowTest extends TestCase
     private function authenticateNurse(): void
     {
         Sanctum::actingAs(User::factory()->create([
-            'role' => 'Nurse',
+            'role' => 'nurse_vaccinator',
             'is_active' => true,
             'approval_status' => 'approved',
         ]));

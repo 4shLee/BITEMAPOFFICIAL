@@ -14,13 +14,13 @@ return new class extends Migration
 
         $driver = Schema::getConnection()->getDriverName();
 
-        if ($driver === 'mysql') {
+        if (in_array($driver, ['mysql', 'mariadb'], true)) {
             DB::statement("ALTER TABLE users MODIFY role ENUM('Admin','system_admin','Health Officer','Doctor','Nurse','Vaccinator','Encoder','BHW') NOT NULL DEFAULT 'Nurse'");
         }
 
         DB::table('users')->where('role', 'Admin')->update(['role' => 'system_admin']);
 
-        if ($driver === 'mysql') {
+        if (in_array($driver, ['mysql', 'mariadb'], true)) {
             DB::statement("ALTER TABLE users MODIFY role ENUM('system_admin','Health Officer','Doctor','Nurse','Vaccinator','Encoder','BHW') NOT NULL DEFAULT 'Nurse'");
         }
     }
@@ -33,13 +33,13 @@ return new class extends Migration
 
         $driver = Schema::getConnection()->getDriverName();
 
-        if ($driver === 'mysql') {
+        if (in_array($driver, ['mysql', 'mariadb'], true)) {
             DB::statement("ALTER TABLE users MODIFY role ENUM('Admin','system_admin','Health Officer','Doctor','Nurse','Vaccinator','Encoder','BHW') NOT NULL DEFAULT 'Nurse'");
         }
 
         DB::table('users')->where('role', 'system_admin')->update(['role' => 'Admin']);
 
-        if ($driver === 'mysql') {
+        if (in_array($driver, ['mysql', 'mariadb'], true)) {
             DB::statement("ALTER TABLE users MODIFY role ENUM('Admin','Health Officer','Doctor','Nurse','Vaccinator','Encoder','BHW') NOT NULL DEFAULT 'Nurse'");
         }
     }

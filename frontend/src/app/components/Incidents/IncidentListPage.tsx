@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Search, Filter, Plus, Edit, Trash2, Eye, ClipboardCheck, Stethoscope, RefreshCw, X } from 'lucide-react';
+import { Search, Filter, Plus, Edit, Trash2, Eye, ClipboardCheck, Stethoscope, RefreshCw, X, AlertCircle } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { Header } from '../Layout/Header';
 import { Badge } from '../UI/Badge';
 import { Button } from '../UI/Button';
-import { incidentsAPI } from '../../../lib/services/api';
+import { barangaysAPI, incidentsAPI } from '../../../lib/services/api';
 import { canPerformAction, getStoredUser, normalizeRoleKey } from '../../../lib/auth/roleAccess';
 import { getPatientDisplayName } from '../../../lib/patient';
 
@@ -25,27 +25,81 @@ export function IncidentListPage() {
   const canUpdateIncident = canPerformAction(currentUser?.role, 'incidents.update');
   const canDeleteIncident = canPerformAction(currentUser?.role, 'incidents.delete');
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [status, setStatus] = useState('');
+  const [barangayId, setBarangayId] = useState('');
+  const [barangays, setBarangays] = useState<any[]>([]);
   const [incidents, setIncidents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [reviewIncident, setReviewIncident] = useState<any>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [perPage, setPerPage] = useState<10 | 20 | 25 | 50>(20);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [pagination, setPagination] = useState({
+    current_page: 1,
+    last_page: 1,
+    per_page: 20,
+    total: 0,
+    from: null as number | null,
+    to: null as number | null,
+  });
 
   useEffect(() => {
-    loadIncidents();
-  }, [location.state]);
+    const timeout = window.setTimeout(() => {
+      setDebouncedSearch(searchTerm.trim());
+      setCurrentPage(1);
+    }, 350);
 
-  const loadIncidents = async () => {
-    try {
-      setLoading(true);
-      const response = await incidentsAPI.getAll();
-      if (response.success) {
+    return () => window.clearTimeout(timeout);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    barangaysAPI.getAll()
+      .then((response) => setBarangays(Array.isArray(response.data) ? response.data : []))
+      .catch(() => setBarangays([]));
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadIncidents() {
+      try {
+        setLoading(true);
+        setLoadError(false);
+        const response = await incidentsAPI.getAll({
+          page: currentPage,
+          per_page: perPage,
+          search: debouncedSearch,
+          status,
+          barangay_id: barangayId,
+        }, controller.signal);
+        if (!response.success || !Array.isArray(response.data)) {
+          throw new Error('Unexpected Incident Management response.');
+        }
+
         setIncidents(response.data);
+        setPagination(response.pagination || {
+          current_page: 1,
+          last_page: 1,
+          per_page: perPage,
+          total: 0,
+          from: null,
+          to: null,
+        });
+      } catch (error: any) {
+        if (error?.name === 'AbortError') return;
+        setIncidents([]);
+        setLoadError(true);
+        toast.error('Failed to load incidents');
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
       }
-    } catch (error) {
-      toast.error('Failed to load incidents');
-    } finally {
-      setLoading(false);
     }
-  };
+
+    loadIncidents();
+    return () => controller.abort();
+  }, [barangayId, currentPage, debouncedSearch, location.key, perPage, refreshKey, status]);
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this incident? The patient record will also be removed if this is their only incident.')) return;
@@ -53,7 +107,11 @@ export function IncidentListPage() {
     try {
       await incidentsAPI.delete(id);
       toast.success('Incident deleted successfully');
-      loadIncidents();
+      if (incidents.length === 1 && currentPage > 1) {
+        setCurrentPage((page) => page - 1);
+      } else {
+        setRefreshKey((key) => key + 1);
+      }
     } catch (error) {
       toast.error('Failed to delete incident');
     }
@@ -103,13 +161,6 @@ export function IncidentListPage() {
     });
   };
 
-  const filteredIncidents = incidents.filter((incident) =>
-    getPatientDisplayName(incident.patient || {}).toLowerCase().includes(searchTerm.toLowerCase()) ||
-    incident.barangay?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    incident.animal_type?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    incident.who_category?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
   return (
     <div className="flex-1">
       <Header title="Incident Management" breadcrumbs={['Incidents', 'All Incidents']} />
@@ -117,8 +168,8 @@ export function IncidentListPage() {
       <div className="p-8">
         <div className="bg-card border border-border rounded-lg overflow-hidden">
           <div className="px-6 py-4 border-b border-border">
-            <div className="flex items-center gap-4">
-              <div className="flex-1 relative">
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="relative min-w-[240px] flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <input
                   type="text"
@@ -128,10 +179,37 @@ export function IncidentListPage() {
                   className="w-full pl-10 pr-4 py-2 bg-input-background border border-input rounded-lg text-sm"
                 />
               </div>
-              <Button variant="outline" size="md">
-                <Filter className="w-4 h-4 mr-2" />
-                Filter
-              </Button>
+              <div className="flex min-w-[160px] items-center gap-2 rounded-lg border border-input bg-input-background px-3">
+                <Filter className="h-4 w-4" />
+                <select
+                  aria-label="Filter incidents by status"
+                  value={status}
+                  onChange={(event) => {
+                    setStatus(event.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="h-10 min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none"
+                >
+                  <option value="">All statuses</option>
+                  {['Active', 'Completed', 'Missed', 'Lost to Follow-up'].map((value) => (
+                    <option key={value} value={value}>{value}</option>
+                  ))}
+                </select>
+              </div>
+              <select
+                aria-label="Filter incidents by barangay"
+                value={barangayId}
+                onChange={(event) => {
+                  setBarangayId(event.target.value);
+                  setCurrentPage(1);
+                }}
+                className="h-10 min-w-[160px] rounded-lg border border-input bg-input-background px-3 text-sm text-foreground outline-none"
+              >
+                <option value="">All barangays</option>
+                {barangays.map((barangay) => (
+                  <option key={barangay.id} value={barangay.id}>{barangay.name}</option>
+                ))}
+              </select>
               {canCreateIncident && (
                 <Button variant="primary" size="md" onClick={handleCreate}>
                   <Plus className="w-4 h-4 mr-2" />
@@ -157,12 +235,32 @@ export function IncidentListPage() {
               </thead>
               <tbody className="divide-y divide-border">
                 {loading ? (
+                  Array.from({ length: Math.min(perPage, 6) }, (_, row) => (
+                    <tr key={'incident-skeleton-' + row} aria-hidden="true">
+                      {Array.from({ length: 8 }, (_, column) => (
+                        <td key={column} className="px-6 py-4">
+                          <div className="h-4 animate-pulse rounded bg-muted" />
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                ) : loadError ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-8 text-center text-sm text-muted-foreground">
-                      Loading incidents...
+                    <td colSpan={8} className="px-6 py-10 text-center">
+                      <div role="alert" className="mx-auto flex max-w-md flex-col items-center gap-3 text-sm text-muted-foreground">
+                        <AlertCircle className="h-6 w-6 text-destructive" aria-hidden="true" />
+                        <div>
+                          <p className="font-semibold text-foreground">Unable to load incidents</p>
+                          <p className="mt-1">The Incident Management request failed. Please try again.</p>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => setRefreshKey((key) => key + 1)}>
+                          <RefreshCw className="h-4 w-4" />
+                          Try Again
+                        </Button>
+                      </div>
                     </td>
                   </tr>
-                ) : filteredIncidents.length === 0 ? (
+                ) : incidents.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="px-6 py-12">
                       {isDoctor ? (
@@ -175,7 +273,7 @@ export function IncidentListPage() {
                             Incident reports created by Nurse/Vaccinator will appear here for clinical review, WHO category validation, and PEP recommendation.
                           </p>
                           <div className="mt-4 flex justify-center gap-2">
-                            <Button type="button" variant="outline" size="sm" onClick={loadIncidents}>
+                            <Button type="button" variant="outline" size="sm" onClick={() => setRefreshKey((key) => key + 1)}>
                               <RefreshCw className="w-4 h-4 mr-2" />
                               Refresh
                             </Button>
@@ -192,7 +290,7 @@ export function IncidentListPage() {
                     </td>
                   </tr>
                 ) : (
-                  filteredIncidents.map((incident) => {
+                  incidents.map((incident) => {
                     const reviewStatus = getReviewStatus(incident);
 
                     return (
@@ -278,10 +376,44 @@ export function IncidentListPage() {
             </table>
           </div>
 
-          <div className="px-6 py-4 border-t border-border flex items-center justify-between">
+          <div className="flex flex-col gap-3 border-t border-border px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-muted-foreground">
-              Showing {filteredIncidents.length} incident{filteredIncidents.length !== 1 ? 's' : ''}
+              Showing {pagination.from || 0}-{pagination.to || 0} of {pagination.total} incidents
             </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                aria-label="Incidents per page"
+                value={perPage}
+                onChange={(event) => {
+                  setPerPage(Number(event.target.value) as 10 | 20 | 25 | 50);
+                  setCurrentPage(1);
+                }}
+                className="h-9 rounded-lg border border-input bg-input-background px-2 text-sm text-foreground"
+              >
+                {[10, 20, 25, 50].map((size) => <option key={size} value={size}>{size} per page</option>)}
+              </select>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                disabled={loading || pagination.current_page <= 1}
+              >
+                Previous
+              </Button>
+              <span className="px-1 text-sm text-muted-foreground">
+                Page {pagination.current_page} of {pagination.last_page}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((page) => Math.min(pagination.last_page, page + 1))}
+                disabled={loading || pagination.current_page >= pagination.last_page}
+              >
+                Next
+              </Button>
+            </div>
           </div>
         </div>
       </div>

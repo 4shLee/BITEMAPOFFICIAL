@@ -40,6 +40,23 @@ class StructuredUserNameWorkflowTest extends TestCase
         ]);
     }
 
+    public function test_supported_legacy_role_label_is_stored_as_its_canonical_role(): void
+    {
+        $this->postJson('/api/auth/signup', [
+            'first_name' => 'Legacy',
+            'last_name' => 'Doctor',
+            'email' => 'legacy.doctor.role@example.test',
+            'password' => 'password123',
+            'role' => 'Doctor',
+        ])->assertCreated()
+            ->assertJsonPath('user.role', 'doctor');
+
+        $this->assertDatabaseHas('users', [
+            'email' => 'legacy.doctor.role@example.test',
+            'role' => 'doctor',
+        ]);
+    }
+
     public function test_structured_name_with_middle_name_and_suffix_survives_normal_approval(): void
     {
         $request = $this->postJson('/api/auth/signup', [

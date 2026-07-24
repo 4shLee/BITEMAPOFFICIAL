@@ -24,7 +24,7 @@ class NotificationPrioritySummaryTest extends TestCase
     {
         Carbon::setTestNow('2026-07-18 09:00:00');
         Sanctum::actingAs(User::factory()->create([
-            'role' => 'Nurse',
+            'role' => 'nurse_vaccinator',
             'is_active' => true,
             'approval_status' => 'approved',
         ]));

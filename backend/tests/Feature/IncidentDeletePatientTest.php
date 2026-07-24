@@ -4,12 +4,23 @@ namespace Tests\Feature;
 
 use App\Models\Incident;
 use App\Models\Patient;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 class IncidentDeletePatientTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        Sanctum::actingAs(User::factory()->create([
+            'role' => 'clinic_admin',
+        ]));
+    }
 
     public function test_deleting_a_patients_only_incident_deletes_the_patient_record(): void
     {

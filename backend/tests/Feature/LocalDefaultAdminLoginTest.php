@@ -36,7 +36,7 @@ class LocalDefaultAdminLoginTest extends TestCase
         User::factory()->create([
             'email' => DefaultAdminAccount::EMAIL,
             'password' => 'old-password',
-            'role' => 'Nurse',
+            'role' => 'nurse_vaccinator',
             'is_active' => false,
         ]);
 

@@ -21,7 +21,7 @@ class PatientRegistryWhoCompatibilityTest extends TestCase
         parent::setUp();
 
         $this->clinicUser = User::factory()->create([
-            'role' => 'Nurse',
+            'role' => 'nurse_vaccinator',
             'is_active' => true,
             'approval_status' => 'approved',
         ]);
@@ -143,10 +143,14 @@ class PatientRegistryWhoCompatibilityTest extends TestCase
     {
         $this->getJson('/api/patients')
             ->assertOk()
-            ->assertExactJson([
-                'success' => true,
-                'data' => [],
-            ]);
+            ->assertJsonPath('success', true)
+            ->assertJsonCount(0, 'data')
+            ->assertJsonPath('pagination.current_page', 1)
+            ->assertJsonPath('pagination.last_page', 1)
+            ->assertJsonPath('pagination.per_page', 20)
+            ->assertJsonPath('pagination.total', 0)
+            ->assertJsonPath('pagination.from', null)
+            ->assertJsonPath('pagination.to', null);
     }
 
     private function createLegacyPatient(Barangay $barangay): Patient

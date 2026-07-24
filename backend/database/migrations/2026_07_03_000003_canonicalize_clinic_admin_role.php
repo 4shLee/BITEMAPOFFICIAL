@@ -8,9 +8,9 @@ return new class extends Migration
 {
     public function up(): void
     {
-        $isMySql = Schema::getConnection()->getDriverName() === 'mysql';
+        $isMySqlFamily = in_array(Schema::getConnection()->getDriverName(), ['mysql', 'mariadb'], true);
 
-        if ($isMySql) {
+        if ($isMySqlFamily) {
             DB::statement("ALTER TABLE users MODIFY role VARCHAR(50) NOT NULL DEFAULT 'nurse_vaccinator'");
         }
 
@@ -19,18 +19,22 @@ return new class extends Migration
         DB::table('users')->whereIn('role', ['Doctor', 'Health Officer'])->update(['role' => 'doctor']);
         DB::table('users')->whereIn('role', ['Nurse/Vaccinator', 'Nurse', 'Vaccinator', 'nurse', 'vaccinator', 'Encoder', 'BHW'])->update(['role' => 'nurse_vaccinator']);
 
-        if ($isMySql) {
+        if ($isMySqlFamily) {
             DB::statement("ALTER TABLE users MODIFY role ENUM('system_admin','clinic_admin','doctor','nurse_vaccinator') NOT NULL DEFAULT 'nurse_vaccinator'");
         }
     }
 
     public function down(): void
     {
-        $isMySql = Schema::getConnection()->getDriverName() === 'mysql';
+        $isMySqlFamily = in_array(Schema::getConnection()->getDriverName(), ['mysql', 'mariadb'], true);
 
-        if ($isMySql) {
-            DB::statement("ALTER TABLE users MODIFY role VARCHAR(50) NOT NULL DEFAULT 'nurse_vaccinator'");
+        if (! $isMySqlFamily) {
+            // The preceding migration already represents SQLite's canonical
+            // schema, so rolling this duplicate normalization back is a no-op.
+            return;
         }
+
+        DB::statement("ALTER TABLE users MODIFY role VARCHAR(50) NOT NULL DEFAULT 'nurse_vaccinator'");
 
         DB::table('users')
             ->where('role', 'clinic_admin')
@@ -44,8 +48,6 @@ return new class extends Migration
             ->where('role', 'nurse_vaccinator')
             ->update(['role' => 'Nurse/Vaccinator']);
 
-        if ($isMySql) {
-            DB::statement("ALTER TABLE users MODIFY role ENUM('Admin','system_admin','Clinic Admin','Health Officer','Doctor','Nurse/Vaccinator','Nurse','Vaccinator','Encoder','BHW') NOT NULL DEFAULT 'Nurse/Vaccinator'");
-        }
+        DB::statement("ALTER TABLE users MODIFY role ENUM('Admin','system_admin','Clinic Admin','Health Officer','Doctor','Nurse/Vaccinator','Nurse','Vaccinator','Encoder','BHW') NOT NULL DEFAULT 'Nurse/Vaccinator'");
     }
 };

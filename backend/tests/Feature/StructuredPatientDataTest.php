@@ -21,7 +21,7 @@ class StructuredPatientDataTest extends TestCase
         parent::setUp();
 
         Sanctum::actingAs(User::factory()->create([
-            'role' => 'Nurse',
+            'role' => 'nurse_vaccinator',
             'is_active' => true,
             'approval_status' => 'approved',
         ]));

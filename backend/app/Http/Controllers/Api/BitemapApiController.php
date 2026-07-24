@@ -16,6 +16,7 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Services\WhoExposureClassificationService;
 use App\Support\DefaultAdminAccount;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -250,15 +251,58 @@ class BitemapApiController extends Controller
         ]);
     }
 
-    public function patients(): JsonResponse
+    public function patients(Request $request): JsonResponse
     {
-        $patients = Patient::with('barangay')
-            ->latest('id')
-            ->get()
-            ->map(fn (Patient $patient) => $this->patientPayload($patient))
-            ->values();
+        $filters = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', Rule::in([10, 20, 25, 50])],
+            'search' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'barangay_id' => ['sometimes', 'nullable', 'integer', 'exists:barangays,id'],
+        ]);
+        $perPage = (int) ($filters['per_page'] ?? 20);
+        $search = trim((string) ($filters['search'] ?? ''));
 
-        return response()->json(['success' => true, 'data' => $patients]);
+        $query = Patient::query()
+            ->select([
+                'id',
+                'first_name',
+                'middle_name',
+                'last_name',
+                'suffix',
+                'full_name',
+                'age',
+                'sex',
+                'residence_barangay',
+                'barangay_id',
+                'contact_number',
+                'created_at',
+            ])
+            ->with('barangay:id,name')
+            ->when($search !== '', function ($query) use ($search): void {
+                $like = '%'.$search.'%';
+                $query->where(function ($searchQuery) use ($like): void {
+                    $searchQuery
+                        ->where('full_name', 'like', $like)
+                        ->orWhere('first_name', 'like', $like)
+                        ->orWhere('middle_name', 'like', $like)
+                        ->orWhere('last_name', 'like', $like)
+                        ->orWhere('residence_barangay', 'like', $like)
+                        ->orWhereHas('barangay', fn ($barangayQuery) => $barangayQuery->where('name', 'like', $like));
+                });
+            })
+            ->when(
+                filled($filters['barangay_id'] ?? null),
+                fn ($query) => $query->where('barangay_id', $filters['barangay_id'])
+            )
+            ->latest('id');
+
+        $paginator = $query->paginate($perPage, ['*'], 'page', (int) ($filters['page'] ?? 1));
+
+        return response()->json([
+            'success' => true,
+            'data' => collect($paginator->items())->map(fn (Patient $patient) => $this->patientListPayload($patient))->values(),
+            'pagination' => $this->paginationPayload($paginator),
+        ]);
     }
 
     public function showPatient(Patient $patient): JsonResponse
@@ -308,16 +352,79 @@ class BitemapApiController extends Controller
         ]);
     }
 
-    public function incidents(): JsonResponse
+    public function incidents(Request $request): JsonResponse
     {
-        $incidents = Incident::with(['patient', 'barangay', 'pepSchedules', 'whoCategoryConfirmer'])
-            ->latest('incident_date')
-            ->latest('id')
-            ->get()
-            ->map(fn (Incident $incident) => $this->incidentPayload($incident))
-            ->values();
+        $filters = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', Rule::in([10, 20, 25, 50])],
+            'search' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'status' => ['sometimes', 'nullable', Rule::in(['Active', 'Completed', 'Missed', 'Lost to Follow-up'])],
+            'barangay_id' => ['sometimes', 'nullable', 'integer', 'exists:barangays,id'],
+        ]);
+        $perPage = (int) ($filters['per_page'] ?? 20);
+        $search = trim((string) ($filters['search'] ?? ''));
 
-        return response()->json(['success' => true, 'data' => $incidents]);
+        $query = Incident::query()
+            ->select([
+                'id',
+                'patient_id',
+                'barangay_id',
+                'incident_date',
+                'animal_type',
+                'bite_site',
+                'who_category',
+                'status',
+            ])
+            ->with([
+                'patient:id,first_name,middle_name,last_name,suffix,full_name,contact_number',
+                'barangay:id,name',
+            ])
+            ->withCount([
+                'pepSchedules',
+                'pepSchedules as completed_pep_schedules_count' => fn ($scheduleQuery) => $scheduleQuery
+                    ->where(function ($completedQuery): void {
+                        $completedQuery
+                            ->whereNotNull('administered_date')
+                            ->orWhereIn('status', ['Done', 'Completed']);
+                    }),
+            ])
+            ->when($search !== '', function ($query) use ($search): void {
+                $like = '%'.$search.'%';
+                $categorySearch = preg_replace('/^category\s+/i', '', $search) ?: $search;
+                $categoryLike = '%'.$categorySearch.'%';
+                $query->where(function ($searchQuery) use ($like, $categoryLike): void {
+                    $searchQuery
+                        ->where('animal_type', 'like', $like)
+                        ->orWhere('bite_site', 'like', $like)
+                        ->orWhere('who_category', 'like', $categoryLike)
+                        ->orWhereHas('patient', function ($patientQuery) use ($like): void {
+                            $patientQuery
+                                ->where('full_name', 'like', $like)
+                                ->orWhere('first_name', 'like', $like)
+                                ->orWhere('middle_name', 'like', $like)
+                                ->orWhere('last_name', 'like', $like);
+                        })
+                        ->orWhereHas('barangay', fn ($barangayQuery) => $barangayQuery->where('name', 'like', $like));
+                });
+            })
+            ->when(
+                filled($filters['status'] ?? null),
+                fn ($query) => $query->where('status', $filters['status'])
+            )
+            ->when(
+                filled($filters['barangay_id'] ?? null),
+                fn ($query) => $query->where('barangay_id', $filters['barangay_id'])
+            )
+            ->latest('incident_date')
+            ->latest('id');
+
+        $paginator = $query->paginate($perPage, ['*'], 'page', (int) ($filters['page'] ?? 1));
+
+        return response()->json([
+            'success' => true,
+            'data' => collect($paginator->items())->map(fn (Incident $incident) => $this->incidentListPayload($incident))->values(),
+            'pagination' => $this->paginationPayload($paginator),
+        ]);
     }
 
     public function showIncident(Incident $incident): JsonResponse
@@ -3419,6 +3526,26 @@ class BitemapApiController extends Controller
         ];
     }
 
+    private function patientListPayload(Patient $patient): array
+    {
+        return [
+            'id' => $patient->id,
+            'first_name' => $patient->first_name,
+            'middle_name' => $patient->middle_name,
+            'last_name' => $patient->last_name,
+            'suffix' => $patient->suffix,
+            'full_name' => $patient->full_name,
+            'display_name' => $patient->displayName(),
+            'age' => $patient->age,
+            'sex' => $patient->sex,
+            'residence_barangay' => $patient->residence_barangay,
+            'barangay_id' => $patient->barangay_id,
+            'barangay' => $patient->barangay,
+            'contact_number' => $patient->contact_number,
+            'created_at' => $patient->created_at,
+        ];
+    }
+
     private function incidentPayload(Incident $incident): array
     {
         $incident->loadMissing(['patient', 'barangay', 'pepSchedules', 'whoCategoryConfirmer']);
@@ -3466,6 +3593,49 @@ class BitemapApiController extends Controller
             'pep_schedules' => $incident->pepSchedules->map(fn (PepSchedule $schedule) => $this->pepSchedulePayload($schedule))->values(),
             'created_at' => $incident->created_at,
             'updated_at' => $incident->updated_at,
+        ];
+    }
+
+    private function incidentListPayload(Incident $incident): array
+    {
+        $patient = $incident->patient;
+
+        return [
+            'id' => $incident->id,
+            'patient_id' => $incident->patient_id,
+            'patient' => $patient ? [
+                'id' => $patient->id,
+                'first_name' => $patient->first_name,
+                'middle_name' => $patient->middle_name,
+                'last_name' => $patient->last_name,
+                'suffix' => $patient->suffix,
+                'full_name' => $patient->full_name,
+                'display_name' => $patient->displayName(),
+                'contact_number' => $patient->contact_number,
+            ] : null,
+            'contact_number' => $patient?->contact_number,
+            'barangay_id' => $incident->barangay_id,
+            'barangay' => $incident->barangay,
+            'incident_date' => optional($incident->incident_date)->toDateString(),
+            'animal_type' => $incident->animal_type,
+            'bite_site' => $incident->bite_site,
+            'bite_location' => $incident->bite_site,
+            'who_category' => $this->displayCategory($incident->who_category),
+            'status' => $incident->status,
+            'pep_schedules_count' => (int) $incident->pep_schedules_count,
+            'completed_pep_schedules_count' => (int) $incident->completed_pep_schedules_count,
+        ];
+    }
+
+    private function paginationPayload(LengthAwarePaginator $paginator): array
+    {
+        return [
+            'current_page' => $paginator->currentPage(),
+            'last_page' => $paginator->lastPage(),
+            'per_page' => $paginator->perPage(),
+            'total' => $paginator->total(),
+            'from' => $paginator->firstItem(),
+            'to' => $paginator->lastItem(),
         ];
     }
 

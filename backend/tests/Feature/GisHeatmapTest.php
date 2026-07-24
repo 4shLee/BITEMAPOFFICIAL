@@ -19,7 +19,7 @@ class GisHeatmapTest extends TestCase
     {
         parent::setUp();
 
-        $this->authenticateAs('Nurse');
+        $this->authenticateAs('nurse_vaccinator');
     }
 
     public function test_authorized_user_receives_expected_heatmap_structure_with_legacy_patient_data(): void
@@ -176,10 +176,10 @@ class GisHeatmapTest extends TestCase
 
     public function test_doctor_is_authorized_while_system_administrator_and_guest_retain_restricted_access(): void
     {
-        $this->authenticateAs('Doctor');
+        $this->authenticateAs('doctor');
         $this->getJson('/api/gis/heatmap')->assertOk();
 
-        $this->authenticateAs('Admin');
+        $this->authenticateAs('system_admin');
         $this->getJson('/api/gis/heatmap')->assertForbidden();
 
         auth()->forgetGuards();

@@ -64,6 +64,26 @@ async function publicApiRequest(endpoint: string) {
   }
 }
 
+type RegistryListFilters = {
+  page?: number;
+  per_page?: 10 | 20 | 25 | 50;
+  search?: string;
+  status?: string;
+  barangay_id?: string | number;
+};
+
+function registryListEndpoint(endpoint: string, filters: RegistryListFilters = {}) {
+  const query = new URLSearchParams();
+
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '' && value !== 'All') {
+      query.set(key, String(value));
+    }
+  });
+
+  return endpoint + (query.size > 0 ? '?' + query.toString() : '');
+}
+
 // ============ AUTHENTICATION API ============
 export const authAPI = {
   async signUp(email: string, password: string, name: { firstName: string; middleName?: string; lastName: string; suffix?: string }, role: string, phone?: string) {
@@ -137,8 +157,8 @@ export const dashboardAPI = {
 
 // ============ INCIDENTS API ============
 export const incidentsAPI = {
-  async getAll() {
-    return apiRequest('/incidents');
+  async getAll(filters: RegistryListFilters = {}, signal?: AbortSignal) {
+    return apiRequest(registryListEndpoint('/incidents', filters), { signal });
   },
 
   async getById(id: string) {
@@ -168,8 +188,8 @@ export const incidentsAPI = {
 
 // ============ PATIENTS API ============
 export const patientsAPI = {
-  async getAll() {
-    return apiRequest('/patients');
+  async getAll(filters: RegistryListFilters = {}, signal?: AbortSignal) {
+    return apiRequest(registryListEndpoint('/patients', filters), { signal });
   },
 
   async getById(id: string) {
