@@ -1,0 +1,23 @@
+services:
+  mariadb:
+    image: mariadb:10.11
+    container_name: bitemap-mariadb
+    restart: unless-stopped
+
+    env_file:
+      - .env.docker
+
+    ports:
+      - "3307:3306"
+
+    volumes:
+      - bitemap_mariadb_data:/var/lib/mysql
+
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  bitemap_mariadb_data:
