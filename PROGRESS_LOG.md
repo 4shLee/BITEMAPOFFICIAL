@@ -2122,3 +2122,243 @@ No commit or push was made.
 The Incident Management and Patient Registry modules now use lightweight, server-paginated endpoints instead of loading complete datasets. Searching and filtering run on the backend, incident PEP information is represented through aggregate counts, and the frontend safely handles pagination and rapidly changing searches.
 
 The SQLite testing schema now matches the canonical production role model without changing MySQL or MariaDB behavior. The two deletion defects discovered during full-suite verification were fixed transactionally, including rollback regression coverage. All backend and frontend tests now pass.
+
+# Progress Report — July 25, 2026
+
+## Patient Registry
+
+- Fixed nullable “Date Added” handling in `frontend/src/app/pages/Patients.tsx`.
+- Confirmed `RegistryPatient.created_at` is correctly typed as `string | null | undefined`.
+- Added a safe fallback displaying “Not available” when the registration date is missing.
+- Updated the patient detail date formatter to accept nullable values.
+- Confirmed the backend patient list query already selects `created_at`.
+- Updated `patientListPayload()` to return `created_at` explicitly as an ISO date string or `null`.
+- Preserved the existing Date Added column and lightweight registry response.
+
+## Incident Management
+
+- Reviewed nullable date handling for incident list and detail views.
+- Confirmed incident dates already have appropriate null guards.
+- No additional incident date changes were required.
+
+## Frontend Verification
+
+- TypeScript check passed.
+- Targeted ESLint check for `Patients.tsx` passed.
+- Production build passed.
+- All 17 frontend tests passed.
+- The existing large JavaScript bundle advisory remains, but it does not prevent the build.
+
+## Backend Verification
+
+- PHP syntax check passed.
+- Registry feature tests passed: 6 tests and 51 assertions.
+- `git diff --check` passed, with informational line-ending warnings only.
+
+## MariaDB Connection Investigation
+
+- Confirmed Laravel is configured for:
+  - MySQL/MariaDB
+  - Host `127.0.0.1`
+  - Port `3306`
+  - Database `bitemap_db`
+  - Local `root` account
+- Confirmed `config/database.php` correctly reads the environment configuration.
+- Confirmed no cached Laravel configuration was overriding `.env`.
+- Confirmed XAMPP MariaDB 10.4.32 is running and listening on port 3306 over IPv4 and IPv6.
+- Tested database access through both `localhost` and `127.0.0.1`.
+- Both connections reached MariaDB but were rejected with error 1130: host `localhost` is not allowed.
+- Tested XAMPP’s configured `root` and `pma` accounts; both were rejected before password authentication.
+- Confirmed no existing BITEMAP-specific database user was available.
+- Confirmed named-pipe access was unavailable.
+
+## MariaDB Integrity Findings
+
+- Found `.corrupt` artifacts associated with MariaDB system grant tables.
+- MariaDB’s error log reports InnoDB log-sequence mismatches.
+- The log indicates that the tablespace and redo logs may have been copied or restored inconsistently.
+- This means the immediate grant problem may be related to a broader MariaDB data-directory integrity issue.
+
+## Current Database Status
+
+- Laravel still cannot connect to MariaDB.
+- `php artisan migrate:status` still fails with error 1130.
+- Migrations were not run because the connection and integrity issues must be resolved first.
+- Incident and patient endpoints currently return HTTP 500.
+- A dedicated `bitemap` user was not created because no authorized SQL session is available.
+- Laravel cache clearing was not performed because no configuration was changed and the cache store also depends on the unavailable database.
+- Existing `bitemap_db` files remain present and were not modified.
+- No destructive recovery, database reset, wipe, reinstall, or `migrate:fresh` operation was performed.
+
+## Recommended Next Step
+
+- Stop MariaDB and create a complete offline backup of the XAMPP MariaDB data directory.
+- Temporarily start MariaDB in local-only grant recovery mode.
+- Inspect the MariaDB grant tables before attempting repairs.
+- If the grant tables are healthy, create scoped `bitemap@localhost` and `bitemap@127.0.0.1` accounts with access only to `bitemap_db`.
+- Remove recovery mode and restart MariaDB normally.
+- Create a logical database backup and verify database integrity before running migrations.
+- This recovery work requires explicit approval because it involves stopping MariaDB and temporarily bypassing normal authentication.
+
+# BITEMAP Daily Progress Report
+
+**July 25, 2026**  
+
+## 1. Registry and API Stabilization
+
+- Finalized server-side pagination for the Patient Registry and Incident Management modules.
+- Added search, barangay filtering, incident-status filtering, page selection, and supported page sizes of 10, 20, 25, and 50.
+- Optimized list APIs to return lightweight records while preserving complete individual-record endpoints.
+- Strengthened frontend TypeScript contracts for registry responses, pagination metadata, barangays, API payloads, and reports.
+- Improved null handling for patient creation dates so missing dates no longer cause frontend display errors.
+- Added safer error handling and request cancellation for rapidly changing searches.
+- Fixed patient and incident deletion workflows so deletion and audit logging occur transactionally.
+- Added regression coverage for deletion rollback, pagination, filtering, authorization, and patient-incident relationships.
+
+Previously recorded verification for this work:
+
+- Backend tests: **123 passed with 818 assertions**
+- Frontend tests: **17 passed**
+- Frontend production build: passed
+- TypeScript checking: passed
+- SQLite testing migrations: passed
+- PHP syntax and formatting checks: passed
+
+## 2. Frontend TypeScript and Reliability Improvements
+
+- Reduced loosely typed `any` usage across major pages and shared components.
+- Added typed data structures for the dashboard, PEP schedules, registry records, inventory, users, reports, barangays, and audit logs.
+- Added a shared error-message helper for unknown API errors.
+- Improved effect and callback dependency handling on the Dashboard and PEP Schedule pages.
+- Added safer fallbacks for missing dates, names, WHO categories, barangays, and other nullable API values.
+- Updated shared toggle styling into a separate reusable module.
+- Applied related cleanup across Dashboard, Patients, Incidents, PEP Schedule, Inventory, Notifications, Users, GIS, Reports, Settings, public pages, and shared UI components.
+
+## 3. Local Docker MariaDB Setup
+
+- Added a Docker Compose configuration for MariaDB 10.11.
+- Configured the local database to use:
+  - Host: `127.0.0.1`
+  - Port: `3307`
+  - Database: `bitemap_db`
+- Added a persistent Docker volume and database health check.
+- Added `.env.docker.example` while keeping the real `.env.docker` credentials excluded from version control.
+- Confirmed Laravel can connect successfully to the MariaDB database.
+- Confirmed all Laravel migrations are applied.
+- The Docker command-line tool was unavailable in the active shell, but the running database remained accessible through Laravel.
+
+## 4. Safe Fictional Demo Data
+
+Created the dedicated local-only seeder:
+
+`backend/database/seeders/DemoDataSeeder.php`
+
+The seeder:
+
+- Is not registered in the normal production `DatabaseSeeder`.
+- Refuses to run outside local or testing environments.
+- Verifies the local MariaDB target before inserting data.
+- Uses stable demo markers, `updateOrCreate`, and `firstOrCreate`.
+- Does not delete or overwrite non-demo records.
+- Uses only canonical roles:
+  - `system_admin`
+  - `clinic_admin`
+  - `doctor`
+  - `nurse_vaccinator`
+- Uses fictional `.invalid` email addresses and visibly artificial `09000000xxx` contact numbers.
+- Does not contain a plaintext demo password in committed source.
+
+Demo users created:
+
+- `demo.system.admin@example.invalid`
+- `demo.clinic.admin@example.invalid`
+- `demo.doctor@example.invalid`
+- `demo.nurse@example.invalid`
+
+The local password is generated from the application key or supplied through `DEMO_USER_PASSWORD`; it is displayed locally during seeding but is not stored in the committed file.
+
+## 5. Demo Dataset Totals
+
+The seeder produced:
+
+- **4** demo users
+- **32** fictional patients
+- **40** animal-bite incidents
+- **200** PEP schedule records
+- **5** demo inventory items
+- **6** inventory batches
+- **126** inventory transactions
+- **20** notification or reminder records
+
+Dataset distribution:
+
+- WHO Category I: **14 incidents**
+- WHO Category II: **13 incidents**
+- WHO Category III: **13 incidents**
+- Dog incidents: **24**
+- Cat incidents: **12**
+- Other allowed animal type: **4**
+
+Incident states:
+
+- Active: **20**
+- Completed: **10**
+- Missed: **5**
+- Lost to Follow-up: **5**
+
+PEP states:
+
+- Pending: **34**
+- Upcoming: **12**
+- Done: **84**
+- Completed: **30**
+- Missed: **35**
+- Rescheduled: **5**
+
+Incidents are distributed across multiple Digos City barangays and recent months. Patients include both single-incident and multiple-incident examples.
+
+## 6. Inventory and Referential-Integrity Verification
+
+- Ran the demo seeder twice.
+- Counts remained unchanged after the second execution, confirming idempotency.
+- Confirmed every incident has a valid patient.
+- Confirmed every PEP schedule has a valid incident.
+- Confirmed every demo batch belongs to a valid inventory item.
+- Confirmed all completed doses have administered dates.
+- Confirmed no administered date is in the future.
+- Confirmed demo notifications reference valid patients and PEP schedules.
+- Confirmed every demo inventory total equals the sum of its remaining batch quantities.
+- Confirmed batch receipts minus usage equal the stored batch balance.
+
+Inventory conditions represented:
+
+- Normal vaccine stock
+- Low-stock rabies immunoglobulin
+- Low and expiring tetanus stock
+- Expiring vaccine batch
+- Normal syringe and wound-care supply levels
+
+## 7. Application Connectivity
+
+- `php artisan migrate:status` completed successfully.
+- `php artisan db:seed --class=DemoDataSeeder` completed successfully twice.
+- The backend development server responded successfully.
+- `GET /api/dev/status` returned HTTP 200 and reported the seeded database counts.
+
+The authenticated patient and incident API calls, full dashboard browser verification, and final Patient Registry and Incident Management UI checks were not completed before the session was interrupted. The demo-specific backend test selection also remains to be run.
+
+## 8. Repository Status
+
+Git history shows four July 25 changesets:
+
+- `24ff88c` — Registry API and transactional deletion stabilization
+- `82e4e55` — Nullable patient-date handling and frontend reliability cleanup
+- `c9fef09` — Docker MariaDB development setup
+- `89aadf7` — Idempotent demo-data seeder
+
+The working tree was clean at reporting time.
+
+## Overall Result
+
+BITEMAP now has a working local MariaDB development environment and a safe, repeatable fictional dataset suitable for capstone demonstrations. The data exercises registry pagination, incident relationships, WHO classifications, PEP scheduling, inventory alerts, reminders, public clinic settings, and dashboard statistics without using real patient information.
+
