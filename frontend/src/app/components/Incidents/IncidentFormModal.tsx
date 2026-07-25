@@ -78,7 +78,7 @@ export function IncidentFormModal({ incident, onClose }: IncidentFormModalProps)
   const loadData = async () => {
     try {
       const [patientsRes, barangaysRes] = await Promise.all([
-        patientsAPI.getAll(),
+        patientsAPI.getAll({ per_page: 50 }),
         barangaysAPI.getAll(),
       ]);
       if (patientsRes.success) setPatients(patientsRes.data);

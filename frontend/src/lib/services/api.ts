@@ -64,12 +64,61 @@ async function publicApiRequest(endpoint: string) {
   }
 }
 
-type RegistryListFilters = {
+export type RegistryListFilters = {
   page?: number;
   per_page?: 10 | 20 | 25 | 50;
   search?: string;
   status?: string;
   barangay_id?: string | number;
+};
+
+export type RegistryPagination = {
+  current_page: number;
+  last_page: number;
+  per_page: number;
+  total: number;
+  from: number | null;
+  to: number | null;
+};
+
+export type RegistryListResponse<T> = {
+  success: boolean;
+  data: T[];
+  pagination: RegistryPagination;
+};
+
+export type RegistryPatient = {
+  id: number | string;
+  first_name?: string | null;
+  middle_name?: string | null;
+  last_name?: string | null;
+  suffix?: string | null;
+  full_name?: string | null;
+  display_name?: string | null;
+  age?: number | string | null;
+  sex?: string | null;
+  residence_barangay?: string | null;
+  barangay_id?: number | string | null;
+  barangay?: { id: number | string; name: string } | null;
+  contact_number?: string | null;
+  created_at?: string | null;
+};
+
+export type RegistryIncident = {
+  id: number | string;
+  patient_id: number | string;
+  patient?: RegistryPatient | null;
+  contact_number?: string | null;
+  barangay_id?: number | string | null;
+  barangay?: { id: number | string; name: string } | null;
+  incident_date?: string | null;
+  animal_type?: string | null;
+  bite_site?: string | null;
+  bite_location?: string | null;
+  who_category?: string | null;
+  status?: string | null;
+  pep_schedules_count: number;
+  completed_pep_schedules_count: number;
 };
 
 function registryListEndpoint(endpoint: string, filters: RegistryListFilters = {}) {
@@ -157,7 +206,7 @@ export const dashboardAPI = {
 
 // ============ INCIDENTS API ============
 export const incidentsAPI = {
-  async getAll(filters: RegistryListFilters = {}, signal?: AbortSignal) {
+  async getAll(filters: RegistryListFilters, signal?: AbortSignal): Promise<RegistryListResponse<RegistryIncident>> {
     return apiRequest(registryListEndpoint('/incidents', filters), { signal });
   },
 
@@ -188,7 +237,7 @@ export const incidentsAPI = {
 
 // ============ PATIENTS API ============
 export const patientsAPI = {
-  async getAll(filters: RegistryListFilters = {}, signal?: AbortSignal) {
+  async getAll(filters: RegistryListFilters, signal?: AbortSignal): Promise<RegistryListResponse<RegistryPatient>> {
     return apiRequest(registryListEndpoint('/patients', filters), { signal });
   },
 

@@ -378,7 +378,7 @@ export function IncidentReport() {
     async function loadOptions() {
       try {
         const [patientsResponse, barangaysResponse] = await Promise.all([
-          patientsAPI.getAll(),
+          patientsAPI.getAll({ per_page: 50 }),
           barangaysAPI.getAll(),
         ]);
 

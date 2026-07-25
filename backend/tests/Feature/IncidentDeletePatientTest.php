@@ -2,11 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Models\AuditLog;
 use App\Models\Incident;
 use App\Models\Patient;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
+use RuntimeException;
 use Tests\TestCase;
 
 class IncidentDeletePatientTest extends TestCase
@@ -83,6 +85,45 @@ class IncidentDeletePatientTest extends TestCase
 
         $this->assertDatabaseMissing('incidents', ['id' => $firstIncident->id]);
         $this->assertDatabaseHas('incidents', ['id' => $secondIncident->id]);
+        $this->assertDatabaseHas('patients', ['id' => $patient->id]);
+    }
+
+    public function test_audit_failure_rolls_back_incident_and_orphan_patient_deletion(): void
+    {
+        $patient = Patient::create([
+            'full_name' => 'Transactional Incident Patient',
+            'age' => 29,
+            'sex' => 'Male',
+            'address' => 'Digos City',
+            'contact_number' => '09170000002',
+        ]);
+
+        $incident = Incident::create([
+            'patient_id' => $patient->id,
+            'incident_date' => '2026-07-24',
+            'animal_type' => 'Dog',
+            'bite_site' => 'Right arm',
+            'who_category' => 'II',
+            'status' => 'Active',
+        ]);
+
+        AuditLog::creating(function (AuditLog $audit): void {
+            if ($audit->module === 'Incidents') {
+                throw new RuntimeException('Forced audit failure.');
+            }
+        });
+        $this->withoutExceptionHandling();
+
+        try {
+            $this->deleteJson('/api/incidents/'.$incident->id);
+            $this->fail('The forced audit failure was not thrown.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Forced audit failure.', $exception->getMessage());
+        } finally {
+            AuditLog::flushEventListeners();
+        }
+
+        $this->assertDatabaseHas('incidents', ['id' => $incident->id]);
         $this->assertDatabaseHas('patients', ['id' => $patient->id]);
     }
 }

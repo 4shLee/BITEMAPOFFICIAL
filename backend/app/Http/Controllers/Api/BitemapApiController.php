@@ -339,12 +339,15 @@ class BitemapApiController extends Controller
         ]);
     }
 
-    public function deletePatient(Patient $patient): JsonResponse
+    public function deletePatient(Request $request, Patient $patient): JsonResponse
     {
         $patientName = $patient->full_name;
         $patientId = $patient->id;
-        $patient->delete();
-        $this->writeAudit($request, 'Delete record', 'Patients', $patientId, 'Deleted patient record for '.$patientName.'.');
+
+        DB::transaction(function () use ($request, $patient, $patientId, $patientName): void {
+            $patient->delete();
+            $this->writeAudit($request, 'Delete record', 'Patients', $patientId, 'Deleted patient record for '.$patientName.'.');
+        });
 
         return response()->json([
             'success' => true,
@@ -483,18 +486,20 @@ class BitemapApiController extends Controller
         ]);
     }
 
-    public function deleteIncident(Incident $incident): JsonResponse
+    public function deleteIncident(Request $request, Incident $incident): JsonResponse
     {
         $patient = $incident->patient;
-
         $incidentId = $incident->id;
         $patientName = $patient?->full_name ?? 'Unknown patient';
-        $incident->delete();
-        $this->writeAudit($request, 'Delete record', 'Incidents', $incidentId, 'Deleted incident record for '.$patientName.'.');
 
-        if ($patient && ! $patient->incidents()->exists()) {
-            $patient->delete();
-        }
+        DB::transaction(function () use ($request, $incident, $incidentId, $patient, $patientName): void {
+            $incident->delete();
+            $this->writeAudit($request, 'Delete record', 'Incidents', $incidentId, 'Deleted incident record for '.$patientName.'.');
+
+            if ($patient && ! $patient->incidents()->exists()) {
+                $patient->delete();
+            }
+        });
 
         return response()->json([
             'success' => true,
