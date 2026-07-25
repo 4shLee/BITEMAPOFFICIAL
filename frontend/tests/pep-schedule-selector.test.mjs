@@ -31,7 +31,8 @@ test('client-side search covers names, compact text, contacts, and incident IDs'
 test('selection updates the incident deep link without search-time API requests', () => {
   assert.match(pepSchedule, /params\.set\('incident_id', incidentId\)/);
   assert.match(pepSchedule, /navigate\(location\.pathname \+ '\?' \+ params\.toString\(\), \{ replace: true \}\)/);
-  assert.match(pepSchedule, /useEffect\(\(\) => \{\s*loadSchedule\(\);\s*\}, \[\]\)/);
+  assert.match(pepSchedule, /window\.setTimeout\(\(\) => void loadSchedule\(\), 0\)/);
+  assert.match(pepSchedule, /\}, \[loadSchedule\]\)/);
   assert.match(pepSchedule, /\[groups, loadError, loading, requestedIncidentId\]/);
 });
 

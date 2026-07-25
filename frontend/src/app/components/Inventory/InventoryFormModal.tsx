@@ -7,7 +7,15 @@ import { Select } from '../UI/Select';
 import { inventoryAPI } from '../../../lib/services/api';
 
 interface InventoryFormModalProps {
-  item?: any;
+  item?: {
+    id: number | string;
+    item_name?: string | null;
+    item_type?: string | null;
+    current_stock?: number | string | null;
+    reorder_level?: number | string | null;
+    unit?: string | null;
+    description?: string | null;
+  };
   onClose: (shouldReload?: boolean) => void;
 }
 
@@ -28,14 +36,14 @@ export function InventoryFormModal({ item, onClose }: InventoryFormModalProps) {
 
     try {
       if (item) {
-        await inventoryAPI.update(item.id, formData);
+        await inventoryAPI.update(String(item.id), formData);
         toast.success('Inventory item updated successfully');
       } else {
         await inventoryAPI.create(formData);
         toast.success('Inventory item added successfully');
       }
       onClose(true);
-    } catch (error) {
+    } catch {
       toast.error(item ? 'Failed to update item' : 'Failed to create item');
     } finally {
       setLoading(false);

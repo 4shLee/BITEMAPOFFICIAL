@@ -1123,7 +1123,7 @@ The Incident Management module is now more consistent, clinic-friendly, and alig
 
 
 **July 8, 2026**
- 
+
 **Inventory Module**
 - Improved the Inventory workflow for realistic clinic supply management.
 - Added support for inventory batches/restocks.
@@ -1242,7 +1242,7 @@ The Incident Management module is now more consistent, clinic-friendly, and alig
 - No authentication, backend API, database schema, SMS workflow, inventory logic, incident workflow, or role permission rules were changed.
 
 
-**July 10, 2026** 
+**July 10, 2026**
 
 **System Administrator**
 **Dashboard**
@@ -1282,7 +1282,7 @@ The Incident Management module is now more consistent, clinic-friendly, and alig
 - Protected self-deactivation.
 
 
-**July 12, 2026** 
+**July 12, 2026**
 
 ## 1. Staff Login Page
 
@@ -1952,4 +1952,173 @@ Automatic vaccine consumption remains intentionally disabled. ABC personnel must
 
 - `npm run test` passed all 17 tests successfully.
 - Code style formatting passed for the backend.
-- `eslint` and `tsc` successfully execute and surface codebase diagnostics.
+- `eslint` and `tsc` successfully execute and surface codebase diagnostics.
+
+## Progress Log — July 24, 2026
+
+No commit or push was made.
+
+### Incident Management Module
+
+- Replaced full incident dataset loading with server-side pagination.
+- Added page selection, search, status filtering, barangay filtering, and page sizes of 10, 20, 25, or 50.
+- Set the default page size to 20 records.
+- Optimized the incident list query by:
+  - Selecting only fields required by the table
+  - Loading only necessary patient and barangay fields
+  - Removing full PEP schedule eager loading
+  - Using aggregate counts for total and completed PEP doses
+- Preserved the detailed incident endpoint for individual record viewing.
+- Added a 350-millisecond search debounce and request cancellation to prevent stale results.
+- Added loading skeletons only inside the table.
+- Updated delete handling to refresh only the active page.
+- Preserved the existing table design, filters, sorting, responsive behavior, detail pages, RBAC, and error handling.
+
+### Patient Registry Module
+
+- Replaced full patient dataset loading with server-side pagination.
+- Added page selection, search, barangay filtering, and page sizes of 10, 20, 25, or 50.
+- Set the default page size to 20 records.
+- Optimized the patient list query by:
+  - Selecting only fields displayed in the registry table
+  - Loading only the barangay ID and name
+  - Excluding incidents, notifications, and medical history from list responses
+- Preserved the full patient detail response.
+- Added a 350-millisecond search debounce and cancellation of stale requests.
+- Added table-only loading skeletons.
+- Updated delete handling to refresh only the active page.
+- Preserved the existing registry design, filters, sorting, responsive behavior, detail pages, RBAC, and error handling.
+
+### Backend API and Payloads
+
+- Updated `GET /api/incidents` and `GET /api/patients` to return paginated results.
+- Added pagination metadata:
+  - `current_page`
+  - `last_page`
+  - `per_page`
+  - `total`
+  - `from`
+  - `to`
+- Added separate lightweight payload helpers:
+  - `incidentListPayload()`
+  - `patientListPayload()`
+- Preserved the detailed payload helpers used by individual record endpoints.
+
+### Frontend API and TypeScript Contracts
+
+- Updated incident and patient API methods to accept pagination, search, filters, and request-cancellation signals.
+- Added concrete TypeScript contracts for:
+  - Registry filters
+  - Pagination metadata
+  - Lightweight incident payloads
+  - Lightweight patient payloads
+  - Paginated API responses
+- Removed effectively untyped response shapes that could hide frontend-backend mismatches.
+- Changed registry `getAll()` methods to require filter arguments, preventing stale no-argument calls at compile time.
+- Updated the remaining incident form and reporting callers to explicitly request the supported 50-record page size:
+  - [IncidentFormModal.tsx](C:/Project/BITEMAPOFFICIAL/frontend/src/app/components/Incidents/IncidentFormModal.tsx:81)
+  - [IncidentReport.tsx](C:/Project/BITEMAPOFFICIAL/frontend/src/app/pages/IncidentReport.tsx:381)
+- Removed reliance on frontend-only pagination over a fully loaded dataset.
+
+### Database Performance
+
+- Inspected the existing database indexes before adding migrations.
+- Added missing indexes for frequently filtered, sorted, and joined registry fields, including:
+  - Incident status and date
+  - Incident barangay and date
+  - Patient first name
+  - Patient last name
+- Avoided adding invalid or duplicate named registry indexes.
+
+### User Role and RBAC Schema Compatibility
+
+- Inspected all users-table migrations, role constraints, factories, seeders, and test fixtures.
+- Found that SQLite retained an older role constraint because later role migrations used MySQL-only operations.
+- Found that MariaDB could skip some role migrations because checks only recognized the `mysql` driver.
+- Made the migrations portable across MySQL, MariaDB, and SQLite testing.
+- Preserved the canonical roles:
+  - `system_admin`
+  - `clinic_admin`
+  - `doctor`
+  - `nurse_vaccinator`
+- Preserved deliberate application compatibility aliases without weakening production authorization.
+- Avoided raw MySQL `ALTER` and `ENUM` operations under SQLite.
+- Updated database-driver checks to recognize MySQL and MariaDB.
+- Ensured SQLite finishes migration with a valid role constraint containing all canonical roles.
+- Ensured `RefreshDatabase` can rebuild the complete testing schema from zero.
+- Verified the relevant role and registry migrations on SQLite, including rollback behavior.
+- No remaining canonical-role incompatibilities were found.
+
+### User Factory and Test Fixtures
+
+- Updated `UserFactory` so generated users default to:
+  - `nurse_vaccinator`
+  - Active status
+  - Approved status
+- Replaced outdated role values in test fixtures with canonical roles where alias behavior was not under test.
+- Added coverage confirming that the supported `Doctor` signup alias is normalized to `doctor`.
+- Updated deletion tests to authenticate an authorized clinic administrator.
+- Updated an incident-date assertion to use model date casting, avoiding differences between SQLite and MySQL date storage.
+
+### Critical Deletion Fixes
+
+- Fixed patient deletion using an undefined `$request`.
+  - Injected `Request` into `deletePatient()`.
+  - Wrapped patient deletion and audit logging in one transaction.
+  - Audit failures now roll back the deletion.
+  - [BitemapApiController.php](C:/Project/BITEMAPOFFICIAL/backend/app/Http/Controllers/Api/BitemapApiController.php:342)
+
+- Fixed incident deletion using an undefined `$request`.
+  - Injected `Request` into `deleteIncident()`.
+  - Made incident deletion, audit logging, and orphan-patient deletion transactional.
+  - Prevented partial deletion when an error occurs.
+  - [BitemapApiController.php](C:/Project/BITEMAPOFFICIAL/backend/app/Http/Controllers/Api/BitemapApiController.php:489)
+
+### Backend Test Coverage
+
+- Added feature tests for:
+  - Incident and patient pagination
+  - Search
+  - Incident status filtering
+  - Barangay filtering
+  - Pagination metadata
+  - Lightweight list responses
+  - Authorization
+- Added transactional deletion regression tests proving that audit failures roll back:
+  - Patient deletion
+  - Incident deletion
+  - Orphan-patient deletion
+- Relevant test files:
+  - [PatientDeleteTest.php](C:/Project/BITEMAPOFFICIAL/backend/tests/Feature/PatientDeleteTest.php:79)
+  - [IncidentDeletePatientTest.php](C:/Project/BITEMAPOFFICIAL/backend/tests/Feature/IncidentDeletePatientTest.php:90)
+
+### Final Verification
+
+- TypeScript type check: passed
+- Frontend production build: passed
+- Frontend tests: **17 passed**
+- Fresh SQLite testing migration: passed
+- Full backend suite: **123 passed, 818 assertions**
+- PHP syntax checks: passed
+- PHP formatting checks: passed
+- Git whitespace validation: passed
+- No missing imports, pagination metadata mismatches, duplicate indexes, PHP syntax errors, or canonical-role incompatibilities remained.
+- The final follow-up contained only six intentional modified files:
+  - Backend API controller
+  - Frontend API service
+  - Incident form modal
+  - Incident report page
+  - Patient deletion tests
+  - Incident deletion tests
+
+### Environment Observations
+
+- The default PHP 8.4 configuration had the installed OpenSSL and SQLite extensions disabled. Verification succeeded after explicitly enabling them.
+- Because the project has no `.env.testing`, the migration command initially inherited the local MySQL configuration. It passed after explicitly selecting the intended SQLite testing environment.
+- Vite continues to report its existing large-bundle warning, but the production build succeeds.
+
+### Overall Result
+
+The Incident Management and Patient Registry modules now use lightweight, server-paginated endpoints instead of loading complete datasets. Searching and filtering run on the backend, incident PEP information is represented through aggregate counts, and the frontend safely handles pagination and rapidly changing searches.
+
+The SQLite testing schema now matches the canonical production role model without changing MySQL or MariaDB behavior. The two deletion defects discovered during full-suite verification were fixed transactionally, including rollback regression coverage. All backend and frontend tests now pass.

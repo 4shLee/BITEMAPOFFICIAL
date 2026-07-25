@@ -1,17 +1,41 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Search, UserPlus, Edit, X, Users as UsersIcon, ShieldCheck, UserCheck, UserX, CheckCircle, XCircle, Stethoscope } from 'lucide-react';
 import { Header } from '../components/Layout/Header';
 import { Badge } from '../components/UI/Badge';
 import { Button } from '../components/UI/Button';
 import { toast } from 'sonner';
-import { usersAPI } from '../../lib/services/api';
+import { getErrorMessage, usersAPI, type ApiPayload } from '../../lib/services/api';
 import { ASSIGNABLE_ROLES, getRoleLabel, getStoredUser, isSystemAdminRole, normalizeRoleKey } from '../../lib/auth/roleAccess';
 import { composeUserName, getUserDisplayName } from '../../lib/userName';
 
 const ROLES = ASSIGNABLE_ROLES;
 const USERS_PER_PAGE = 10;
 
-function UserModal({ user, roles, isCurrentUser, onClose, onSave }: { user: any; roles: typeof ASSIGNABLE_ROLES; isCurrentUser: boolean; onClose: () => void; onSave: (data: any) => void; }) {
+type UserRecord = {
+  id: number | string;
+  name?: string | null;
+  first_name?: string | null;
+  middle_name?: string | null;
+  last_name?: string | null;
+  suffix?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  role?: string | null;
+  status?: string | null;
+  approval_status?: string | null;
+};
+
+type UserUpdateData = ApiPayload & {
+  name: string;
+  email: string;
+  phone: string;
+  role: string;
+  status: string;
+};
+
+type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'neutral';
+
+function UserModal({ user, roles, isCurrentUser, onClose, onSave }: { user: UserRecord; roles: typeof ASSIGNABLE_ROLES; isCurrentUser: boolean; onClose: () => void; onSave: (data: UserUpdateData) => void; }) {
   const [form, setForm] = useState({
     name: getUserDisplayName(user),
     firstName: user.first_name || '',
@@ -154,23 +178,23 @@ function UserModal({ user, roles, isCurrentUser, onClose, onSave }: { user: any;
   );
 }
 
-const getRoleVariant = (role: string) => {
-  const map: Record<string, string> = {
+const getRoleVariant = (role: string): BadgeVariant => {
+  const map: Record<string, BadgeVariant> = {
     system_admin: 'danger',
     health_officer: 'info',
     doctor: 'info',
     nurse_vaccinator: 'success',
   };
-  return (map[normalizeRoleKey(role)] || 'neutral') as any;
+  return map[normalizeRoleKey(role)] || 'neutral';
 };
 
-const getApprovalVariant = (status: string) => {
-  const map: Record<string, string> = {
+const getApprovalVariant = (status: string): BadgeVariant => {
+  const map: Record<string, BadgeVariant> = {
     approved: 'success',
     pending: 'warning',
     rejected: 'danger',
   };
-  return (map[status] || 'neutral') as any;
+  return map[status] || 'neutral';
 };
 
 const formatApproval = (status: string) => {
@@ -185,36 +209,34 @@ export function Users() {
   const assignableRoles = currentUserIsSystemAdmin
     ? ROLES
     : ROLES.filter((role) => normalizeRoleKey(role.value) !== 'system_admin');
-  const [users, setUsers] = useState<any[]>([]);
+  const [users, setUsers] = useState<UserRecord[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [showModal, setShowModal] = useState(false);
-  const [editingUser, setEditingUser] = useState<any>(null);
+  const [editingUser, setEditingUser] = useState<UserRecord | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { loadUsers(); }, []);
-
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     try {
       setLoading(true);
       const response = await usersAPI.getAll();
       if (response.success) setUsers(response.data);
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to load users.');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to load users.'));
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const visibleUsers = currentUserIsSystemAdmin
     ? users
     : users.filter(u => normalizeRoleKey(u.role) !== 'system_admin');
 
-  const canManageUser = (user: any) => (
+  const canManageUser = (user: UserRecord) => (
     currentUserIsSystemAdmin || normalizeRoleKey(user.role) !== 'system_admin'
   );
 
-  const isCurrentUser = (user: any) => {
+  const isCurrentUser = (user: UserRecord) => {
     const currentId = currentUser?.id;
     if (currentId !== undefined && currentId !== null && user?.id !== undefined && user?.id !== null) {
       return String(user.id) === String(currentId);
@@ -222,6 +244,11 @@ export function Users() {
 
     return Boolean(currentUser?.email && user?.email && user.email.toLowerCase() === currentUser.email.toLowerCase());
   };
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => void loadUsers(), 0);
+    return () => window.clearTimeout(timeout);
+  }, [loadUsers]);
 
   const filtered = visibleUsers.filter(u => {
     const approval = u.approval_status || 'approved';
@@ -246,13 +273,7 @@ export function Users() {
   const pageEndIndex = Math.min(pageStartIndex + USERS_PER_PAGE, filtered.length);
   const paginatedUsers = filtered.slice(pageStartIndex, pageEndIndex);
 
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
-
-  const handleSave = async (formData: any) => {
+  const handleSave = async (formData: UserUpdateData) => {
     if (!editingUser) return;
     if (!canManageUser(editingUser)) {
       toast.error('System Administrator accounts can only be managed by System Admin.');
@@ -268,47 +289,47 @@ export function Users() {
     }
 
     try {
-      await usersAPI.update(editingUser.id, formData);
+      await usersAPI.update(String(editingUser.id), formData);
       toast.success(formData.name + ' updated successfully.');
       setShowModal(false);
       setEditingUser(null);
-      loadUsers();
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to save user.');
+      await loadUsers();
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to save user.'));
     }
   };
 
-  const handleApprove = async (user: any) => {
+  const handleApprove = async (user: UserRecord) => {
     if (!canManageUser(user)) {
       toast.error('System Administrator accounts can only be managed by System Admin.');
       return;
     }
 
     try {
-      await usersAPI.approve(user.id, user.role);
+      await usersAPI.approve(String(user.id), user.role || undefined);
       toast.success(user.name + ' has been approved.');
-      loadUsers();
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to approve account.');
+      await loadUsers();
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to approve account.'));
     }
   };
 
-  const handleReject = async (user: any) => {
+  const handleReject = async (user: UserRecord) => {
     if (!canManageUser(user)) {
       toast.error('System Administrator accounts can only be managed by System Admin.');
       return;
     }
 
     try {
-      await usersAPI.reject(user.id);
+      await usersAPI.reject(String(user.id));
       toast.success(user.name + ' has been rejected.');
-      loadUsers();
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to reject account.');
+      await loadUsers();
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to reject account.'));
     }
   };
 
-  const handleToggleStatus = async (user: any) => {
+  const handleToggleStatus = async (user: UserRecord) => {
     if (!canManageUser(user)) {
       toast.error('System Administrator accounts can only be managed by System Admin.');
       return;
@@ -320,11 +341,11 @@ export function Users() {
 
     const next = user.status === 'Active' ? 'Inactive' : 'Active';
     try {
-      await usersAPI.update(user.id, { status: next });
+      await usersAPI.update(String(user.id), { status: next });
       toast.success(user.name + ' has been ' + (next === 'Active' ? 'activated' : 'deactivated') + '.');
-      loadUsers();
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to update status.');
+      await loadUsers();
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to update status.'));
     }
   };
 

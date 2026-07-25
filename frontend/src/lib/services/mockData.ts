@@ -1,5 +1,85 @@
 // Mock data for development without Supabase
 
+type MockBarangay = { id: string; name: string };
+
+type MockPatientRecord = {
+  id: string;
+  full_name: string;
+  age: number | null;
+  sex: string | null;
+  contact_number: string;
+  email: string;
+  address: string;
+  barangay_id: string;
+  barangay: MockBarangay | null;
+  created_at: string;
+};
+
+type MockIncidentInput = {
+  patient_id?: string;
+  patient_name?: string;
+  barangay_id?: string;
+  contact_number?: string;
+  incident_date?: string;
+  who_category?: string;
+  status?: string;
+  animal_type?: string;
+  bite_location?: string;
+  provoked?: boolean;
+  notes?: string;
+};
+
+type MockIncidentRecord = {
+  id: string;
+  patient_id?: string;
+  barangay_id?: string;
+  contact_number?: string;
+  incident_date?: string;
+  who_category?: string;
+  status?: string;
+  animal_type?: string;
+  bite_location?: string;
+  provoked?: boolean;
+  notes?: string;
+  patient: Pick<MockPatientRecord, 'id' | 'full_name' | 'age' | 'sex' | 'contact_number'> | null;
+  barangay: MockBarangay | null;
+  reported_by_user: { full_name: string };
+};
+
+type MockInventoryInput = {
+  item_name?: string;
+  item_type?: string;
+  current_stock?: number;
+  reorder_level?: number;
+  unit?: string;
+  description?: string;
+};
+
+type MockInventoryRecord = Required<MockInventoryInput> & {
+  id: string;
+  last_updated: string;
+  updated_by_user: { full_name: string };
+};
+
+type MockAnimalInput = {
+  animal_type?: string;
+  breed?: string;
+  owner_name?: string;
+  owner_contact?: string;
+  barangay_id?: string;
+  vaccination_status?: string;
+  vaccination_date?: string | null;
+  next_vaccination_date?: string | null;
+  notes?: string;
+};
+
+type MockAnimalRecord = Required<Omit<MockAnimalInput, 'vaccination_date' | 'next_vaccination_date'>> & {
+  id: string;
+  vaccination_date: string | null;
+  next_vaccination_date: string | null;
+  barangay: MockBarangay | null;
+};
+
 export const mockDashboardStats = {
   success: true,
   get stats() {
@@ -10,7 +90,7 @@ export const mockDashboardStats = {
       totalCases: mockIncidentsData.length,
       activeCases: activeCases,
       completedVaccinations: completedCases,
-      pendingDoses: mockPEPSchedule.data.filter((s: any) => s.status === 'Pending' || s.status === 'Upcoming').length,
+      pendingDoses: mockPEPSchedule.data.filter((schedule) => schedule.status === 'Pending' || schedule.status === 'Upcoming').length,
       highRiskBarangays: 5
     };
   },
@@ -39,7 +119,7 @@ export const mockDashboardStats = {
 };
 
 // Keep track of incidents (for mock mode only)
-let mockIncidentsData = [
+const mockIncidentsData: MockIncidentRecord[] = [
   {
     id: '1',
     patient_id: 'p1',
@@ -80,9 +160,9 @@ export const mockIncidents = {
 };
 
 // Helper functions for incidents (mock mode)
-export function addMockIncident(incidentData: any) {
+export function addMockIncident(incidentData: MockIncidentInput) {
   // Resolve patient — support both patient_id (legacy) and patient_name (free-text)
-  let patientRecord: any = null;
+  let patientRecord: MockPatientRecord | null = null;
 
   if (incidentData.patient_id) {
     patientRecord = mockPatientsData.find(p => p.id === incidentData.patient_id) || null;
@@ -96,7 +176,7 @@ export function addMockIncident(incidentData: any) {
 
     // New patient — add them to the patients list so Patients page shows them
     if (!patientRecord) {
-      const barangayForPatient = mockBarangays.data.find((b: any) => b.id === incidentData.barangay_id);
+      const barangayForPatient = mockBarangays.data.find((barangay) => barangay.id === incidentData.barangay_id);
       patientRecord = {
         id: `p${Date.now()}`,
         full_name: incidentData.patient_name.trim(),
@@ -117,7 +197,7 @@ export function addMockIncident(incidentData: any) {
     ? { id: patientRecord.id, full_name: patientRecord.full_name, age: patientRecord.age, sex: patientRecord.sex, contact_number: patientRecord.contact_number }
     : null;
 
-  const barangay = mockBarangays.data.find((b: any) => b.id === incidentData.barangay_id);
+  const barangay = mockBarangays.data.find((item) => item.id === incidentData.barangay_id);
 
   const newIncident = {
     id: `${Date.now()}`,
@@ -131,12 +211,12 @@ export function addMockIncident(incidentData: any) {
   return newIncident;
 }
 
-export function updateMockIncident(id: string, incidentData: any) {
+export function updateMockIncident(id: string, incidentData: MockIncidentInput) {
   const index = mockIncidentsData.findIndex(i => i.id === id);
   if (index === -1) return null;
 
   // Resolve patient by name or id (same logic as addMockIncident)
-  let patientRecord: any = null;
+  let patientRecord: MockPatientRecord | null = null;
   if (incidentData.patient_id) {
     patientRecord = mockPatientsData.find(p => p.id === incidentData.patient_id) || null;
   }
@@ -152,7 +232,7 @@ export function updateMockIncident(id: string, incidentData: any) {
         contact_number: incidentData.contact_number || '',
         email: '', address: '',
         barangay_id: incidentData.barangay_id || '',
-        barangay: mockBarangays.data.find((b: any) => b.id === incidentData.barangay_id) || null,
+        barangay: mockBarangays.data.find((item) => item.id === incidentData.barangay_id) || null,
         created_at: new Date().toISOString(),
       };
       mockPatientsData.push(patientRecord);
@@ -163,7 +243,7 @@ export function updateMockIncident(id: string, incidentData: any) {
     ? { id: patientRecord.id, full_name: patientRecord.full_name, age: patientRecord.age, sex: patientRecord.sex, contact_number: patientRecord.contact_number }
     : mockIncidentsData[index].patient;
 
-  const barangay = mockBarangays.data.find((b: any) => b.id === incidentData.barangay_id);
+  const barangay = mockBarangays.data.find((item) => item.id === incidentData.barangay_id);
 
   mockIncidentsData[index] = {
     ...mockIncidentsData[index],
@@ -185,7 +265,7 @@ export function deleteMockIncident(id: string) {
 }
 
 // Keep track of created patients (for mock mode only)
-let mockPatientsData = [
+const mockPatientsData: MockPatientRecord[] = [
   {
     id: 'p1',
     full_name: 'Juan Dela Cruz',
@@ -244,25 +324,25 @@ export const mockPatients = {
 };
 
 // Helper function to add a patient (for mock mode)
-export function addMockPatient(patientData: any) {
+export function addMockPatient(patientData: Omit<MockPatientRecord, 'id' | 'created_at' | 'barangay'>) {
   const newPatient = {
     id: `p${mockPatientsData.length + 1}`,
     ...patientData,
     created_at: new Date().toISOString(),
-    barangay: mockBarangays.data.find((b: any) => b.id === patientData.barangay_id)
+    barangay: mockBarangays.data.find((item) => item.id === patientData.barangay_id) || null,
   };
   mockPatientsData.push(newPatient);
   return newPatient;
 }
 
 // Helper function to update a patient (for mock mode)
-export function updateMockPatient(id: string, patientData: any) {
+export function updateMockPatient(id: string, patientData: Partial<Omit<MockPatientRecord, 'id' | 'created_at' | 'barangay'>>) {
   const index = mockPatientsData.findIndex(p => p.id === id);
   if (index !== -1) {
     mockPatientsData[index] = {
       ...mockPatientsData[index],
       ...patientData,
-      barangay: mockBarangays.data.find((b: any) => b.id === patientData.barangay_id)
+      barangay: mockBarangays.data.find((item) => item.id === patientData.barangay_id) || mockPatientsData[index].barangay,
     };
     return mockPatientsData[index];
   }
@@ -296,7 +376,7 @@ export const mockPEPSchedule = {
 };
 
 // Keep track of inventory (for mock mode only)
-let mockInventoryData = [
+const mockInventoryData: MockInventoryRecord[] = [
   {
     id: '1',
     item_name: 'Anti-Rabies Vaccine',
@@ -384,7 +464,7 @@ export const mockInventory = {
 };
 
 // Helper functions for inventory (mock mode)
-export function addMockInventoryItem(itemData: any) {
+export function addMockInventoryItem(itemData: MockInventoryInput) {
   const newItem = {
     id: `${mockInventoryData.length + 1}`,
     ...itemData,
@@ -395,7 +475,7 @@ export function addMockInventoryItem(itemData: any) {
   return newItem;
 }
 
-export function updateMockInventoryItem(id: string, itemData: any) {
+export function updateMockInventoryItem(id: string, itemData: MockInventoryInput) {
   const index = mockInventoryData.findIndex(i => i.id === id);
   if (index !== -1) {
     mockInventoryData[index] = {
@@ -410,7 +490,7 @@ export function updateMockInventoryItem(id: string, itemData: any) {
 }
 
 // Keep track of animals (for mock mode only)
-let mockAnimalsData = [
+const mockAnimalsData: MockAnimalRecord[] = [
   {
     id: '1',
     animal_type: 'Dog',
@@ -460,8 +540,8 @@ export const mockAnimals = {
 };
 
 // Helper functions for animals (mock mode)
-export function addMockAnimal(animalData: any) {
-  const barangay = mockBarangays.data.find((b: any) => b.id === animalData.barangay_id);
+export function addMockAnimal(animalData: MockAnimalInput) {
+  const barangay = mockBarangays.data.find((item) => item.id === animalData.barangay_id);
 
   const newAnimal = {
     id: `${mockAnimalsData.length + 1}`,
@@ -472,10 +552,10 @@ export function addMockAnimal(animalData: any) {
   return newAnimal;
 }
 
-export function updateMockAnimal(id: string, animalData: any) {
+export function updateMockAnimal(id: string, animalData: MockAnimalInput) {
   const index = mockAnimalsData.findIndex(a => a.id === id);
   if (index !== -1) {
-    const barangay = mockBarangays.data.find((b: any) => b.id === animalData.barangay_id);
+    const barangay = mockBarangays.data.find((item) => item.id === animalData.barangay_id);
 
     mockAnimalsData[index] = {
       ...mockAnimalsData[index],

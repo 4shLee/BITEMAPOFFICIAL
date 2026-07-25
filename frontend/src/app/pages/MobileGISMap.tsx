@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, Filter, MapPin, TrendingUp, Users, AlertTriangle } from 'lucide-react';
+import { Filter, MapPin, TrendingUp, Users, AlertTriangle } from 'lucide-react';
 import { Badge } from '../components/UI/Badge';
 import { BottomSheet } from '../components/UI/BottomSheet';
 

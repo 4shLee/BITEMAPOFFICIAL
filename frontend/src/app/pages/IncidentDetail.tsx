@@ -4,7 +4,7 @@ import { ArrowLeft, CalendarDays, Edit, MapPin, PawPrint, Stethoscope, UserRound
 import { Header } from '../components/Layout/Header';
 import { Button } from '../components/UI/Button';
 import { Badge } from '../components/UI/Badge';
-import { incidentsAPI } from '../../lib/services/api';
+import { getErrorMessage, incidentsAPI, type RegistryPatient } from '../../lib/services/api';
 import { canPerformAction, getStoredUser } from '../../lib/auth/roleAccess';
 import { composePatientAddress, composePatientFullName } from '../../lib/patient';
 import { exposureContactLabel } from '../../lib/whoExposureClassification';
@@ -13,6 +13,53 @@ const whoGuidance: Record<string, string> = {
   'Category I': 'No PEP required if reliable history. Provide health advice.',
   'Category II': 'PEP vaccination recommended.',
   'Category III': 'PEP vaccination and RIG evaluation recommended.',
+};
+
+type PepScheduleDetail = {
+  id: number | string;
+  dose_day?: number | string | null;
+  scheduled_date?: string | null;
+};
+
+type IncidentDetailRecord = {
+  id: number | string;
+  patient?: RegistryPatient & {
+    address?: string | null;
+    address_line?: string | null;
+    city_municipality?: string | null;
+    province?: string | null;
+  };
+  contact_number?: string | null;
+  incident_date?: string | null;
+  incident_time?: string | null;
+  first_consult_date?: string | null;
+  pep_start_date?: string | null;
+  animal_type?: string | null;
+  bite_site?: string | null;
+  bite_location?: string | null;
+  who_category?: string | null;
+  status?: string | null;
+  barangay_id?: number | string | null;
+  barangay?: { name?: string | null; latitude?: number | string | null; longitude?: number | string | null } | null;
+  location_scope?: string | null;
+  location_lat?: number | string | null;
+  location_lng?: number | string | null;
+  incident_city_municipality?: string | null;
+  incident_province?: string | null;
+  incident_specific_location?: string | null;
+  notes?: string | null;
+  exposure_contact_types?: string[] | null;
+  exposure_skin_condition?: string | null;
+  exposure_bleeding_present?: boolean | null;
+  exposure_transdermal?: boolean | null;
+  exposure_saliva_contact_site?: string | null;
+  exposure_direct_bat_contact?: boolean | null;
+  suggested_who_category?: string | null;
+  who_category_confirmed_at?: string | null;
+  who_category_override_reason?: string | null;
+  who_category_suggestion_reason?: string | null;
+  who_category_confirmer?: { name?: string | null } | null;
+  pep_schedules?: PepScheduleDetail[];
 };
 
 function categoryVariant(category?: string) {
@@ -61,7 +108,7 @@ export function IncidentDetail() {
   const navigate = useNavigate();
   const currentUser = getStoredUser();
   const canUpdateIncident = canPerformAction(currentUser?.role, 'incidents.update');
-  const [incident, setIncident] = useState<any>(null);
+  const [incident, setIncident] = useState<IncidentDetailRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -74,8 +121,8 @@ export function IncidentDetail() {
         setError(null);
         const response = await incidentsAPI.getById(id);
         setIncident(response.data);
-      } catch (loadError: any) {
-        setError(loadError.message || 'Unable to load incident report.');
+      } catch (loadError: unknown) {
+        setError(getErrorMessage(loadError, 'Unable to load incident report.'));
       } finally {
         setLoading(false);
       }
@@ -151,7 +198,7 @@ export function IncidentDetail() {
     ['Animal Condition', readNoteValue(incident?.notes, 'Animal Condition')],
     ['Wound Washed', readNoteValue(incident?.notes, 'Wound Washed')],
     ['Date of First Consult', incident?.first_consult_date || readNoteValue(incident?.notes, 'Date of First Consult')],
-    ['PEP Start Date / Day 0', incident?.pep_start_date || pepSchedules.find((schedule: any) => Number(schedule.dose_day) === 0)?.scheduled_date || 'Legacy schedule date not recorded'],
+    ['PEP Start Date / Day 0', incident?.pep_start_date || pepSchedules.find((schedule) => Number(schedule.dose_day) === 0)?.scheduled_date || 'Legacy schedule date not recorded'],
     ['SMS Reminder Permission', readNoteValue(incident?.notes, 'SMS Consent')],
   ];
 
@@ -275,7 +322,7 @@ export function IncidentDetail() {
                     {pepSchedules.length === 0 ? (
                       <p className="text-sm text-muted-foreground">No PEP schedule found.</p>
                     ) : (
-                      pepSchedules.map((dose: any) => (
+                      pepSchedules.map((dose) => (
                         <div key={dose.id} className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2">
                           <p className="text-xs font-extrabold text-emerald-900">Day {dose.dose_day}</p>
                           <p className="text-xs font-semibold text-emerald-700">{dose.scheduled_date}</p>

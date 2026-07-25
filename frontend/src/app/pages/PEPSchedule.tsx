@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
-import { Bell, CalendarDays, Check, ChevronDown, ClipboardCheck, Clock, Eye, History, MessageSquare, Phone, RefreshCw, ShieldCheck, Syringe, X } from 'lucide-react';
+import { Bell, Check, ChevronDown, ClipboardCheck, Clock, Eye, History, MessageSquare, Phone, RefreshCw, ShieldCheck, Syringe, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Header } from '../components/Layout/Header';
 import { Badge } from '../components/UI/Badge';
@@ -8,7 +8,7 @@ import { Button } from '../components/UI/Button';
 import { Input } from '../components/UI/Input';
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
-import { inventoryAPI, notificationsAPI, pepScheduleAPI } from '../../lib/services/api';
+import { getErrorMessage, inventoryAPI, notificationsAPI, pepScheduleAPI } from '../../lib/services/api';
 import { canPerformAction, getStoredUser } from '../../lib/auth/roleAccess';
 import { getPatientDisplayName } from '../../lib/patient';
 
@@ -77,6 +77,36 @@ type VaccineBatchOption = InventoryBatch & {
   inventoryItemId: string;
 };
 
+type ScheduleApiRow = {
+  id: number;
+  incident_id: number | string;
+  dose_day: number;
+  scheduled_date: string;
+  administered_date?: string | null;
+  status?: string | null;
+  vaccine_type?: string | null;
+  administration_route?: string | null;
+  vaccine_lot_number?: string | null;
+  administrator?: { name?: string | null } | null;
+  notes?: string | null;
+  inventory_linkage_status?: string | null;
+  patient?: {
+    id?: number | string;
+    first_name?: string | null;
+    middle_name?: string | null;
+    last_name?: string | null;
+    suffix?: string | null;
+    full_name?: string | null;
+    contact_number?: string | null;
+  } | null;
+  incident?: {
+    sms_consent?: boolean | null;
+    who_category?: string | null;
+    pep_start_date?: string | null;
+    barangay?: { name?: string | null } | null;
+  } | null;
+};
+
 function todayKey() {
   const today = new Date();
   const year = today.getFullYear();
@@ -89,7 +119,7 @@ function dateKeyFrom(value?: string) {
   return value ? String(value).split('T')[0] : '';
 }
 
-function evaluateDoseStatus(item: any): DoseStatus {
+function evaluateDoseStatus(item: ScheduleApiRow): DoseStatus {
   const status = String(item.status || '').toLowerCase();
   const scheduledDate = dateKeyFrom(item.scheduled_date);
   const administeredDate = dateKeyFrom(item.administered_date);
@@ -105,8 +135,8 @@ function evaluateDoseStatus(item: any): DoseStatus {
   return 'pending';
 }
 
-function buildScheduleGroups(rows: any[]): ScheduleGroup[] {
-  const grouped = new Map<string, any[]>();
+function buildScheduleGroups(rows: ScheduleApiRow[]): ScheduleGroup[] {
+  const grouped = new Map<string, ScheduleApiRow[]>();
 
   rows.forEach((row) => {
     const key = String(row.incident_id);
@@ -458,34 +488,7 @@ export function PEPSchedule() {
     return queryIncidentId || (stateIncidentId != null ? String(stateIncidentId) : '');
   }, [location.search, location.state]);
 
-  useEffect(() => {
-    loadSchedule();
-  }, []);
-
-  useEffect(() => {
-    if (loading || loadError || groups.length === 0) return;
-
-    if (requestedIncidentId) {
-      const requestedGroup = groups.find((group) => group.incidentId === requestedIncidentId);
-      if (requestedGroup) {
-        setSelectedIncidentId(requestedGroup.incidentId);
-        setSelectionNotice(null);
-      } else {
-        setSelectedIncidentId(groups[0].incidentId);
-        setSelectionNotice('No PEP schedule found for the selected incident. Showing the first available schedule instead.');
-      }
-      return;
-    }
-
-    setSelectedIncidentId((current) => (
-      current && groups.some((group) => group.incidentId === current)
-        ? current
-        : groups[0].incidentId
-    ));
-    setSelectionNotice(null);
-  }, [groups, loadError, loading, requestedIncidentId]);
-
-  const loadSchedule = async () => {
+  const loadSchedule = useCallback(async () => {
     try {
       setLoading(true);
       setLoadError(null);
@@ -494,7 +497,7 @@ export function PEPSchedule() {
         inventoryAPI.getAll().catch(() => null),
       ]);
       if (scheduleResponse.success) {
-        const nextGroups = buildScheduleGroups(scheduleResponse.data || []);
+        const nextGroups = buildScheduleGroups((scheduleResponse.data || []) as ScheduleApiRow[]);
         setGroups(nextGroups);
       } else {
         throw new Error('Unable to load patient schedules.');
@@ -502,13 +505,45 @@ export function PEPSchedule() {
       if (inventoryResponse?.success) {
         setInventoryItems(inventoryResponse.data || []);
       }
-    } catch (error: any) {
-      setLoadError(error.message || 'Unable to load patient schedules.');
-      toast.error(error.message || 'Failed to load PEP schedule.');
+    } catch (error: unknown) {
+      setLoadError(getErrorMessage(error, 'Unable to load patient schedules.'));
+      toast.error(getErrorMessage(error, 'Failed to load PEP schedule.'));
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => void loadSchedule(), 0);
+    return () => window.clearTimeout(timeout);
+  }, [loadSchedule]);
+
+  useEffect(() => {
+    if (loading || loadError || groups.length === 0) return;
+
+    const timeout = window.setTimeout(() => {
+      if (requestedIncidentId) {
+        const requestedGroup = groups.find((group) => group.incidentId === requestedIncidentId);
+        if (requestedGroup) {
+          setSelectedIncidentId(requestedGroup.incidentId);
+          setSelectionNotice(null);
+        } else {
+          setSelectedIncidentId(groups[0].incidentId);
+          setSelectionNotice('No PEP schedule found for the selected incident. Showing the first available schedule instead.');
+        }
+        return;
+      }
+
+      setSelectedIncidentId((current) => (
+        current && groups.some((group) => group.incidentId === current)
+          ? current
+          : groups[0].incidentId
+      ));
+      setSelectionNotice(null);
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, [groups, loadError, loading, requestedIncidentId]);
 
   const handleScheduleSelection = (incidentId: string) => {
     setSelectedIncidentId(incidentId);
@@ -618,8 +653,8 @@ export function PEPSchedule() {
       toast.success('Dose recorded successfully. Record the actual vaccine stock consumed in the Inventory module.');
       setRecordDose(null);
       await loadSchedule();
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to record dose.');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to record dose.'));
     } finally {
       setSavingDose(false);
     }
@@ -640,8 +675,8 @@ export function PEPSchedule() {
       toast.success('Day ' + rescheduleDose.day + ' was rescheduled. Future doses were not changed.');
       setRescheduleDose(null);
       loadSchedule();
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to reschedule dose.');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to reschedule dose.'));
     } finally {
       setSavingReschedule(false);
     }

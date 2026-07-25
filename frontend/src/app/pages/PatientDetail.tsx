@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { Header } from '../components/Layout/Header';
 import { Badge } from '../components/UI/Badge';
 import { Button } from '../components/UI/Button';
-import { patientsAPI } from '../../lib/services/api';
+import { getErrorMessage, patientsAPI, type RegistryPatient } from '../../lib/services/api';
 import { canPerformAction, getStoredUser } from '../../lib/auth/roleAccess';
 import { composePatientAddress, composePatientFullName } from '../../lib/patient';
 
@@ -42,12 +42,50 @@ function getStatusVariant(status?: string) {
   }
 }
 
+type PatientPepSchedule = {
+  id: number | string;
+  dose_day?: number | string | null;
+  scheduled_date?: string | null;
+  status?: string | null;
+};
+
+type PatientIncident = {
+  id: number | string;
+  incident_date?: string | null;
+  created_at?: string | null;
+  animal_type?: string | null;
+  bite_site?: string | null;
+  bite_location?: string | null;
+  who_category?: string | null;
+  status?: string | null;
+  pep_schedules?: PatientPepSchedule[];
+};
+
+type PatientNotification = {
+  id: number | string;
+  message?: string | null;
+  notification_type?: string | null;
+  type?: string | null;
+  sentAt?: string | null;
+  sent_at?: string | null;
+};
+
+type PatientDetailRecord = RegistryPatient & {
+  email?: string | null;
+  address?: string | null;
+  address_line?: string | null;
+  city_municipality?: string | null;
+  province?: string | null;
+  incidents?: PatientIncident[];
+  notifications?: PatientNotification[];
+};
+
 export function PatientDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const currentUser = getStoredUser();
   const canUpdatePatient = canPerformAction(currentUser?.role, 'patients.update');
-  const [patient, setPatient] = useState<any>(null);
+  const [patient, setPatient] = useState<PatientDetailRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,9 +98,9 @@ export function PatientDetail() {
         setError(null);
         const response = await patientsAPI.getById(id);
         setPatient(response.data);
-      } catch (loadError: any) {
-        toast.error(loadError.message || 'Failed to load patient record.');
-        setError(loadError.message || 'Unable to load patient record.');
+      } catch (loadError: unknown) {
+        toast.error(getErrorMessage(loadError, 'Failed to load patient record.'));
+        setError(getErrorMessage(loadError, 'Unable to load patient record.'));
       } finally {
         setLoading(false);
       }
@@ -88,7 +126,7 @@ export function PatientDetail() {
   const progress = pepSchedule.length ? Math.round((completedDoses / pepSchedule.length) * 100) : 0;
   const nextDose = pepSchedule.find((dose) => dose.status !== 'Done' && dose.status !== 'Completed');
 
-  const formatDate = (value?: string) => {
+  const formatDate = (value?: string | null) => {
     if (!value) return 'Not recorded';
     return new Date(value).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
   };
@@ -226,7 +264,7 @@ export function PatientDetail() {
                   <div className="flex flex-wrap gap-2">
                     {pepSchedule.length === 0 ? (
                       <p className="text-sm text-muted-foreground">No PEP schedule found.</p>
-                    ) : pepSchedule.map((dose: any) => (
+                    ) : pepSchedule.map((dose) => (
                       <div key={dose.id} className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2">
                         <p className="text-xs font-extrabold text-emerald-900">Day {dose.dose_day}</p>
                         <p className="text-xs font-semibold text-emerald-700">{formatDate(dose.scheduled_date)}</p>
@@ -274,7 +312,7 @@ export function PatientDetail() {
                   <div className="space-y-3">
                     {notifications.length === 0 ? (
                       <p className="text-sm text-muted-foreground">No notifications logged.</p>
-                    ) : notifications.slice(0, 5).map((notification: any) => (
+                    ) : notifications.slice(0, 5).map((notification) => (
                       <div key={notification.id} className="border-b border-border pb-3 last:border-0 last:pb-0">
                         <p className="text-sm font-medium text-foreground">{notification.message || 'Reminder notification'}</p>
                         <div className="mt-1 flex items-center gap-2">

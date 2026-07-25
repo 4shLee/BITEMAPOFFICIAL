@@ -170,7 +170,8 @@ export function PublicPortal() {
   }, []);
 
   useEffect(() => {
-    loadStats();
+    const timeout = window.setTimeout(() => void loadStats(), 0);
+    return () => window.clearTimeout(timeout);
   }, [loadStats]);
 
   useEffect(() => {

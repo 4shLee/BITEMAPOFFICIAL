@@ -7,9 +7,21 @@ import { Select } from '../components/UI/Select';
 import { Badge } from '../components/UI/Badge';
 import { gisAPI } from '../../lib/services/api';
 
+type HeatLayerOptions = {
+  radius: number;
+  blur: number;
+  maxZoom: number;
+  minOpacity: number;
+  gradient: Record<number, string>;
+};
+
+type LeafletHeatPlugin = {
+  heatLayer: (points: [number, number, number][], options: HeatLayerOptions) => L.Layer;
+};
+
 declare global {
   interface Window {
-    L?: any;
+    L?: typeof L;
   }
 }
 
@@ -120,9 +132,9 @@ const escapeHtml = (value: string | number) => {
 
 export function GISMap() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const mapInstanceRef = useRef<any>(null);
-  const markerLayerRef = useRef<any>(null);
-  const heatLayerRef = useRef<any>(null);
+  const mapInstanceRef = useRef<L.Map | null>(null);
+  const markerLayerRef = useRef<L.LayerGroup | null>(null);
+  const heatLayerRef = useRef<L.Layer | null>(null);
 
   const [selectedBarangay, setSelectedBarangay] = useState<string | null>(null);
   const [barangayData, setBarangayData] = useState<BarangayData[]>([]);
@@ -147,7 +159,7 @@ export function GISMap() {
         if (!cancelled) {
           setMapLoading(false);
         }
-      } catch (loadError) {
+      } catch {
         if (!cancelled) {
           setMapLoading(false);
           setError('Unable to load the GIS heatmap plugin.');
@@ -231,7 +243,7 @@ export function GISMap() {
 
           return nextData[0]?.barangay_name ?? null;
         });
-      } catch (loadError) {
+      } catch {
         if (!cancelled) {
           setError(loadError instanceof Error && loadError.message
             ? loadError.message
@@ -261,9 +273,10 @@ export function GISMap() {
 
     markerLayerRef.current.clearLayers();
 
-    if (heatPoints.length > 0 && typeof (L as any).heatLayer === 'function') {
+    const leafletWithHeat = L as typeof L & LeafletHeatPlugin;
+    if (heatPoints.length > 0 && typeof leafletWithHeat.heatLayer === 'function') {
       const points = heatPoints.map((point) => [point.latitude, point.longitude, point.intensity]);
-      heatLayerRef.current = (L as any).heatLayer(points, {
+      heatLayerRef.current = leafletWithHeat.heatLayer(points as [number, number, number][], {
         radius: 38,
         blur: 26,
         maxZoom: 17,

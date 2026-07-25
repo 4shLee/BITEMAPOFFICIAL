@@ -151,9 +151,12 @@ export function PublicHeatmap() {
     } finally {
       setIsLoading(false);
     }
-  }, [filters, retryKey]);
+  }, [filters]);
 
-  useEffect(() => { loadAggregates(); }, [loadAggregates]);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => void loadAggregates(), 0);
+    return () => window.clearTimeout(timeout);
+  }, [loadAggregates, retryKey]);
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
@@ -184,7 +187,7 @@ export function PublicHeatmap() {
     };
   }, []);
 
-  const visibleData = response?.data ?? [];
+  const visibleData = useMemo(() => response?.data ?? [], [response]);
 
   useEffect(() => {
     const layer = aggregateLayerRef.current;

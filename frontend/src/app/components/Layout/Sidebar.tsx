@@ -12,6 +12,7 @@ import {
   LogOut,
   ClipboardList,
   ChevronUp,
+  type LucideIcon,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router';
@@ -35,7 +36,7 @@ const systemNav = [
   { path: '/settings',      icon: Settings, label: 'System Settings' },
 ];
 
-function NavItem({ path, icon: Icon, label }: { path: string; icon: any; label: string }) {
+function NavItem({ path, icon: Icon, label }: { path: string; icon: LucideIcon; label: string }) {
   return (
     <NavLink
       to={path}

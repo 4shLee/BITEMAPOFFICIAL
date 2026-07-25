@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router";
 import { ArrowLeft, ArrowRight, Check, ChevronDown, Eye, EyeOff, Globe2, Lock, Mail, ShieldAlert, ShieldCheck, Zap, UserPlus } from "lucide-react";
-import { authAPI } from "../../lib/services/api";
+import { authAPI, getErrorMessage } from "../../lib/services/api";
 import { ASSIGNABLE_ROLES, getDefaultPathForRole, getStoredUser, hasAuthSession } from "../../lib/auth/roleAccess";
 import { toast } from "sonner";
 import { AnimatedGISBackground } from "../components/Brand/AnimatedGISBackground";
@@ -141,8 +141,8 @@ export function Login() {
       } else {
         toast.error(result.error || "Login failed. Please check your credentials.");
       }
-    } catch (error: any) {
-      toast.error(error.message || "An error occurred during login.");
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "An error occurred during login."));
     } finally {
       setIsLoading(false);
     }
@@ -186,8 +186,8 @@ export function Login() {
         setRequestForm(initialRequestForm);
         toast.success(result.message || "Account request submitted for System Administrator approval.");
       }
-    } catch (error: any) {
-      toast.error(error.message || "Failed to submit account request.");
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Failed to submit account request."));
     } finally {
       setIsRequestSubmitting(false);
     }

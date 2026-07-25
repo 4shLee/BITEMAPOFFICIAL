@@ -4,16 +4,27 @@ import { toast } from 'sonner';
 import { Button } from '../UI/Button';
 import { Input } from '../UI/Input';
 import { Select } from '../UI/Select';
-import { animalsAPI, barangaysAPI } from '../../../lib/services/api';
+import { animalsAPI, barangaysAPI, type BarangayListItem } from '../../../lib/services/api';
 
 interface AnimalFormModalProps {
-  animal?: any;
+  animal?: {
+    id: number | string;
+    animal_type?: string | null;
+    breed?: string | null;
+    owner_name?: string | null;
+    owner_contact?: string | null;
+    barangay_id?: number | string | null;
+    vaccination_status?: string | null;
+    vaccination_date?: string | null;
+    next_vaccination_date?: string | null;
+    notes?: string | null;
+  };
   onClose: (shouldReload?: boolean) => void;
 }
 
 export function AnimalFormModal({ animal, onClose }: AnimalFormModalProps) {
   const [loading, setLoading] = useState(false);
-  const [barangays, setBarangays] = useState<any[]>([]);
+  const [barangays, setBarangays] = useState<BarangayListItem[]>([]);
   const [formData, setFormData] = useState({
     animal_type: animal?.animal_type || 'Dog',
     breed: animal?.breed || '',
@@ -27,19 +38,18 @@ export function AnimalFormModal({ animal, onClose }: AnimalFormModalProps) {
   });
 
   useEffect(() => {
-    loadBarangays();
-  }, []);
-
-  const loadBarangays = async () => {
-    try {
-      const response = await barangaysAPI.getAll();
-      if (response.success) {
-        setBarangays(response.data);
+    const loadBarangays = async () => {
+      try {
+        const response = await barangaysAPI.getAll();
+        if (response.success) {
+          setBarangays(Array.isArray(response.data) ? response.data : []);
+        }
+      } catch {
+        toast.error('Failed to load barangays');
       }
-    } catch (error) {
-      toast.error('Failed to load barangays');
-    }
-  };
+    };
+    void loadBarangays();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,14 +57,14 @@ export function AnimalFormModal({ animal, onClose }: AnimalFormModalProps) {
 
     try {
       if (animal) {
-        await animalsAPI.update(animal.id, formData);
+        await animalsAPI.update(String(animal.id), formData);
         toast.success('Animal updated successfully');
       } else {
         await animalsAPI.create(formData);
         toast.success('Animal registered successfully');
       }
       onClose(true);
-    } catch (error) {
+    } catch {
       toast.error(animal ? 'Failed to update animal' : 'Failed to register animal');
     } finally {
       setLoading(false);

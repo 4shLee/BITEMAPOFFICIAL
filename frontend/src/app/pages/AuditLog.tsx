@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Download, Search, XCircle } from 'lucide-react';
 import { Header } from '../components/Layout/Header';
 import { Badge } from '../components/UI/Badge';
 import { Input } from '../components/UI/Input';
 import { Select } from '../components/UI/Select';
 import { Button } from '../components/UI/Button';
-import { auditLogsAPI } from '../../lib/services/api';
+import { auditLogsAPI, getErrorMessage } from '../../lib/services/api';
 import { toast } from 'sonner';
 import { getRoleLabel } from '../../lib/auth/roleAccess';
 
@@ -119,7 +119,6 @@ const getPageNumbers = (currentPage: number, totalPages: number) => {
 
 export function AuditLog() {
   const [logs, setLogs] = useState<AuditLogRow[]>([]);
-  const [summary, setSummary] = useState({ total: 0, today: 0, critical: 0 });
   const [pagination, setPagination] = useState({ current_page: 1, per_page: DEFAULT_PAGE_SIZE, total: 0, last_page: 1, from: 0, to: 0 });
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState<'PDF' | 'Excel' | ''>('');
@@ -159,25 +158,20 @@ export function AuditLog() {
     action: filters.action,
   }), [filters]);
 
-  useEffect(() => {
-    loadLogs();
-  }, [queryFilters]);
-
-  const loadLogs = async () => {
+  const loadLogs = useCallback(async () => {
     try {
       setLoading(true);
       const response = await auditLogsAPI.getAll(queryFilters);
       if (response.success) {
         setLogs(response.data || []);
         setPagination(response.pagination || { current_page: 1, per_page: pageSize, total: 0, last_page: 1, from: 0, to: 0 });
-        setSummary(response.summary || { total: 0, today: 0, critical: 0 });
       }
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to load audit logs.');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to load audit logs.'));
     } finally {
       setLoading(false);
     }
-  };
+  }, [pageSize, queryFilters]);
 
   const handleDownload = async (format: 'PDF' | 'Excel') => {
     try {
@@ -192,12 +186,17 @@ export function AuditLog() {
       link.remove();
       window.URL.revokeObjectURL(url);
       toast.success('Audit log ' + format + ' export downloaded.');
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to download audit logs.');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to download audit logs.'));
     } finally {
       setDownloading('');
     }
   };
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => void loadLogs(), 0);
+    return () => window.clearTimeout(timeout);
+  }, [loadLogs]);
 
   const updateFilters = (nextFilters: Partial<typeof filters>) => {
     setFilters((current) => ({ ...current, ...nextFilters }));

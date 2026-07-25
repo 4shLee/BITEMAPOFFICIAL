@@ -1,9 +1,9 @@
-import { useState, useEffect, type ReactNode } from 'react';
+import { useCallback, useState, useEffect, type ReactNode } from 'react';
 import {
   Users, Syringe, Clock, MapPin, AlertTriangle,
   ChevronRight, RefreshCw, CalendarDays, Package,
   Bell, ClipboardPlus, UserCheck, ShieldAlert,
-  Database, MessageSquare, ServerCog, Settings2, Activity, UserCog
+  Database, MessageSquare, ServerCog, Settings2, Activity, UserCog, type LucideIcon
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -12,7 +12,7 @@ import {
 import { Header } from '../components/Layout/Header';
 import { Badge } from '../components/UI/Badge';
 import { AlertBanner } from '../components/UI/AlertBanner';
-import { auditLogsAPI, dashboardAPI, settingsAPI, usersAPI } from '../../lib/services/api';
+import { auditLogsAPI, dashboardAPI, getErrorMessage, settingsAPI, usersAPI } from '../../lib/services/api';
 import { LoadingSpinner } from '../components/UI/LoadingSpinner';
 import { toast } from 'sonner';
 import { canPerformAction, getRoleLabel, getStoredUser, normalizeRoleKey } from '../../lib/auth/roleAccess';
@@ -83,13 +83,71 @@ const STATUS_LABEL: Record<string, string> = {
 
 // ─── Shared chart tooltip ──────────────────────────────────────────────────
 
-function ChartTooltip({ active, payload, label }: any) {
+type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'neutral';
+
+type DashboardStats = {
+  totalCases: number;
+  activeCases: number;
+  completedVaccinations: number;
+  pendingDoses: number;
+  highRiskBarangays: number;
+};
+
+type DashboardIncident = {
+  id: number | string;
+  patient?: { full_name?: string | null } | null;
+  incident_date?: string | null;
+  who_category?: string | null;
+  status?: string | null;
+  barangay?: { name?: string | null } | null;
+};
+
+type DashboardInventoryItem = {
+  id?: number | string;
+  item_name?: string | null;
+  current_stock?: number | string | null;
+  unit?: string | null;
+  name?: string;
+  stock?: number;
+  max?: number;
+  status?: string;
+};
+
+type DashboardUser = {
+  role?: string | null;
+  status?: string | null;
+  approval_status?: string | null;
+  approvalStatus?: string | null;
+};
+
+type DashboardAuditLog = {
+  action?: string | null;
+  module?: string | null;
+  description?: string | null;
+  timestamp?: string | null;
+  created_at?: string | null;
+};
+
+type DashboardSetting = {
+  setting_key: string;
+  setting_value: unknown;
+};
+
+type ChartTooltipEntry = {
+  dataKey?: string | number;
+  name?: ReactNode;
+  color?: string;
+  fill?: string;
+  value?: ReactNode;
+};
+
+function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: ChartTooltipEntry[]; label?: ReactNode }) {
   if (!active || !payload?.length) return null;
   return (
     <div className="bg-card border border-border rounded-lg px-3 py-2 shadow-lg text-xs min-w-[110px]">
       {label && <p className="font-semibold text-foreground mb-1.5">{label}</p>}
-      {payload.map((p: any) => (
-        <div key={p.dataKey ?? p.name} className="flex items-center justify-between gap-3">
+      {payload.map((p) => (
+        <div key={String(p.dataKey ?? p.name)} className="flex items-center justify-between gap-3">
           <span className="flex items-center gap-1.5 text-muted-foreground">
             <span className="w-2 h-2 rounded-full shrink-0" style={{ background: String(p.color ?? p.fill) }} />
             {p.name}
@@ -282,7 +340,7 @@ function NurseKpiCard({ title, value, helper, icon: Icon, tone }: {
   title: string;
   value: number | string;
   helper: string;
-  icon: any;
+  icon: LucideIcon;
   tone: 'emerald' | 'teal' | 'amber' | 'rose';
 }) {
   const toneClass = {
@@ -316,11 +374,11 @@ function NurseDashboard({
   getCategoryVariant,
   canCreateIncident,
 }: {
-  stats: any;
-  recentIncidents: any[];
-  lowStockItems: any[];
+  stats: DashboardStats;
+  recentIncidents: DashboardIncident[];
+  lowStockItems: DashboardInventoryItem[];
   lastUpdated: string;
-  getCategoryVariant: (cat: string) => any;
+  getCategoryVariant: (cat?: string | null) => BadgeVariant;
   canCreateIncident: boolean;
 }) {
   const todaySchedule = recentIncidents.slice(0, 5).map((incident, index) => ({
@@ -557,15 +615,15 @@ function ClinicAdminDashboard({
   complianceRate,
   getCategoryVariant,
 }: {
-  stats: any;
-  recentIncidents: any[];
-  lowStockItems: any[];
+  stats: DashboardStats;
+  recentIncidents: DashboardIncident[];
+  lowStockItems: DashboardInventoryItem[];
   barangayFilter: 'top5' | 'all';
   setBarangayFilter: (filter: 'top5' | 'all') => void;
   visibleBarangays: typeof barangayCasesData;
   lastUpdated: string;
   complianceRate: number;
-  getCategoryVariant: (cat: string) => any;
+  getCategoryVariant: (cat?: string | null) => BadgeVariant;
 }) {
   const highRiskWatchlist = highRiskBarangays.slice(0, 5);
   const highRiskAlertCount = highRiskWatchlist.filter((barangay) => barangay.level === 'Critical' || barangay.level === 'High').length;
@@ -874,7 +932,7 @@ function SystemMetricCard({ title, value, helper, icon: Icon, tone }: {
   title: string;
   value: number | string;
   helper: string;
-  icon: any;
+  icon: LucideIcon;
   tone: 'emerald' | 'teal' | 'amber' | 'rose' | 'slate';
 }) {
   const toneClass = {
@@ -920,13 +978,13 @@ function SystemAdminDashboard({
   settings,
   lastUpdated,
 }: {
-  users: any[];
-  auditLogs: any[];
+  users: DashboardUser[];
+  auditLogs: DashboardAuditLog[];
   auditSummary: { total: number; today: number; critical: number };
-  settings: any[];
+  settings: DashboardSetting[];
   lastUpdated: string;
 }) {
-  const getApprovalStatus = (user: any) => user.approval_status || user.approvalStatus || 'approved';
+  const getApprovalStatus = (user: DashboardUser) => user.approval_status || user.approvalStatus || 'approved';
   const activeUsers = users.filter((user) => user.status === 'Active' && getApprovalStatus(user) === 'approved').length;
   const pendingUsers = users.filter((user) => getApprovalStatus(user) === 'pending').length;
   const deactivatedAccounts = users.filter((user) => user.status !== 'Active').length;
@@ -1114,18 +1172,16 @@ export function Dashboard() {
     pendingDoses: 0,
     highRiskBarangays: 0,
   });
-  const [recentIncidents, setRecentIncidents] = useState<any[]>([]);
-  const [lowStockItems, setLowStockItems] = useState<any[]>([]);
+  const [recentIncidents, setRecentIncidents] = useState<DashboardIncident[]>([]);
+  const [lowStockItems, setLowStockItems] = useState<DashboardInventoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [barangayFilter, setBarangayFilter] = useState<'top5' | 'all'>('top5');
-  const [systemUsers, setSystemUsers] = useState<any[]>([]);
-  const [systemAuditLogs, setSystemAuditLogs] = useState<any[]>([]);
+  const [systemUsers, setSystemUsers] = useState<DashboardUser[]>([]);
+  const [systemAuditLogs, setSystemAuditLogs] = useState<DashboardAuditLog[]>([]);
   const [systemAuditSummary, setSystemAuditSummary] = useState({ total: 0, today: 0, critical: 0 });
-  const [systemSettings, setSystemSettings] = useState<any[]>([]);
+  const [systemSettings, setSystemSettings] = useState<DashboardSetting[]>([]);
 
-  useEffect(() => { loadDashboardData(); }, [isSystemAdminDashboard]);
-
-  const loadDashboardData = async () => {
+  const loadDashboardData = useCallback(async () => {
     try {
       setIsLoading(true);
 
@@ -1137,13 +1193,13 @@ export function Dashboard() {
         ]);
 
         if (usersResult.success) {
-          setSystemUsers(usersResult.data || []);
+          setSystemUsers((usersResult.data || []) as DashboardUser[]);
         } else {
           setSystemUsers([]);
         }
 
         if (auditResult.success) {
-          setSystemAuditLogs(auditResult.data || []);
+          setSystemAuditLogs((auditResult.data || []) as DashboardAuditLog[]);
           setSystemAuditSummary(auditResult.summary || { total: 0, today: 0, critical: 0 });
         } else {
           setSystemAuditLogs([]);
@@ -1151,7 +1207,7 @@ export function Dashboard() {
         }
 
         if (settingsResult.success) {
-          setSystemSettings(settingsResult.data || []);
+          setSystemSettings((settingsResult.data || []) as DashboardSetting[]);
         } else {
           setSystemSettings([]);
         }
@@ -1161,20 +1217,25 @@ export function Dashboard() {
 
       const result = await dashboardAPI.getStats();
       if (result.success) {
-        setStats(result.stats);
-        setRecentIncidents(result.recentIncidents);
-        setLowStockItems(result.lowStockItems);
+        setStats(result.stats as DashboardStats);
+        setRecentIncidents((result.recentIncidents || []) as DashboardIncident[]);
+        setLowStockItems((result.lowStockItems || []) as DashboardInventoryItem[]);
       } else {
         toast.error('Failed to load dashboard data');
       }
-    } catch (error: any) {
-      toast.error('Error loading dashboard: ' + error.message);
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Error loading dashboard.'));
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [isSystemAdminDashboard]);
 
-  const getCategoryVariant = (cat: string) => {
+  useEffect(() => {
+    const timeout = window.setTimeout(() => void loadDashboardData(), 0);
+    return () => window.clearTimeout(timeout);
+  }, [loadDashboardData]);
+
+  const getCategoryVariant = (cat?: string | null): BadgeVariant => {
     if (cat?.includes('III')) return 'danger';
     if (cat?.includes('II')) return 'warning';
     return 'success';

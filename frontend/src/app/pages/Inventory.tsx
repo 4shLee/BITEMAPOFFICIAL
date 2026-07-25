@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { AlertTriangle, CalendarClock, Edit, Layers, Package, Plus, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { Header } from '../components/Layout/Header';
@@ -13,6 +13,19 @@ import { InventoryBatchModal } from '../components/Inventory/InventoryBatchModal
 
 const INVENTORY_ITEMS_PER_PAGE = 10;
 
+type InventoryItem = {
+  id: number | string;
+  item_name?: string | null;
+  item_type?: string | null;
+  current_stock?: number | string | null;
+  reorder_level?: number | string | null;
+  nearest_expiry_date?: string | null;
+  expiry_date?: string | null;
+  unit?: string | null;
+  batch_number?: string | null;
+  supplier?: string | null;
+};
+
 export function Inventory() {
   const currentUser = getStoredUser();
   const canCreateInventory = canPerformAction(currentUser?.role, 'inventory.create');
@@ -21,7 +34,7 @@ export function Inventory() {
   const canRecordUsage = canPerformAction(currentUser?.role, 'inventory.record_usage');
   const isNurseInventoryView = normalizeRoleKey(currentUser?.role) === 'nurse_vaccinator';
   const inventoryColumnCount = 10;
-  const [inventory, setInventory] = useState<any[]>([]);
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -31,29 +44,30 @@ export function Inventory() {
   const [showAdjustModal, setShowAdjustModal] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [batchModalMode, setBatchModalMode] = useState<'add' | 'view'>('add');
-  const [editingItem, setEditingItem] = useState<any>(null);
-  const [adjustingItem, setAdjustingItem] = useState<any>(null);
-  const [selectedBatchItem, setSelectedBatchItem] = useState<any>(null);
+  const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
+  const [adjustingItem, setAdjustingItem] = useState<InventoryItem | null>(null);
+  const [selectedBatchItem, setSelectedBatchItem] = useState<InventoryItem | null>(null);
 
-  useEffect(() => {
-    loadInventory();
-  }, []);
-
-  const loadInventory = async () => {
+  const loadInventory = useCallback(async () => {
     try {
       setLoading(true);
       const response = await inventoryAPI.getAll();
       if (response.success) {
         setInventory(response.data);
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to load inventory');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleEdit = (item: any) => {
+  useEffect(() => {
+    const timeout = window.setTimeout(() => void loadInventory(), 0);
+    return () => window.clearTimeout(timeout);
+  }, [loadInventory]);
+
+  const handleEdit = (item: InventoryItem) => {
     setEditingItem(item);
     setShowFormModal(true);
   };
@@ -63,18 +77,18 @@ export function Inventory() {
     setShowFormModal(true);
   };
 
-  const handleAdjustStock = (item: any) => {
+  const handleAdjustStock = (item: InventoryItem) => {
     setAdjustingItem(item);
     setShowAdjustModal(true);
   };
 
-  const handleAddBatch = (item?: any) => {
+  const handleAddBatch = (item?: InventoryItem) => {
     setSelectedBatchItem(item || null);
     setBatchModalMode('add');
     setShowBatchModal(true);
   };
 
-  const handleViewBatches = (item: any) => {
+  const handleViewBatches = (item: InventoryItem) => {
     setSelectedBatchItem(item);
     setBatchModalMode('view');
     setShowBatchModal(true);
@@ -113,7 +127,7 @@ export function Inventory() {
     return Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
   };
 
-  const getStockStatus = (item: any) => {
+  const getStockStatus = (item: InventoryItem) => {
     const stock = Number(item.current_stock || 0);
     const reorderLevel = Number(item.reorder_level || 0);
     const daysUntilExpiry = getDaysUntilExpiry(item.nearest_expiry_date || item.expiry_date);
@@ -166,12 +180,6 @@ export function Inventory() {
   const pageStartIndex = (safeCurrentPage - 1) * INVENTORY_ITEMS_PER_PAGE;
   const pageEndIndex = Math.min(pageStartIndex + INVENTORY_ITEMS_PER_PAGE, filteredInventory.length);
   const paginatedInventory = filteredInventory.slice(pageStartIndex, pageEndIndex);
-
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
 
   return (
     <div className="min-h-screen flex-1 bg-background">

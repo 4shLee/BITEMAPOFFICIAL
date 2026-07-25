@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { AlertCircle, ArrowLeft, Eye, EyeOff, Lock, ShieldCheck, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
-import { authAPI } from '../../lib/services/api';
+import { authAPI, getErrorMessage } from '../../lib/services/api';
 import { ASSIGNABLE_ROLES } from '../../lib/auth/roleAccess';
 
 const REQUESTABLE_ROLES = ASSIGNABLE_ROLES;
@@ -66,8 +66,8 @@ export function Signup() {
         setSubmitted(true);
         toast.success(result.message || 'Account request submitted for System Administrator approval.');
       }
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to submit account request.');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to submit account request.'));
     } finally {
       setIsSubmitting(false);
     }

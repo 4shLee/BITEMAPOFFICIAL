@@ -6,7 +6,7 @@ import { Header } from '../components/Layout/Header';
 import { Input } from '../components/UI/Input';
 import { Select } from '../components/UI/Select';
 import { Button } from '../components/UI/Button';
-import { patientsAPI } from '../../lib/services/api';
+import { getErrorMessage, patientsAPI } from '../../lib/services/api';
 import { canPerformAction, getStoredUser } from '../../lib/auth/roleAccess';
 import {
   PATIENT_SUFFIX_OPTIONS,
@@ -107,8 +107,8 @@ export function PatientRecordForm() {
           legacyAddress: patient?.address || '',
           smsConsent: patient?.sms_consent === true || Number(patient?.sms_consent) === 1,
         });
-      } catch (error: any) {
-        setLoadError(error.message || 'Unable to load patient record.');
+      } catch (error: unknown) {
+        setLoadError(getErrorMessage(error, 'Unable to load patient record.'));
       } finally {
         setLoadingPatient(false);
       }
@@ -204,8 +204,8 @@ export function PatientRecordForm() {
       const patientId = response.data?.id || id;
       toast.success(isEditMode ? 'Patient record updated successfully.' : 'Patient record created successfully.');
       navigate('/patients/' + patientId);
-    } catch (error: any) {
-      toast.error(error.message || (isEditMode ? 'Failed to update patient record.' : 'Failed to create patient record.'));
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, isEditMode ? 'Failed to update patient record.' : 'Failed to create patient record.'));
     } finally {
       setSaving(false);
     }

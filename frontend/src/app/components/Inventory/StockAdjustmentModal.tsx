@@ -11,7 +11,18 @@ const REMOVE_STOCK_TYPES = ['Used', 'Dispensed', 'Damaged', 'Expired'];
 const REQUIRES_REASON = ['Damaged', 'Expired', 'Adjustment'];
 
 interface StockAdjustmentModalProps {
-  item: any;
+  item: {
+    id: number | string;
+    item_name?: string | null;
+    current_stock?: number | string | null;
+    unit?: string | null;
+    batches?: Array<{
+      id: number | string;
+      batch_number?: string | null;
+      quantity_remaining?: number | string | null;
+      expiry_date?: string | null;
+    }>;
+  };
   onClose: (shouldReload?: boolean) => void;
   mode?: 'adjust' | 'usage';
 }
@@ -71,7 +82,7 @@ export function StockAdjustmentModal({ item, onClose, mode = 'adjust' }: StockAd
         newStock = quantity;
       }
 
-      await inventoryAPI.update(item.id, {
+      await inventoryAPI.update(String(item.id), {
         current_stock: newStock,
         transaction_type: formData.transaction_type,
         inventory_batch_id: formData.inventory_batch_id || undefined,
@@ -81,7 +92,7 @@ export function StockAdjustmentModal({ item, onClose, mode = 'adjust' }: StockAd
 
       toast.success(isUsageMode ? 'Stock usage recorded successfully' : 'Stock adjusted successfully');
       onClose(true);
-    } catch (error) {
+    } catch {
       toast.error(isUsageMode ? 'Failed to record stock usage' : 'Failed to adjust stock');
     } finally {
       setLoading(false);
@@ -104,12 +115,12 @@ export function StockAdjustmentModal({ item, onClose, mode = 'adjust' }: StockAd
   const batchOptions = [
     { value: '', label: 'Select affected batch/lot' },
     ...(item.batches || [])
-      .filter((batch: any) => {
+      .filter((batch) => {
         const hasStock = Number(batch.quantity_remaining || 0) > 0;
         const isNotExpired = !batch.expiry_date || batch.expiry_date >= today;
         return hasStock && (!isUsageMode || isNotExpired);
       })
-      .map((batch: any) => ({
+      .map((batch) => ({
         value: String(batch.id),
         label: `${batch.batch_number} - ${batch.quantity_remaining} ${item.unit} remaining - exp ${batch.expiry_date || 'N/A'}`,
       })),
@@ -121,7 +132,7 @@ export function StockAdjustmentModal({ item, onClose, mode = 'adjust' }: StockAd
   const currentStock = Number(item.current_stock) || 0;
   const quantity = parseInt(formData.quantity, 10) || 0;
   const wouldGoNegative = isRemovingStock && quantity > currentStock;
-  const selectedBatch = (item.batches || []).find((batch: any) => String(batch.id) === formData.inventory_batch_id);
+  const selectedBatch = (item.batches || []).find((batch) => String(batch.id) === formData.inventory_batch_id);
   const wouldExceedBatch = Boolean(isRemovingStock && selectedBatch && quantity > Number(selectedBatch.quantity_remaining || 0));
 
   const getNewStockPreview = () => {

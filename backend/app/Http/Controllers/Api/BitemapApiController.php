@@ -3547,7 +3547,7 @@ class BitemapApiController extends Controller
             'barangay_id' => $patient->barangay_id,
             'barangay' => $patient->barangay,
             'contact_number' => $patient->contact_number,
-            'created_at' => $patient->created_at,
+            'created_at' => $patient->created_at?->toISOString(),
         ];
     }
 

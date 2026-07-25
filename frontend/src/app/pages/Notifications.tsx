@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { useNavigate } from 'react-router';
 import {
   AlertTriangle,
@@ -21,7 +21,7 @@ import { Header } from '../components/Layout/Header';
 import { Badge } from '../components/UI/Badge';
 import { Button } from '../components/UI/Button';
 import { toast } from 'sonner';
-import { auditLogsAPI, notificationsAPI, pepScheduleAPI } from '../../lib/services/api';
+import { auditLogsAPI, getErrorMessage, notificationsAPI, pepScheduleAPI } from '../../lib/services/api';
 import { canPerformAction, getStoredUser, isSystemAdminRole } from '../../lib/auth/roleAccess';
 import { getPatientDisplayName } from '../../lib/patient';
 
@@ -116,6 +116,17 @@ type SystemSeverity = 'info' | 'warning' | 'critical';
 type SystemNotificationType = 'Security' | 'User Access' | 'System' | 'SMS Service' | 'Queue' | 'Database';
 type SystemNotificationStatus = 'unread' | 'read' | 'resolved';
 
+type SystemAuditLog = {
+  id: number | string;
+  timestamp?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  action?: string | null;
+  module?: string | null;
+  description?: string | null;
+  user_name?: string | null;
+};
+
 type SystemNotification = {
   id: string;
   severity: SystemSeverity;
@@ -124,7 +135,23 @@ type SystemNotification = {
   category: SystemNotificationType;
   timestamp: string;
   status: SystemNotificationStatus;
-  source?: any;
+  source?: SystemAuditLog;
+};
+
+type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'neutral';
+
+type SystemFilters = {
+  search: string;
+  severity: 'All' | 'Info' | 'Warning' | 'Critical';
+  type: 'All' | SystemNotificationType;
+  status: 'All' | 'Unread' | 'Read' | 'Resolved';
+};
+
+type SystemSummary = {
+  unread: number;
+  critical: number;
+  security: number;
+  warnings: number;
 };
 
 const NOTIFICATIONS_PER_PAGE = 10;
@@ -133,7 +160,7 @@ const SYSTEM_NOTIFICATION_TYPES: Array<'All' | SystemNotificationType> = ['All',
 const SYSTEM_SEVERITIES: Array<'All' | 'Info' | 'Warning' | 'Critical'> = ['All', 'Info', 'Warning', 'Critical'];
 const SYSTEM_STATUSES: Array<'All' | 'Unread' | 'Read' | 'Resolved'> = ['All', 'Unread', 'Read', 'Resolved'];
 
-const getStatusVariant = (status: string): any => {
+const getStatusVariant = (status: string): BadgeVariant => {
   if (status === 'Sent' || status === 'Delivered') return 'success';
   if (status === 'Pending') return 'warning';
   return 'danger';
@@ -141,10 +168,6 @@ const getStatusVariant = (status: string): any => {
 
 const normalizeNotificationType = (notification: NotificationLog) => {
   return notification.type || notification.notification_type || 'SMS';
-};
-
-const getSentAt = (notification: NotificationLog) => {
-  return notification.sentAt || notification.sent_at || notification.created_at || '';
 };
 
 const isSentStatus = (status: string) => status === 'Sent' || status === 'Delivered';
@@ -337,9 +360,9 @@ const getNotificationSchedule = (notification: NotificationLog, rows: PepSchedul
   return incidentRows.find((row) => !['Done', 'Completed', 'Cancelled', 'Skipped'].includes(row.status)) || incidentRows[0];
 };
 
-const getSystemTimestamp = (log: any) => log.timestamp || log.created_at || log.updated_at || '';
+const getSystemTimestamp = (log: SystemAuditLog) => log.timestamp || log.created_at || log.updated_at || '';
 
-const detectSystemNotificationCategory = (log: any): SystemNotificationType => {
+const detectSystemNotificationCategory = (log: SystemAuditLog): SystemNotificationType => {
   const moduleName = String(log.module || '').toLowerCase();
   const haystack = [log.action, log.module, log.description].filter(Boolean).join(' ').toLowerCase();
 
@@ -351,7 +374,7 @@ const detectSystemNotificationCategory = (log: any): SystemNotificationType => {
   return 'System';
 };
 
-const detectSystemNotificationSeverity = (log: any): SystemSeverity => {
+const detectSystemNotificationSeverity = (log: SystemAuditLog): SystemSeverity => {
   const haystack = [log.action, log.module, log.description].filter(Boolean).join(' ').toLowerCase();
 
   if (haystack.includes('critical') || haystack.includes('suspicious') || haystack.includes('unauthorized') || haystack.includes('failed') || haystack.includes('error') || haystack.includes('delete')) {
@@ -365,7 +388,7 @@ const detectSystemNotificationSeverity = (log: any): SystemSeverity => {
   return 'info';
 };
 
-const isSystemNotificationSource = (log: any) => {
+const isSystemNotificationSource = (log: SystemAuditLog) => {
   const moduleName = String(log.module || '');
   const haystack = [log.action, log.module, log.description].filter(Boolean).join(' ').toLowerCase();
   const platformModules = ['Authentication', 'User Management', 'Settings', 'Audit Logs'];
@@ -375,7 +398,7 @@ const isSystemNotificationSource = (log: any) => {
   return (platformModules.includes(moduleName) && platformSignal) || smsServiceSignal;
 };
 
-const buildSystemNotificationTitle = (log: any, category: SystemNotificationType, severity: SystemSeverity) => {
+const buildSystemNotificationTitle = (log: SystemAuditLog, category: SystemNotificationType, severity: SystemSeverity) => {
   const action = log.action || 'System activity';
 
   if (category === 'SMS Service') return severity === 'critical' ? 'SMS service alert' : 'SMS service notice';
@@ -386,7 +409,7 @@ const buildSystemNotificationTitle = (log: any, category: SystemNotificationType
   return action;
 };
 
-const buildSystemNotificationDescription = (log: any, category: SystemNotificationType) => {
+const buildSystemNotificationDescription = (log: SystemAuditLog, category: SystemNotificationType) => {
   if (category === 'SMS Service') {
     return 'A notification delivery or SMS service issue was recorded in audit activity.';
   }
@@ -394,7 +417,7 @@ const buildSystemNotificationDescription = (log: any, category: SystemNotificati
   return log.description || [log.user_name || 'System', log.action, log.module].filter(Boolean).join(' - ') || 'System activity requires administrator review.';
 };
 
-const buildSystemNotifications = (logs: any[]): SystemNotification[] => {
+const buildSystemNotifications = (logs: SystemAuditLog[]): SystemNotification[] => {
   return logs
     .filter(isSystemNotificationSource)
     .map((log) => {
@@ -468,7 +491,25 @@ function SystemNotificationsView({
   updateSystemNotificationStatus,
   selectedSystemNotification,
   setSelectedSystemNotification,
-}: any) {
+}: {
+  loading: boolean;
+  error: string | null;
+  systemSummary: SystemSummary;
+  systemFilters: SystemFilters;
+  setSystemFilters: Dispatch<SetStateAction<SystemFilters>>;
+  filteredSystemNotifications: SystemNotification[];
+  systemNotifications: SystemNotification[];
+  paginatedSystemNotifications: SystemNotification[];
+  systemPageStartIndex: number;
+  systemPageEndIndex: number;
+  safeSystemPage: number;
+  systemTotalPages: number;
+  setSystemPage: Dispatch<SetStateAction<number>>;
+  handleMarkAllSystemRead: () => void;
+  updateSystemNotificationStatus: (id: string, status: SystemNotificationStatus) => void;
+  selectedSystemNotification: SystemNotification | null;
+  setSelectedSystemNotification: Dispatch<SetStateAction<SystemNotification | null>>;
+}) {
   return (
     <div className="flex-1 bg-[#f3f7f5]">
       <Header title="System Notifications" breadcrumbs={['System', 'Notifications']} />
@@ -505,28 +546,28 @@ function SystemNotificationsView({
               <input
                 type="text"
                 value={systemFilters.search}
-                onChange={(event) => setSystemFilters((filters: any) => ({ ...filters, search: event.target.value }))}
+                onChange={(event) => setSystemFilters((filters) => ({ ...filters, search: event.target.value }))}
                 placeholder="Search system notifications..."
                 className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm text-slate-800 outline-none transition focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-100"
               />
             </div>
             <select
               value={systemFilters.severity}
-              onChange={(event) => setSystemFilters((filters: any) => ({ ...filters, severity: event.target.value }))}
+              onChange={(event) => setSystemFilters((filters) => ({ ...filters, severity: event.target.value as SystemFilters['severity'] }))}
               className="h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-700 outline-none transition focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-100"
             >
               {SYSTEM_SEVERITIES.map((severity) => <option key={severity} value={severity}>{severity === 'All' ? 'All severities' : severity}</option>)}
             </select>
             <select
               value={systemFilters.type}
-              onChange={(event) => setSystemFilters((filters: any) => ({ ...filters, type: event.target.value }))}
+              onChange={(event) => setSystemFilters((filters) => ({ ...filters, type: event.target.value as SystemFilters['type'] }))}
               className="h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-700 outline-none transition focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-100"
             >
               {SYSTEM_NOTIFICATION_TYPES.map((type) => <option key={type} value={type}>{type === 'All' ? 'All types' : type}</option>)}
             </select>
             <select
               value={systemFilters.status}
-              onChange={(event) => setSystemFilters((filters: any) => ({ ...filters, status: event.target.value }))}
+              onChange={(event) => setSystemFilters((filters) => ({ ...filters, status: event.target.value as SystemFilters['status'] }))}
               className="h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-700 outline-none transition focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-100"
             >
               {SYSTEM_STATUSES.map((status) => <option key={status} value={status}>{status === 'All' ? 'All statuses' : status}</option>)}
@@ -603,7 +644,7 @@ function SystemNotificationsView({
                             <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{notification.description}</p>
                           </td>
                           <td className="px-5 py-4 text-sm font-semibold text-slate-700">{notification.category}</td>
-                          <td className="whitespace-nowrap px-5 py-4 text-xs text-slate-500">{formatReadableDateTime(notification.timestamp) || 'Timestamp unavailable'}</td>
+                          <td className="whitespace-nowrap px-5 py-4 text-xs text-slate-500">{formatDateTime(notification.timestamp) || 'Timestamp unavailable'}</td>
                           <td className="px-5 py-4">
                             <span className={'rounded-full px-2.5 py-1 text-xs font-bold ' + (notification.status === 'resolved' ? 'bg-emerald-50 text-emerald-700' : notification.status === 'unread' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600')}>
                               {statusLabel}
@@ -760,7 +801,7 @@ export function Notifications() {
   const [notificationSummary, setNotificationSummary] = useState<NotificationSummary>({ overdue_patients: 0, failed_sms: 0, due_today_patients: 0, pending_sms: 0 });
   const [error, setError] = useState<string | null>(null);
   const [systemNotifications, setSystemNotifications] = useState<SystemNotification[]>([]);
-  const [systemFilters, setSystemFilters] = useState({
+  const [systemFilters, setSystemFilters] = useState<SystemFilters>({
     search: '',
     severity: 'All',
     type: 'All',
@@ -769,14 +810,14 @@ export function Notifications() {
   const [systemPage, setSystemPage] = useState(1);
   const [selectedSystemNotification, setSelectedSystemNotification] = useState<SystemNotification | null>(null);
 
-  const loadLiveData = async (showLoading = true) => {
+  const loadLiveData = useCallback(async (showLoading = true) => {
     try {
       if (showLoading) setLoading(true);
       setError(null);
 
       if (isSystemAdmin) {
         const auditResponse = await auditLogsAPI.getAll({ per_page: 50 });
-        setSystemNotifications(buildSystemNotifications(auditResponse.data || []));
+        setSystemNotifications(buildSystemNotifications((auditResponse.data || []) as SystemAuditLog[]));
         setNotifications([]);
         setScheduleRows([]);
         setUpcomingReminders([]);
@@ -788,13 +829,14 @@ export function Notifications() {
         pepScheduleAPI.getAll(),
       ]);
 
-      setNotifications(notificationResponse.data || []);
+      setNotifications((notificationResponse.data || []) as NotificationLog[]);
       setSmsService(notificationResponse.meta?.sms_service || { enabled: false, mode: 'simulation', provider: null });
       setNotificationSummary(notificationResponse.meta?.summary || { overdue_patients: 0, failed_sms: 0, due_today_patients: 0, pending_sms: 0 });
-      setScheduleRows(scheduleResponse.data || []);
-      setUpcomingReminders(buildUpcomingReminders(scheduleResponse.data || []));
-    } catch (loadError: any) {
-      setError(loadError.message || 'Failed to load live notifications.');
+      const schedules = (scheduleResponse.data || []) as PepScheduleRow[];
+      setScheduleRows(schedules);
+      setUpcomingReminders(buildUpcomingReminders(schedules));
+    } catch (loadError: unknown) {
+      setError(getErrorMessage(loadError, 'Failed to load live notifications.'));
       setNotifications([]);
       setSmsService({ enabled: false, mode: 'simulation', provider: null });
       setNotificationSummary({ overdue_patients: 0, failed_sms: 0, due_today_patients: 0, pending_sms: 0 });
@@ -803,14 +845,16 @@ export function Notifications() {
     } finally {
       if (showLoading) setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadLiveData();
   }, [isSystemAdmin]);
 
   useEffect(() => {
-    setSystemPage(1);
+    const timeout = window.setTimeout(() => void loadLiveData(), 0);
+    return () => window.clearTimeout(timeout);
+  }, [loadLiveData]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setSystemPage(1), 0);
+    return () => window.clearTimeout(timeout);
   }, [systemFilters.search, systemFilters.severity, systemFilters.type, systemFilters.status]);
 
   const smsNotifications = notifications.filter((notification) => normalizeNotificationType(notification) === 'SMS');
@@ -891,18 +935,6 @@ export function Notifications() {
     warnings: systemNotifications.filter((notification) => notification.status !== 'resolved' && notification.severity === 'warning').length,
   };
 
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
-
-  useEffect(() => {
-    if (systemPage > systemTotalPages) {
-      setSystemPage(systemTotalPages);
-    }
-  }, [systemPage, systemTotalPages]);
-
   const handleFilterChange = (nextFilter: typeof filter) => {
     setFilter(nextFilter);
     setCurrentPage(1);
@@ -961,8 +993,8 @@ export function Notifications() {
       await sendPatientReminder(group, scope);
       toast.success((smsService.enabled ? 'SMS reminder sent for ' : 'Reminder queued for ') + group.patient + '.');
       await loadLiveData(false);
-    } catch (sendError: any) {
-      toast.error(sendError.message || 'Failed to send reminder.');
+    } catch (sendError: unknown) {
+      toast.error(getErrorMessage(sendError, 'Failed to send reminder.'));
     } finally {
       setSending(null);
     }
@@ -987,8 +1019,8 @@ export function Notifications() {
       });
       toast.success(smsService.enabled ? 'SMS retry processed.' : 'Reminder returned to the simulation queue.');
       await loadLiveData(false);
-    } catch (resendError: any) {
-      toast.error(resendError.message || 'Failed to resend notification.');
+    } catch (resendError: unknown) {
+      toast.error(getErrorMessage(resendError, 'Failed to resend notification.'));
     }
   };
 
@@ -1008,8 +1040,8 @@ export function Notifications() {
       toast.success((smsService.enabled ? 'Bulk SMS reminders processed for ' : 'Bulk reminders queued for ') + sendable.length + ' patient' + (sendable.length !== 1 ? 's' : '') + '.');
       setBulkModalOpen(false);
       await loadLiveData(false);
-    } catch (bulkError: any) {
-      toast.error(bulkError.message || 'Failed to send bulk reminders.');
+    } catch (bulkError: unknown) {
+      toast.error(getErrorMessage(bulkError, 'Failed to send bulk reminders.'));
     } finally {
       setBulkSending(false);
     }
@@ -1168,7 +1200,7 @@ export function Notifications() {
                             <div><p className="font-semibold uppercase tracking-wide text-muted-foreground">Dose</p><p className="mt-1 font-medium text-foreground">{schedule ? 'Day ' + schedule.dose_day : 'PEP Dose'}</p></div>
                             <div><p className="font-semibold uppercase tracking-wide text-muted-foreground">Reminder Type</p><p className="mt-1 font-medium text-foreground">{reminderType}</p></div>
                             <div><p className="font-semibold uppercase tracking-wide text-muted-foreground">Scheduled</p><p className="mt-1 font-medium text-foreground">{schedule ? formatDate(schedule.scheduled_date) : 'Not linked'}</p></div>
-                            <div><p className="font-semibold uppercase tracking-wide text-muted-foreground">Created</p><p className="mt-1 font-medium text-foreground">{formatDate(notification.created_at || getSentAt(notification))}</p></div>
+                            <div><p className="font-semibold uppercase tracking-wide text-muted-foreground">Created</p><p className="mt-1 font-medium text-foreground">{getTimestampLabel(notification)}</p></div>
                           </div>
                           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
                             <p className={'text-xs font-medium ' + (status === 'Sent' ? 'text-emerald-700' : status === 'Failed' ? 'text-destructive' : 'text-amber-700')}>

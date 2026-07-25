@@ -4,16 +4,19 @@ import { toast } from 'sonner';
 import { Button } from '../UI/Button';
 import { Input } from '../UI/Input';
 import { Select } from '../UI/Select';
-import { patientsAPI, barangaysAPI } from '../../../lib/services/api';
+import { patientsAPI, barangaysAPI, type BarangayListItem, type RegistryPatient } from '../../../lib/services/api';
 
 interface PatientFormModalProps {
-  patient?: any;
+  patient?: RegistryPatient & {
+    email?: string | null;
+    address?: string | null;
+  };
   onClose: (shouldReload?: boolean) => void;
 }
 
 export function PatientFormModal({ patient, onClose }: PatientFormModalProps) {
   const [loading, setLoading] = useState(false);
-  const [barangays, setBarangays] = useState<any[]>([]);
+  const [barangays, setBarangays] = useState<BarangayListItem[]>([]);
   const [formData, setFormData] = useState({
     full_name: patient?.full_name || '',
     age: patient?.age || '',
@@ -25,19 +28,18 @@ export function PatientFormModal({ patient, onClose }: PatientFormModalProps) {
   });
 
   useEffect(() => {
-    loadBarangays();
-  }, []);
-
-  const loadBarangays = async () => {
-    try {
-      const response = await barangaysAPI.getAll();
-      if (response.success) {
-        setBarangays(response.data);
+    const loadBarangays = async () => {
+      try {
+        const response = await barangaysAPI.getAll();
+        if (response.success) {
+          setBarangays(Array.isArray(response.data) ? response.data : []);
+        }
+      } catch {
+        toast.error('Failed to load barangays');
       }
-    } catch (error) {
-      toast.error('Failed to load barangays');
-    }
-  };
+    };
+    void loadBarangays();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,14 +47,14 @@ export function PatientFormModal({ patient, onClose }: PatientFormModalProps) {
 
     try {
       if (patient) {
-        await patientsAPI.update(patient.id, formData);
+        await patientsAPI.update(String(patient.id), formData);
         toast.success('Patient updated successfully');
       } else {
         await patientsAPI.create(formData);
         toast.success('Patient created successfully');
       }
       onClose(true);
-    } catch (error) {
+    } catch {
       toast.error(patient ? 'Failed to update patient' : 'Failed to create patient');
     } finally {
       setLoading(false);

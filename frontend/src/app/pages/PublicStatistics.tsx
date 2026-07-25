@@ -1,7 +1,7 @@
 import { Link } from 'react-router';
 import { AlertCircle, ArrowLeft, Calendar, RefreshCw, TrendingUp, Users } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, LineChart, Line } from 'recharts';
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { publicAPI } from '../../lib/services/api';
 import { LoadingSpinner } from '../components/UI/LoadingSpinner';
 
@@ -64,11 +64,7 @@ export function PublicStatistics() {
   const [isLoading, setIsLoading] = useState(true);
   const [statsError, setStatsError] = useState('');
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     setStatsError('');
     try {
@@ -110,7 +106,12 @@ export function PublicStatistics() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => void loadData(), 0);
+    return () => window.clearTimeout(timeout);
+  }, [loadData]);
 
   const barangayData = Object.entries(barangayStats)
     .map(([name, total]) => ({

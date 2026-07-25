@@ -17,6 +17,13 @@ type QuickAlert = {
   count: number;
 };
 
+type HeaderAuditLog = {
+  id: number | string;
+  action?: string | null;
+  module?: string | null;
+  description?: string | null;
+};
+
 export function Header({ title, breadcrumbs = [] }: HeaderProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -42,15 +49,15 @@ export function Header({ title, breadcrumbs = [] }: HeaderProps) {
         setAlertsLoading(true);
         if (isSystemAdmin) {
           const response = await auditLogsAPI.getAll({ per_page: 30 });
-          const platformAlerts = (response.data || [])
-            .filter((log: any) => {
+          const platformAlerts = ((response.data || []) as HeaderAuditLog[])
+            .filter((log) => {
               const moduleName = String(log.module || '');
               const text = [log.action, log.module, log.description].filter(Boolean).join(' ').toLowerCase();
               return ['Authentication', 'User Management', 'Settings', 'Audit Logs'].includes(moduleName)
                 || (moduleName === 'Notifications' && /(failed|error|queue|service)/.test(text));
             })
             .slice(0, 5)
-            .map((log: any) => ({
+            .map((log) => ({
               id: 'system-' + log.id,
               title: log.action || 'System alert',
               detail: log.description || log.module || 'Platform activity requires review.',

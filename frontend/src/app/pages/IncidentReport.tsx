@@ -7,7 +7,7 @@ import { IncidentLocationPicker } from '../components/Incidents/IncidentLocation
 import { Input } from '../components/UI/Input';
 import { Select } from '../components/UI/Select';
 import { Button } from '../components/UI/Button';
-import { ApiError, barangaysAPI, incidentsAPI, patientsAPI } from '../../lib/services/api';
+import { ApiError, barangaysAPI, getErrorMessage, incidentsAPI, patientsAPI } from '../../lib/services/api';
 import { getStoredUser, normalizeRoleKey } from '../../lib/auth/roleAccess';
 import {
   PATIENT_SUFFIX_OPTIONS,
@@ -55,6 +55,13 @@ type BarangayOption = {
   name: string;
   latitude?: number | string | null;
   longitude?: number | string | null;
+};
+
+type IncidentSchedule = {
+  dose_day?: number | string | null;
+  scheduled_date?: string | null;
+  administered_date?: string | null;
+  status?: string | null;
 };
 
 type FormErrors = Partial<Record<keyof IncidentFormData | 'patientSelection', string>>;
@@ -365,7 +372,7 @@ export function IncidentReport() {
   const [loadingIncident, setLoadingIncident] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [savedIncident, setSavedIncident] = useState<any>(null);
+  const [savedIncident, setSavedIncident] = useState<{ id: number | string } | null>(null);
   const [pendingPin, setPendingPin] = useState<{ latitude: string; longitude: string } | null>(null);
   const [pendingWhoOverride, setPendingWhoOverride] = useState<PendingWhoOverride | null>(null);
   const [hasStructuredAssessment, setHasStructuredAssessment] = useState(!isEditMode);
@@ -425,7 +432,8 @@ export function IncidentReport() {
           : [];
         const hasStoredAssessment = structuredContactTypes.length > 0;
 
-        const dayZeroSchedule = (incident?.pep_schedules || []).find((schedule: any) => Number(schedule.dose_day) === 0);
+        const schedules = (incident?.pep_schedules || []) as IncidentSchedule[];
+        const dayZeroSchedule = schedules.find((schedule) => Number(schedule.dose_day) === 0);
         const storedPepStartDate = incident?.pep_start_date || '';
         const displayedPepStartDate = storedPepStartDate || dayZeroSchedule?.scheduled_date || '';
 
@@ -480,11 +488,11 @@ export function IncidentReport() {
         setIsLegacyClassification(!hasStoredAssessment);
         setPersistedPepStartDate(storedPepStartDate);
         setInitialPepStartDate(displayedPepStartDate);
-        setHasCompletedPepDose((incident?.pep_schedules || []).some((schedule: any) => (
+        setHasCompletedPepDose(schedules.some((schedule) => (
           Boolean(schedule.administered_date) || ['Done', 'Completed'].includes(schedule.status)
         )));
-      } catch (error: any) {
-        setLoadError(error.message || 'Unable to load incident report.');
+      } catch (error: unknown) {
+        setLoadError(getErrorMessage(error, 'Unable to load incident report.'));
       } finally {
         setLoadingIncident(false);
       }
@@ -1000,14 +1008,14 @@ export function IncidentReport() {
         setSavedIncident(response.data);
         toast.success('Incident report saved successfully.');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error instanceof ApiError && Object.keys(error.errors).length > 0) {
         const backendErrors = mapBackendErrors(error.errors);
         setErrors((current) => ({ ...current, ...backendErrors }));
         focusFirstInvalidField();
         toast.error(Object.values(backendErrors)[0] || error.message);
       } else {
-        toast.error(error.message || (isEditMode ? 'Failed to update incident report.' : 'Failed to save incident report.'));
+        toast.error(getErrorMessage(error, isEditMode ? 'Failed to update incident report.' : 'Failed to save incident report.'));
       }
     } finally {
       setSaving(false);

@@ -5,7 +5,7 @@ import { Input } from '../components/UI/Input';
 import { Select } from '../components/UI/Select';
 import { Button } from '../components/UI/Button';
 import { toast } from 'sonner';
-import { barangaysAPI, reportsAPI } from '../../lib/services/api';
+import { barangaysAPI, getErrorMessage, reportsAPI, type BarangayListItem } from '../../lib/services/api';
 
 type ReportSummaryItem = {
   label: string;
@@ -192,7 +192,7 @@ export function Reports() {
     const loadBarangays = async () => {
       try {
         const response = await barangaysAPI.getAll();
-        const options = (response.data || []).map((barangay: any) => ({
+        const options = ((response.data || []) as BarangayListItem[]).map((barangay) => ({
           value: barangay.name,
           label: barangay.name,
         }));
@@ -226,8 +226,8 @@ export function Reports() {
       const response = await reportsAPI.getSummary(reportConfig);
       setPreview(response.data);
       toast.success(response.data.title + ' generated.');
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to generate report.');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to generate report.'));
     } finally {
       setGenerating(false);
     }
@@ -246,8 +246,8 @@ export function Reports() {
       link.remove();
       URL.revokeObjectURL(url);
       toast.success(format + ' report downloaded: ' + result.filename);
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to download report.');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to download report.'));
     } finally {
       setDownloading(null);
     }

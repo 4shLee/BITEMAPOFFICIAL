@@ -56,6 +56,10 @@ async function apiRequest(endpoint: string, options: RequestInit = {}, requiresA
   return data;
 }
 
+export function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 async function publicApiRequest(endpoint: string) {
   try {
     return await apiRequest(endpoint, {}, false);
@@ -87,6 +91,13 @@ export type RegistryListResponse<T> = {
   pagination: RegistryPagination;
 };
 
+export type BarangayListItem = {
+  id: number | string;
+  name: string;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
+};
+
 export type RegistryPatient = {
   id: number | string;
   first_name?: string | null;
@@ -99,7 +110,7 @@ export type RegistryPatient = {
   sex?: string | null;
   residence_barangay?: string | null;
   barangay_id?: number | string | null;
-  barangay?: { id: number | string; name: string } | null;
+  barangay?: BarangayListItem | null;
   contact_number?: string | null;
   created_at?: string | null;
 };
@@ -110,7 +121,7 @@ export type RegistryIncident = {
   patient?: RegistryPatient | null;
   contact_number?: string | null;
   barangay_id?: number | string | null;
-  barangay?: { id: number | string; name: string } | null;
+  barangay?: BarangayListItem | null;
   incident_date?: string | null;
   animal_type?: string | null;
   bite_site?: string | null;
@@ -119,6 +130,16 @@ export type RegistryIncident = {
   status?: string | null;
   pep_schedules_count: number;
   completed_pep_schedules_count: number;
+};
+
+export type ApiPayload = Record<string, unknown>;
+
+export type ReportConfig = {
+  type: string;
+  dateFrom: string;
+  dateTo: string;
+  barangay: string;
+  format: 'PDF' | 'Excel';
 };
 
 function registryListEndpoint(endpoint: string, filters: RegistryListFilters = {}) {
@@ -214,14 +235,14 @@ export const incidentsAPI = {
     return apiRequest('/incidents/' + id);
   },
 
-  async create(incidentData: any) {
+  async create(incidentData: ApiPayload) {
     return apiRequest('/incidents', {
       method: 'POST',
       body: JSON.stringify(incidentData),
     });
   },
 
-  async update(id: string, incidentData: any) {
+  async update(id: string, incidentData: ApiPayload) {
     return apiRequest('/incidents/' + id, {
       method: 'PUT',
       body: JSON.stringify(incidentData),
@@ -245,14 +266,14 @@ export const patientsAPI = {
     return apiRequest('/patients/' + id);
   },
 
-  async create(patientData: any) {
+  async create(patientData: ApiPayload) {
     return apiRequest('/patients', {
       method: 'POST',
       body: JSON.stringify(patientData),
     });
   },
 
-  async update(id: string, patientData: any) {
+  async update(id: string, patientData: ApiPayload) {
     return apiRequest('/patients/' + id, {
       method: 'PUT',
       body: JSON.stringify(patientData),
@@ -272,7 +293,7 @@ export const pepScheduleAPI = {
     return apiRequest('/pep-schedule');
   },
 
-  async update(id: string, updateData: any) {
+  async update(id: string, updateData: ApiPayload) {
     return apiRequest('/pep-schedule/' + id, {
       method: 'PUT',
       body: JSON.stringify(updateData),
@@ -306,14 +327,14 @@ export const inventoryAPI = {
     return apiRequest('/inventory');
   },
 
-  async create(itemData: any) {
+  async create(itemData: ApiPayload) {
     return apiRequest('/inventory', {
       method: 'POST',
       body: JSON.stringify(itemData),
     });
   },
 
-  async update(id: string, stockData: any) {
+  async update(id: string, stockData: ApiPayload) {
     return apiRequest('/inventory/' + id, {
       method: 'PUT',
       body: JSON.stringify(stockData),
@@ -324,7 +345,7 @@ export const inventoryAPI = {
     return apiRequest('/inventory/' + id + '/batches');
   },
 
-  async addBatch(id: string, batchData: any) {
+  async addBatch(id: string, batchData: ApiPayload) {
     return apiRequest('/inventory/' + id + '/batches', {
       method: 'POST',
       body: JSON.stringify(batchData),
@@ -338,14 +359,14 @@ export const animalsAPI = {
     return apiRequest('/animals');
   },
 
-  async create(animalData: any) {
+  async create(animalData: ApiPayload) {
     return apiRequest('/animals', {
       method: 'POST',
       body: JSON.stringify(animalData),
     });
   },
 
-  async update(id: string, animalData: any) {
+  async update(id: string, animalData: ApiPayload) {
     return apiRequest('/animals/' + id, {
       method: 'PUT',
       body: JSON.stringify(animalData),
@@ -359,7 +380,7 @@ export const usersAPI = {
     return apiRequest('/users');
   },
 
-  async update(id: string, userData: any) {
+  async update(id: string, userData: ApiPayload) {
     return apiRequest('/users/' + id, {
       method: 'PUT',
       body: JSON.stringify(userData),
@@ -382,7 +403,7 @@ export const usersAPI = {
 
 // ============ REPORTS API ============
 export const reportsAPI = {
-  async getSummary(config: any) {
+  async getSummary(config: ReportConfig) {
     const query = new URLSearchParams({
       type: config.type,
       date_from: config.dateFrom,
@@ -394,7 +415,7 @@ export const reportsAPI = {
     return apiRequest('/reports/summary?' + query.toString());
   },
 
-  async download(config: any) {
+  async download(config: ReportConfig) {
     const query = new URLSearchParams({
       type: config.type,
       date_from: config.dateFrom,

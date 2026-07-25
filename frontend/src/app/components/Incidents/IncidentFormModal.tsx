@@ -4,7 +4,15 @@ import { toast } from 'sonner';
 import { Button } from '../UI/Button';
 import { Input } from '../UI/Input';
 import { Select } from '../UI/Select';
-import { incidentsAPI, patientsAPI, barangaysAPI } from '../../../lib/services/api';
+import {
+  incidentsAPI,
+  patientsAPI,
+  barangaysAPI,
+  type ApiPayload,
+  type BarangayListItem,
+  type RegistryIncident,
+  type RegistryPatient,
+} from '../../../lib/services/api';
 
 const DIGOS_BARANGAY_COORDINATES: Record<string, { location_lat: number; location_lng: number }> = {
   Aplaya: { location_lat: 6.7600, location_lng: 125.3425 },
@@ -36,15 +44,18 @@ const DIGOS_BARANGAY_COORDINATES: Record<string, { location_lat: number; locatio
 };
 
 interface IncidentFormModalProps {
-  incident?: any;
+  incident?: RegistryIncident & {
+    notes?: string | null;
+    provoked?: boolean | null;
+  };
   onClose: (shouldReload?: boolean) => void;
 }
 
 export function IncidentFormModal({ incident, onClose }: IncidentFormModalProps) {
   const [loading, setLoading] = useState(false);
-  const [patients, setPatients] = useState<any[]>([]);
-  const [barangays, setBarangays] = useState<any[]>([]);
-  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [patients, setPatients] = useState<RegistryPatient[]>([]);
+  const [barangays, setBarangays] = useState<BarangayListItem[]>([]);
+  const [suggestions, setSuggestions] = useState<RegistryPatient[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const suggestionsRef = useRef<HTMLDivElement>(null);
 
@@ -64,35 +75,36 @@ export function IncidentFormModal({ incident, onClose }: IncidentFormModalProps)
   });
 
   useEffect(() => {
-    loadData();
+    const handleClickOutside = (event: MouseEvent) => {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    const loadData = async () => {
+      try {
+        const [patientsRes, barangaysRes] = await Promise.all([
+          patientsAPI.getAll({ per_page: 50 }),
+          barangaysAPI.getAll(),
+        ]);
+        if (patientsRes.success) setPatients(patientsRes.data);
+        if (barangaysRes.success) {
+          setBarangays(Array.isArray(barangaysRes.data) ? barangaysRes.data : []);
+        }
+      } catch {
+        toast.error('Failed to load form data');
+      }
+    };
+
+    void loadData();
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  const handleClickOutside = (e: MouseEvent) => {
-    if (suggestionsRef.current && !suggestionsRef.current.contains(e.target as Node)) {
-      setShowSuggestions(false);
-    }
-  };
-
-  const loadData = async () => {
-    try {
-      const [patientsRes, barangaysRes] = await Promise.all([
-        patientsAPI.getAll({ per_page: 50 }),
-        barangaysAPI.getAll(),
-      ]);
-      if (patientsRes.success) setPatients(patientsRes.data);
-      if (barangaysRes.success) setBarangays(barangaysRes.data);
-    } catch {
-      toast.error('Failed to load form data');
-    }
-  };
 
   const handlePatientNameChange = (value: string) => {
     setFormData(prev => ({ ...prev, patient_name: value }));
     if (value.trim().length >= 2) {
       const matches = patients.filter(p =>
-        p.full_name.toLowerCase().includes(value.toLowerCase())
+        (p.full_name || p.display_name || '').toLowerCase().includes(value.toLowerCase())
       );
       setSuggestions(matches.slice(0, 5));
       setShowSuggestions(matches.length > 0);
@@ -101,10 +113,10 @@ export function IncidentFormModal({ incident, onClose }: IncidentFormModalProps)
     }
   };
 
-  const selectSuggestion = (patient: any) => {
+  const selectSuggestion = (patient: RegistryPatient) => {
     setFormData(prev => ({
       ...prev,
-      patient_name: patient.full_name,
+      patient_name: patient.full_name || patient.display_name || '',
       age: patient.age ?? prev.age,
       sex: patient.sex || prev.sex,
       contact_number: prev.contact_number || patient.contact_number || '',
@@ -134,10 +146,10 @@ export function IncidentFormModal({ incident, onClose }: IncidentFormModalProps)
         : formData;
 
       if (incident) {
-        await incidentsAPI.update(incident.id, payload);
+        await incidentsAPI.update(String(incident.id), payload as ApiPayload);
         toast.success('Incident updated successfully');
       } else {
-        await incidentsAPI.create(payload);
+        await incidentsAPI.create(payload as ApiPayload);
         toast.success('Incident created successfully');
       }
       onClose(true);

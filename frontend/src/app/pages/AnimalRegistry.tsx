@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Search, Filter, Plus, Edit, Trash2 } from 'lucide-react';
+import { useCallback, useState, useEffect } from 'react';
+import { Search, Filter, Plus, Edit } from 'lucide-react';
 import { toast } from 'sonner';
 import { Header } from '../components/Layout/Header';
 import { Badge } from '../components/UI/Badge';
@@ -7,32 +7,44 @@ import { Button } from '../components/UI/Button';
 import { animalsAPI } from '../../lib/services/api';
 import { AnimalFormModal } from '../components/Animals/AnimalFormModal';
 
+type AnimalRegistryRow = {
+  id: number | string;
+  animal_type?: string | null;
+  breed?: string | null;
+  owner_name?: string | null;
+  owner_contact?: string | null;
+  barangay?: { name?: string | null } | null;
+  vaccination_status?: string | null;
+  vaccination_date?: string | null;
+};
+
 export function AnimalRegistry() {
   const [searchTerm, setSearchTerm] = useState('');
-  const [animals, setAnimals] = useState<any[]>([]);
+  const [animals, setAnimals] = useState<AnimalRegistryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [editingAnimal, setEditingAnimal] = useState<any>(null);
+  const [editingAnimal, setEditingAnimal] = useState<AnimalRegistryRow | null>(null);
 
-  useEffect(() => {
-    loadAnimals();
-  }, []);
-
-  const loadAnimals = async () => {
+  const loadAnimals = useCallback(async () => {
     try {
       setLoading(true);
       const response = await animalsAPI.getAll();
       if (response.success) {
         setAnimals(response.data);
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to load animals');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleEdit = (animal: any) => {
+  useEffect(() => {
+    const timeout = window.setTimeout(() => void loadAnimals(), 0);
+    return () => window.clearTimeout(timeout);
+  }, [loadAnimals]);
+
+  const handleEdit = (animal: AnimalRegistryRow) => {
     setEditingAnimal(animal);
     setShowModal(true);
   };

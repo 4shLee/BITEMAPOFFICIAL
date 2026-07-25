@@ -5,12 +5,30 @@ import { Button } from '../UI/Button';
 import { Input } from '../UI/Input';
 import { Select } from '../UI/Select';
 import { Badge } from '../UI/Badge';
-import { inventoryAPI } from '../../../lib/services/api';
+import { getErrorMessage, inventoryAPI } from '../../../lib/services/api';
+
+type InventoryBatch = {
+  id: number | string;
+  batch_number?: string | null;
+  quantity_remaining?: number | string | null;
+  quantity_received?: number | string | null;
+  expiry_date?: string | null;
+  received_date?: string | null;
+  supplier?: string | null;
+  status?: string | null;
+};
+
+type BatchInventoryItem = {
+  id: number | string;
+  item_name?: string | null;
+  unit?: string | null;
+  batches?: InventoryBatch[];
+};
 
 type InventoryBatchModalProps = {
   mode: 'add' | 'view';
-  item?: any;
-  inventoryItems?: any[];
+  item?: BatchInventoryItem;
+  inventoryItems?: BatchInventoryItem[];
   onClose: (shouldReload?: boolean) => void;
 };
 
@@ -60,8 +78,8 @@ export function InventoryBatchModal({ mode, item, inventoryItems = [], onClose }
       });
       toast.success('Inventory batch added successfully.');
       onClose(true);
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to add inventory batch.');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to add inventory batch.'));
     } finally {
       setLoading(false);
     }
@@ -151,7 +169,7 @@ export function InventoryBatchModal({ mode, item, inventoryItems = [], onClose }
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {batches.map((batch: any) => (
+                    {batches.map((batch) => (
                       <tr key={batch.id} className="text-sm">
                         <td className="px-4 py-3 font-semibold text-foreground">{batch.batch_number}</td>
                         <td className="px-4 py-3 text-muted-foreground">{batch.quantity_remaining} {selectedItem?.unit}</td>
@@ -159,7 +177,7 @@ export function InventoryBatchModal({ mode, item, inventoryItems = [], onClose }
                         <td className="px-4 py-3 text-muted-foreground">{batch.expiry_date || '-'}</td>
                         <td className="px-4 py-3 text-muted-foreground">{batch.received_date || '-'}</td>
                         <td className="px-4 py-3 text-muted-foreground">{batch.supplier || '-'}</td>
-                        <td className="px-4 py-3"><Badge variant={statusVariant(batch.status)}>{batch.status}</Badge></td>
+                        <td className="px-4 py-3"><Badge variant={statusVariant(batch.status || '')}>{batch.status || 'Unknown'}</Badge></td>
                       </tr>
                     ))}
                   </tbody>

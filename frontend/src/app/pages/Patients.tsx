@@ -3,9 +3,15 @@ import { Search, Filter, Plus, Edit, Eye, Trash2, AlertCircle, RefreshCw } from 
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { Header } from '../components/Layout/Header';
-import { Badge } from '../components/UI/Badge';
 import { Button } from '../components/UI/Button';
-import { barangaysAPI, patientsAPI } from '../../lib/services/api';
+import {
+  barangaysAPI,
+  getErrorMessage,
+  patientsAPI,
+  type BarangayListItem,
+  type RegistryPagination,
+  type RegistryPatient,
+} from '../../lib/services/api';
 import { canPerformAction, getStoredUser } from '../../lib/auth/roleAccess';
 import { getPatientDisplayName } from '../../lib/patient';
 
@@ -18,14 +24,14 @@ export function Patients() {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [barangayId, setBarangayId] = useState('');
-  const [barangays, setBarangays] = useState<any[]>([]);
-  const [patients, setPatients] = useState<any[]>([]);
+  const [barangays, setBarangays] = useState<BarangayListItem[]>([]);
+  const [patients, setPatients] = useState<RegistryPatient[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [perPage, setPerPage] = useState<10 | 20 | 25 | 50>(20);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [pagination, setPagination] = useState({
+  const [pagination, setPagination] = useState<RegistryPagination>({
     current_page: 1,
     last_page: 1,
     per_page: 20,
@@ -67,16 +73,9 @@ export function Patients() {
         }
 
         setPatients(response.data);
-        setPagination(response.pagination || {
-          current_page: 1,
-          last_page: 1,
-          per_page: perPage,
-          total: 0,
-          from: null,
-          to: null,
-        });
-      } catch (error: any) {
-        if (error?.name === 'AbortError') return;
+        setPagination(response.pagination);
+      } catch (error: unknown) {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
         setPatients([]);
         setLoadError(true);
         toast.error('Failed to load patients');
@@ -89,11 +88,11 @@ export function Patients() {
     return () => controller.abort();
   }, [barangayId, currentPage, debouncedSearch, perPage, refreshKey]);
 
-  const handleEdit = (patient: any) => {
+  const handleEdit = (patient: RegistryPatient) => {
     navigate('/patients/' + patient.id + '/edit');
   };
 
-  const handleDelete = async (patient: any) => {
+  const handleDelete = async (patient: RegistryPatient) => {
     if (!confirm('Delete this patient record? Related incidents, PEP schedules, and notifications will also be removed.')) return;
 
     try {
@@ -104,8 +103,8 @@ export function Patients() {
       } else {
         setRefreshKey((key) => key + 1);
       }
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to delete patient');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to delete patient'));
     }
   };
 
@@ -212,7 +211,9 @@ export function Patients() {
                       <td className="px-5 py-4 text-sm text-muted-foreground">{patient.residence_barangay || patient.barangay?.name || 'Not recorded'}</td>
                       <td className="px-5 py-4 text-sm text-muted-foreground">{patient.contact_number || 'Not provided'}</td>
                       <td className="px-5 py-4 text-sm text-muted-foreground">
-                        {new Date(patient.created_at).toLocaleDateString()}
+                        {patient.created_at
+                          ? new Date(patient.created_at).toLocaleDateString()
+                          : 'Not available'}
                       </td>
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-2">

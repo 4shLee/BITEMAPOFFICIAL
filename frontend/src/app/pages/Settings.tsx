@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Bell, Building2, CheckCircle2, MessageSquare, RotateCcw, Save, Shield, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Bell, Building2, CheckCircle2, MessageSquare, RotateCcw, Save, Shield, X, type LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Header } from '../components/Layout/Header';
 import { Input } from '../components/UI/Input';
 import { Select } from '../components/UI/Select';
 import { Button } from '../components/UI/Button';
-import { settingsAPI } from '../../lib/services/api';
+import { getErrorMessage, settingsAPI } from '../../lib/services/api';
 import { getStoredUser, isSystemAdminRole, normalizeRoleKey } from '../../lib/auth/roleAccess';
 
 type SystemSettings = {
@@ -134,7 +134,7 @@ function Toggle({ checked, onChange, disabled = false }: { checked: boolean; onC
   );
 }
 
-function SettingsCard({ title, description, icon: Icon, tone, children }: { title: string; description: string; icon: any; tone: string; children: ReactNode }) {
+function SettingsCard({ title, description, icon: Icon, tone, children }: { title: string; description: string; icon: LucideIcon; tone: string; children: ReactNode }) {
   return (
     <section className="rounded-2xl border border-emerald-900/5 bg-white p-4 shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
       <div className="mb-4 flex items-center gap-3">
@@ -198,15 +198,12 @@ export function Settings() {
   const [showCredentialsModal, setShowCredentialsModal] = useState(false);
   const [showTestSmsModal, setShowTestSmsModal] = useState(false);
 
-  useEffect(() => {
-    loadSettings();
-  }, []);
-
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     try {
       setLoading(true);
       const response = await settingsAPI.getAll();
-      const map = new Map((response.data || []).map((setting: any) => [setting.setting_key, setting.setting_value]));
+      const settings = (response.data || []) as Array<{ setting_key: string; setting_value: unknown }>;
+      const map = new Map(settings.map((setting) => [setting.setting_key, setting.setting_value]));
       setSmsCredentialsConfigured(Boolean(response.meta?.sms_credentials_configured));
 
       if (isSystemAdmin) {
@@ -243,12 +240,17 @@ export function Settings() {
         setClinicCfg(loaded);
         setInitialClinicCfg(loaded);
       }
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to load settings.');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to load settings.'));
     } finally {
       setLoading(false);
     }
-  };
+  }, [isSystemAdmin]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => void loadSettings(), 0);
+    return () => window.clearTimeout(timeout);
+  }, [loadSettings]);
 
   const setSystem = <K extends keyof SystemSettings>(key: K) => (value: SystemSettings[K]) => {
     setSystemCfg((current) => ({ ...current, [key]: value }));
@@ -308,8 +310,8 @@ export function Settings() {
       if (isSystemAdmin) setInitialSystemCfg(systemCfg);
       else setInitialClinicCfg(clinicCfg);
       toast.success('Settings saved successfully.');
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to save settings.');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to save settings.'));
     } finally {
       setSaving(false);
     }
@@ -335,8 +337,8 @@ export function Settings() {
       setCredentialsForm({ account_sid: '', auth_token: '', from_number: '' });
       setShowCredentialsModal(false);
       toast.success('SMS credentials updated.');
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to update SMS credentials.');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to update SMS credentials.'));
     } finally {
       setCredentialSaving(false);
     }
@@ -353,8 +355,8 @@ export function Settings() {
       await settingsAPI.testSms(testSmsForm);
       setShowTestSmsModal(false);
       toast.success('Test SMS request completed.');
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to send test SMS.');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to send test SMS.'));
     } finally {
       setTestSending(false);
     }

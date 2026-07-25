@@ -130,7 +130,7 @@ export function IncidentLocationPicker({
     } else {
       map.setView(DIGOS_CENTER, 13, { animate: false });
     }
-  }, [barangayCoordinates?.lat, barangayCoordinates?.lng, barangayName, exactPin, latitude, longitude, pendingLatitude, pendingLongitude]);
+  }, [barangayCoordinates, barangayName, exactPin, latitude, longitude, pendingLatitude, pendingLongitude]);
 
   return (
     <div className="relative isolate z-0 overflow-hidden rounded-xl border border-emerald-100 bg-slate-100 shadow-inner">

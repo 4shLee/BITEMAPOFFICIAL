@@ -5,7 +5,13 @@ import { toast } from 'sonner';
 import { Header } from '../Layout/Header';
 import { Badge } from '../UI/Badge';
 import { Button } from '../UI/Button';
-import { barangaysAPI, incidentsAPI } from '../../../lib/services/api';
+import {
+  barangaysAPI,
+  incidentsAPI,
+  type BarangayListItem,
+  type RegistryIncident,
+  type RegistryPagination,
+} from '../../../lib/services/api';
 import { canPerformAction, getStoredUser, normalizeRoleKey } from '../../../lib/auth/roleAccess';
 import { getPatientDisplayName } from '../../../lib/patient';
 
@@ -28,15 +34,15 @@ export function IncidentListPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [status, setStatus] = useState('');
   const [barangayId, setBarangayId] = useState('');
-  const [barangays, setBarangays] = useState<any[]>([]);
-  const [incidents, setIncidents] = useState<any[]>([]);
+  const [barangays, setBarangays] = useState<BarangayListItem[]>([]);
+  const [incidents, setIncidents] = useState<RegistryIncident[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
-  const [reviewIncident, setReviewIncident] = useState<any>(null);
+  const [reviewIncident, setReviewIncident] = useState<RegistryIncident | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [perPage, setPerPage] = useState<10 | 20 | 25 | 50>(20);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [pagination, setPagination] = useState({
+  const [pagination, setPagination] = useState<RegistryPagination>({
     current_page: 1,
     last_page: 1,
     per_page: 20,
@@ -79,16 +85,9 @@ export function IncidentListPage() {
         }
 
         setIncidents(response.data);
-        setPagination(response.pagination || {
-          current_page: 1,
-          last_page: 1,
-          per_page: perPage,
-          total: 0,
-          from: null,
-          to: null,
-        });
-      } catch (error: any) {
-        if (error?.name === 'AbortError') return;
+        setPagination(response.pagination);
+      } catch (error: unknown) {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
         setIncidents([]);
         setLoadError(true);
         toast.error('Failed to load incidents');
@@ -101,23 +100,23 @@ export function IncidentListPage() {
     return () => controller.abort();
   }, [barangayId, currentPage, debouncedSearch, location.key, perPage, refreshKey, status]);
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: number | string) => {
     if (!confirm('Delete this incident? The patient record will also be removed if this is their only incident.')) return;
 
     try {
-      await incidentsAPI.delete(id);
+      await incidentsAPI.delete(String(id));
       toast.success('Incident deleted successfully');
       if (incidents.length === 1 && currentPage > 1) {
         setCurrentPage((page) => page - 1);
       } else {
         setRefreshKey((key) => key + 1);
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to delete incident');
     }
   };
 
-  const handleEdit = (incident: any) => {
+  const handleEdit = (incident: RegistryIncident) => {
     navigate('/incidents/' + incident.id + '/edit');
   };
 
@@ -125,7 +124,7 @@ export function IncidentListPage() {
     navigate('/incidents/new');
   };
 
-  const getCategoryVariant = (category: string) => {
+  const getCategoryVariant = (category?: string | null) => {
     switch (category) {
       case 'Category I': return 'success';
       case 'Category II': return 'warning';
@@ -134,7 +133,7 @@ export function IncidentListPage() {
     }
   };
 
-  const getStatusVariant = (status: string) => {
+  const getStatusVariant = (status?: string | null) => {
     switch (status) {
       case 'Active': return 'info';
       case 'Completed': return 'success';
@@ -143,7 +142,7 @@ export function IncidentListPage() {
     }
   };
 
-  const getReviewStatus = (incident: any) => {
+  const getReviewStatus = (incident: RegistryIncident) => {
     const status = incident.status || 'Active';
     if (status === 'Completed') return { label: 'PEP Approved', variant: 'success' as const };
     if (status === 'Missed' || status === 'Lost to Follow-up') return { label: 'Needs Follow-up', variant: 'warning' as const };
@@ -151,11 +150,11 @@ export function IncidentListPage() {
     return { label: 'Pending Review', variant: 'neutral' as const };
   };
 
-  const handleReview = (incident: any) => {
+  const handleReview = (incident: RegistryIncident) => {
     setReviewIncident(incident);
   };
 
-  const handlePepRecommendation = (incident: any) => {
+  const handlePepRecommendation = (incident: RegistryIncident) => {
     navigate('/pep-schedule?incident_id=' + encodeURIComponent(String(incident.id)), {
       state: { incidentId: incident.id, patientId: incident.patient?.id },
     });
@@ -299,7 +298,7 @@ export function IncidentListPage() {
                         {getPatientDisplayName(incident.patient || {}) || 'Unknown'}
                       </td>
                       <td className="px-6 py-4 text-sm text-muted-foreground">
-                        {new Date(incident.incident_date).toLocaleDateString()}
+                        {incident.incident_date ? new Date(incident.incident_date).toLocaleDateString() : 'Not recorded'}
                       </td>
                       <td className="px-6 py-4 text-sm text-muted-foreground">{incident.animal_type}</td>
                       <td className="px-6 py-4 text-sm text-muted-foreground">{incident.bite_location}</td>
@@ -478,7 +477,7 @@ export function IncidentListPage() {
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
                   <h3 className="text-sm font-bold text-emerald-950 mb-2">PEP Recommendation Guide</h3>
                   <p className="text-sm font-semibold text-emerald-900">
-                    {whoGuidance[reviewIncident.who_category] || 'Select or verify a WHO category to view recommendation guidance.'}
+                    {whoGuidance[reviewIncident.who_category || ''] || 'Select or verify a WHO category to view recommendation guidance.'}
                   </p>
                   <p className="mt-2 text-xs leading-relaxed text-emerald-700">
                     Final clinical decision is subject to doctor assessment and clinic protocol.
