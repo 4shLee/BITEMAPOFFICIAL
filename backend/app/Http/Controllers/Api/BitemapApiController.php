@@ -20,6 +20,7 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
@@ -247,7 +248,11 @@ class BitemapApiController extends Controller
     {
         return response()->json([
             'success' => true,
-            'data' => Barangay::orderBy('name')->get(),
+            'data' => Cache::remember(
+                'reference.barangays.v2',
+                now()->addHours(12),
+                fn () => Barangay::orderBy('name')->get()->toArray()
+            ),
         ]);
     }
 
@@ -509,13 +514,91 @@ class BitemapApiController extends Controller
 
     public function pepSchedule(): JsonResponse
     {
-        $schedule = PepSchedule::with(['incident.patient', 'incident.barangay', 'administrator', 'inventoryBatch.inventory', 'inventoryTransaction.batch'])
+        $schedule = PepSchedule::query()
+            ->select([
+                'id',
+                'incident_id',
+                'dose_day',
+                'scheduled_date',
+                'administered_date',
+                'administration_route',
+                'vaccine_type',
+                'vaccine_lot_number',
+                'administered_by',
+                'status',
+                'notes',
+                'inventory_batch_id',
+            ])
+            ->with([
+                'incident' => fn ($query) => $query->select([
+                    'id',
+                    'patient_id',
+                    'barangay_id',
+                    'pep_start_date',
+                    'who_category',
+                ]),
+                'incident.patient' => fn ($query) => $query->select([
+                    'id',
+                    'first_name',
+                    'middle_name',
+                    'last_name',
+                    'suffix',
+                    'full_name',
+                    'contact_number',
+                    'sms_consent',
+                ]),
+                'incident.barangay:id,name',
+                'administrator:id,name',
+                'inventoryBatch:id',
+                'inventoryTransaction:id,pep_schedule_id',
+            ])
             ->orderBy('scheduled_date')
             ->get()
-            ->map(fn (PepSchedule $item) => $this->pepSchedulePayload($item))
+            ->map(fn (PepSchedule $item) => $this->pepScheduleListPayload($item))
             ->values();
 
         return response()->json(['success' => true, 'data' => $schedule]);
+    }
+
+    public function pepDoseInventoryOptions(): JsonResponse
+    {
+        $items = Inventory::query()
+            ->select(['id', 'item_name', 'item_type', 'current_stock'])
+            ->where('item_type', 'Vaccine')
+            ->where('current_stock', '>', 0)
+            ->whereHas('batches', fn ($query) => $query
+                ->where('quantity_remaining', '>', 0)
+                ->whereDate('expiry_date', '>=', today()))
+            ->with(['batches' => fn ($query) => $query
+                ->select([
+                    'id',
+                    'inventory_id',
+                    'batch_number',
+                    'quantity_remaining',
+                    'expiry_date',
+                ])
+                ->where('quantity_remaining', '>', 0)
+                ->whereDate('expiry_date', '>=', today())
+                ->orderBy('expiry_date')
+                ->orderBy('id')])
+            ->orderBy('item_name')
+            ->get()
+            ->filter(fn (Inventory $inventory) => $this->isEligiblePepVaccineInventory($inventory))
+            ->map(fn (Inventory $inventory) => [
+                'id' => $inventory->id,
+                'item_name' => $inventory->item_name,
+                'current_stock' => $inventory->current_stock,
+                'batches' => $inventory->batches->map(fn (InventoryBatch $batch) => [
+                    'id' => $batch->id,
+                    'inventory_id' => $batch->inventory_id,
+                    'batch_number' => $batch->batch_number,
+                    'quantity_remaining' => $batch->quantity_remaining,
+                    'expiry_date' => optional($batch->expiry_date)->toDateString(),
+                ])->values(),
+            ])
+            ->values();
+
+        return response()->json(['success' => true, 'data' => $items]);
     }
 
     public function updatePepSchedule(Request $request, PepSchedule $schedule): JsonResponse
@@ -1191,49 +1274,18 @@ class BitemapApiController extends Controller
             ])
             ->values();
 
-        $smsServiceEnabled = $this->smsServiceEnabled();
-        $attentionSchedules = PepSchedule::with('incident:id,patient_id')
-            ->whereDate('scheduled_date', '<=', today())
-            ->whereNotIn('status', ['Done', 'Completed', 'Cancelled', 'Skipped'])
-            ->get();
-        $overduePatients = $attentionSchedules
-            ->filter(fn (PepSchedule $schedule) => $schedule->scheduled_date?->isBefore(today()))
-            ->pluck('incident.patient_id')->filter()->unique()->count();
-        $dueTodayPatients = $attentionSchedules
-            ->filter(fn (PepSchedule $schedule) => $schedule->scheduled_date?->isToday())
-            ->pluck('incident.patient_id')->filter()->unique()->count();
-        $pendingSms = Notification::where('notification_type', 'SMS')->where('status', 'Pending')->count();
-        $failedSms = Notification::where('notification_type', 'SMS')->where('status', 'Failed')->count();
-        [$priorityCategory, $priorityCount] = match (true) {
-            $overduePatients > 0 => ['overdue_patients', $overduePatients],
-            $failedSms > 0 => ['failed_sms', $failedSms],
-            $dueTodayPatients > 0 => ['due_today_patients', $dueTodayPatients],
-            $pendingSms > 0 => ['pending_sms', $pendingSms],
-            default => [null, 0],
-        };
-
         return response()->json([
             'success' => true,
             'data' => $notifications,
-            'meta' => [
-                'sms_service' => [
-                    'enabled' => $smsServiceEnabled,
-                    'mode' => $smsServiceEnabled ? 'enabled' : 'simulation',
-                    'provider' => $smsServiceEnabled
-                        ? $this->settingValue('sms_provider', config('services.sms.provider', 'SMS Provider'))
-                        : null,
-                ],
-                'summary' => [
-                    'overdue_patients' => $overduePatients,
-                    'failed_sms' => $failedSms,
-                    'due_today_patients' => $dueTodayPatients,
-                    'pending_sms' => $pendingSms,
-                ],
-                'priority_alert' => [
-                    'category' => $priorityCategory,
-                    'count' => $priorityCount,
-                ],
-            ],
+            'meta' => $this->notificationSummaryMeta(),
+        ]);
+    }
+
+    public function notificationSummary(): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'meta' => $this->notificationSummaryMeta(),
         ]);
     }
 
@@ -3286,6 +3338,62 @@ class BitemapApiController extends Controller
         return blank($value) ? $fallback : $value;
     }
 
+    private function notificationSummaryMeta(): array
+    {
+        $today = today()->toDateString();
+        $scheduleCounts = PepSchedule::query()
+            ->join('incidents', 'incidents.id', '=', 'pep_schedules.incident_id')
+            ->whereDate('pep_schedules.scheduled_date', '<=', $today)
+            ->whereNotIn('pep_schedules.status', ['Done', 'Completed', 'Cancelled', 'Skipped'])
+            ->selectRaw(
+                'COUNT(DISTINCT CASE WHEN pep_schedules.scheduled_date < ? THEN incidents.patient_id END) as overdue_patients',
+                [$today]
+            )
+            ->selectRaw(
+                'COUNT(DISTINCT CASE WHEN pep_schedules.scheduled_date = ? THEN incidents.patient_id END) as due_today_patients',
+                [$today]
+            )
+            ->first();
+        $smsCounts = Notification::query()
+            ->where('notification_type', 'SMS')
+            ->selectRaw("SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END) as pending_sms")
+            ->selectRaw("SUM(CASE WHEN status = 'Failed' THEN 1 ELSE 0 END) as failed_sms")
+            ->first();
+
+        $overduePatients = (int) ($scheduleCounts?->overdue_patients ?? 0);
+        $dueTodayPatients = (int) ($scheduleCounts?->due_today_patients ?? 0);
+        $pendingSms = (int) ($smsCounts?->pending_sms ?? 0);
+        $failedSms = (int) ($smsCounts?->failed_sms ?? 0);
+        [$priorityCategory, $priorityCount] = match (true) {
+            $overduePatients > 0 => ['overdue_patients', $overduePatients],
+            $failedSms > 0 => ['failed_sms', $failedSms],
+            $dueTodayPatients > 0 => ['due_today_patients', $dueTodayPatients],
+            $pendingSms > 0 => ['pending_sms', $pendingSms],
+            default => [null, 0],
+        };
+        $smsServiceEnabled = $this->smsServiceEnabled();
+
+        return [
+            'sms_service' => [
+                'enabled' => $smsServiceEnabled,
+                'mode' => $smsServiceEnabled ? 'enabled' : 'simulation',
+                'provider' => $smsServiceEnabled
+                    ? $this->settingValue('sms_provider', config('services.sms.provider', 'SMS Provider'))
+                    : null,
+            ],
+            'summary' => [
+                'overdue_patients' => $overduePatients,
+                'failed_sms' => $failedSms,
+                'due_today_patients' => $dueTodayPatients,
+                'pending_sms' => $pendingSms,
+            ],
+            'priority_alert' => [
+                'category' => $priorityCategory,
+                'count' => $priorityCount,
+            ],
+        ];
+    }
+
     private function auditLogFilters(Request $request): array
     {
         $data = $request->validate([
@@ -3677,6 +3785,60 @@ class BitemapApiController extends Controller
             'incident' => $schedule->incident ? $this->incidentSummaryPayload($schedule->incident) : null,
             'created_at' => $schedule->created_at,
             'updated_at' => $schedule->updated_at,
+        ];
+    }
+
+    private function pepScheduleListPayload(PepSchedule $schedule): array
+    {
+        $incident = $schedule->incident;
+        $patient = $incident?->patient;
+        $administrator = $schedule->administrator;
+        $inventoryBatch = $schedule->inventoryBatch;
+        $inventoryTransaction = $schedule->inventoryTransaction;
+        $isCompleted = $schedule->administered_date || in_array($schedule->status, ['Done', 'Completed'], true);
+
+        return [
+            'id' => $schedule->id,
+            'incident_id' => $schedule->incident_id,
+            'dose_day' => $schedule->dose_day,
+            'scheduled_date' => optional($schedule->scheduled_date)->toDateString(),
+            'administered_date' => optional($schedule->administered_date)->toDateString(),
+            'administration_route' => $schedule->administration_route,
+            'vaccine_type' => $schedule->vaccine_type,
+            'vaccine_lot_number' => $schedule->vaccine_lot_number,
+            'administered_by' => $schedule->administered_by,
+            'administrator' => $administrator ? [
+                'id' => $administrator->id,
+                'name' => $administrator->name,
+            ] : null,
+            'status' => $schedule->status,
+            'notes' => $schedule->notes,
+            'inventory_transaction_id' => $inventoryTransaction?->id,
+            'inventory_batch_id' => $inventoryBatch?->id,
+            'inventory_linkage_status' => $inventoryBatch
+                ? 'Recorded'
+                : ($inventoryTransaction
+                    ? 'Legacy inventory transaction'
+                    : ($isCompleted ? 'Unavailable / not recorded' : 'Not recorded')),
+            'patient' => $patient ? [
+                'id' => $patient->id,
+                'first_name' => $patient->first_name,
+                'middle_name' => $patient->middle_name,
+                'last_name' => $patient->last_name,
+                'suffix' => $patient->suffix,
+                'full_name' => $patient->full_name,
+                'contact_number' => $patient->contact_number,
+            ] : null,
+            'incident' => $incident ? [
+                'id' => $incident->id,
+                'pep_start_date' => optional($incident->pep_start_date)->toDateString(),
+                'who_category' => $this->displayCategory($incident->who_category),
+                'barangay' => $incident->barangay ? [
+                    'id' => $incident->barangay->id,
+                    'name' => $incident->barangay->name,
+                ] : null,
+                'sms_consent' => $patient?->sms_consent === true,
+            ] : null,
         ];
     }
 

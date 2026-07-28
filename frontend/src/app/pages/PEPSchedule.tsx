@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { Bell, Check, ChevronDown, ClipboardCheck, Clock, Eye, History, MessageSquare, Phone, RefreshCw, ShieldCheck, Syringe, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -8,7 +8,7 @@ import { Button } from '../components/UI/Button';
 import { Input } from '../components/UI/Input';
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
-import { getErrorMessage, inventoryAPI, notificationsAPI, pepScheduleAPI } from '../../lib/services/api';
+import { getErrorMessage, notificationsAPI, pepScheduleAPI } from '../../lib/services/api';
 import { canPerformAction, getStoredUser } from '../../lib/auth/roleAccess';
 import { getPatientDisplayName } from '../../lib/patient';
 
@@ -68,7 +68,6 @@ type InventoryBatch = {
 type InventoryItem = {
   id: number | string;
   item_name?: string;
-  item_type?: string;
   current_stock?: number;
   batches?: InventoryBatch[];
 };
@@ -232,16 +231,6 @@ function formatDate(value?: string) {
 
 function getBatchLotNumber(item: InventoryBatch) {
   return item.batch_number || item.lot_number || '';
-}
-
-function isEligiblePepVaccineInventoryItem(item: InventoryItem) {
-  const itemType = String(item.item_type || '').trim().toLowerCase();
-  const itemName = String(item.item_name || '').trim().toLowerCase();
-
-  return itemType === 'vaccine'
-    && !itemName.includes('immunoglobulin')
-    && !/(^|[^a-z])(?:e|h)?rig([^a-z]|$)/i.test(itemName)
-    && !itemName.includes('tetanus');
 }
 
 function getScheduleGroupStatus(group: ScheduleGroup) {
@@ -481,6 +470,13 @@ export function PEPSchedule() {
   const [rescheduleForm, setRescheduleForm] = useState<RescheduleDoseForm>({ scheduledDate: todayKey(), reason: '' });
   const [savingReschedule, setSavingReschedule] = useState(false);
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [inventoryOptionsLoaded, setInventoryOptionsLoaded] = useState(false);
+  const [inventoryOptionsLoading, setInventoryOptionsLoading] = useState(false);
+  const [inventoryOptionsError, setInventoryOptionsError] = useState<string | null>(null);
+  const scheduleRequestRef = useRef<AbortController | null>(null);
+  const scheduleRequestVersion = useRef(0);
+  const inventoryRequestRef = useRef<AbortController | null>(null);
+  const inventoryRequestVersion = useRef(0);
   const requestedIncidentId = useMemo(() => {
     const queryIncidentId = new URLSearchParams(location.search).get('incident_id');
     const stateIncidentId = (location.state as { incidentId?: string | number } | null)?.incidentId;
@@ -489,33 +485,81 @@ export function PEPSchedule() {
   }, [location.search, location.state]);
 
   const loadSchedule = useCallback(async () => {
+    scheduleRequestRef.current?.abort();
+    const controller = new AbortController();
+    const requestVersion = ++scheduleRequestVersion.current;
+    scheduleRequestRef.current = controller;
+
     try {
       setLoading(true);
       setLoadError(null);
-      const [scheduleResponse, inventoryResponse] = await Promise.all([
-        pepScheduleAPI.getAll(),
-        inventoryAPI.getAll().catch(() => null),
-      ]);
+      const scheduleResponse = await pepScheduleAPI.getAll(controller.signal);
+      if (controller.signal.aborted || requestVersion !== scheduleRequestVersion.current) return;
+
       if (scheduleResponse.success) {
         const nextGroups = buildScheduleGroups((scheduleResponse.data || []) as ScheduleApiRow[]);
         setGroups(nextGroups);
       } else {
         throw new Error('Unable to load patient schedules.');
       }
-      if (inventoryResponse?.success) {
-        setInventoryItems(inventoryResponse.data || []);
-      }
     } catch (error: unknown) {
+      if (controller.signal.aborted || requestVersion !== scheduleRequestVersion.current) return;
       setLoadError(getErrorMessage(error, 'Unable to load patient schedules.'));
       toast.error(getErrorMessage(error, 'Failed to load PEP schedule.'));
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted && requestVersion === scheduleRequestVersion.current) {
+        setLoading(false);
+      }
+    }
+  }, []);
+
+  const invalidateDoseInventoryOptions = useCallback(() => {
+    inventoryRequestRef.current?.abort();
+    inventoryRequestVersion.current += 1;
+    setInventoryItems([]);
+    setInventoryOptionsLoaded(false);
+    setInventoryOptionsLoading(false);
+    setInventoryOptionsError(null);
+  }, []);
+
+  const loadDoseInventoryOptions = useCallback(async () => {
+    inventoryRequestRef.current?.abort();
+    const controller = new AbortController();
+    const requestVersion = ++inventoryRequestVersion.current;
+    inventoryRequestRef.current = controller;
+    setInventoryItems([]);
+    setInventoryOptionsLoaded(false);
+    setInventoryOptionsLoading(true);
+    setInventoryOptionsError(null);
+
+    try {
+      const response = await pepScheduleAPI.getDoseInventoryOptions(controller.signal);
+      if (controller.signal.aborted || requestVersion !== inventoryRequestVersion.current) return;
+      if (!response.success || !Array.isArray(response.data)) {
+        throw new Error('Unable to load vaccine inventory options.');
+      }
+
+      setInventoryItems(response.data as InventoryItem[]);
+      setInventoryOptionsLoaded(true);
+    } catch (error: unknown) {
+      if (controller.signal.aborted || requestVersion !== inventoryRequestVersion.current) return;
+      setInventoryItems([]);
+      setInventoryOptionsLoaded(false);
+      setInventoryOptionsError(getErrorMessage(error, 'Unable to load vaccine inventory options.'));
+    } finally {
+      if (!controller.signal.aborted && requestVersion === inventoryRequestVersion.current) {
+        setInventoryOptionsLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => void loadSchedule(), 0);
-    return () => window.clearTimeout(timeout);
+    return () => {
+      window.clearTimeout(timeout);
+      scheduleRequestRef.current?.abort();
+      inventoryRequestRef.current?.abort();
+    };
   }, [loadSchedule]);
 
   useEffect(() => {
@@ -575,7 +619,7 @@ export function PEPSchedule() {
         ? 'Due Today'
         : 'On Track';
   const eligibleVaccineProducts = useMemo(() => inventoryItems
-    .filter((item) => isEligiblePepVaccineInventoryItem(item) && Number(item.current_stock || 0) > 0), [inventoryItems]);
+    .filter((item) => Number(item.current_stock || 0) > 0), [inventoryItems]);
   const selectedVaccineProduct = eligibleVaccineProducts.find((item) => String(item.id) === recordForm.inventoryItemId);
   const availableVaccineBatches = useMemo<VaccineBatchOption[]>(() => selectedVaccineProduct
     ? (selectedVaccineProduct.batches || [])
@@ -604,6 +648,12 @@ export function PEPSchedule() {
       inventoryBatchId: '',
       remarks: dose.notes || '',
     });
+    void loadDoseInventoryOptions();
+  };
+
+  const closeRecordDose = () => {
+    inventoryRequestRef.current?.abort();
+    setRecordDose(null);
   };
 
   const handleSendReminder = async (dose?: Dose) => {
@@ -652,6 +702,7 @@ export function PEPSchedule() {
       // TODO: Add a manual Adjust Schedule workflow later. Late dose recording must not automatically regenerate remaining dose dates.
       toast.success('Dose recorded successfully. Record the actual vaccine stock consumed in the Inventory module.');
       setRecordDose(null);
+      invalidateDoseInventoryOptions();
       await loadSchedule();
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, 'Failed to record dose.'));
@@ -674,7 +725,8 @@ export function PEPSchedule() {
       await pepScheduleAPI.reschedule(String(rescheduleDose.id), rescheduleForm.scheduledDate, rescheduleForm.reason);
       toast.success('Day ' + rescheduleDose.day + ' was rescheduled. Future doses were not changed.');
       setRescheduleDose(null);
-      loadSchedule();
+      invalidateDoseInventoryOptions();
+      await loadSchedule();
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, 'Failed to reschedule dose.'));
     } finally {
@@ -941,7 +993,7 @@ export function PEPSchedule() {
                 <h2 className="text-lg font-bold text-foreground">Record Anti-rabies Vaccine Dose — Day {recordDose.day}</h2>
                 <p className="mt-1 text-sm text-muted-foreground">Encode administered vaccine details for this dose.</p>
               </div>
-              <button type="button" onClick={() => setRecordDose(null)} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted" aria-label="Close record dose modal">
+              <button type="button" onClick={closeRecordDose} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted" aria-label="Close record dose modal">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -974,18 +1026,26 @@ export function PEPSchedule() {
                     inventoryItemId: event.target.value,
                     inventoryBatchId: '',
                   }))}
-                  disabled={savingDose || eligibleVaccineProducts.length === 0}
+                  disabled={savingDose || inventoryOptionsLoading || eligibleVaccineProducts.length === 0}
                   required
                   className="h-10 w-full rounded-lg border border-input bg-input-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <option value="">Select vaccine product</option>
+                  <option value="">{inventoryOptionsLoading ? 'Loading vaccine products...' : 'Select vaccine product'}</option>
                   {eligibleVaccineProducts.map((item) => (
                     <option key={item.id} value={item.id}>{item.item_name || 'Unnamed vaccine'}</option>
                   ))}
                 </select>
-                {!recordForm.inventoryItemId && <p className="mt-1.5 text-xs font-medium text-destructive">Vaccine product is required.</p>}
-                {eligibleVaccineProducts.length === 0 && (
+                {!inventoryOptionsLoading && inventoryOptionsLoaded && !recordForm.inventoryItemId && <p className="mt-1.5 text-xs font-medium text-destructive">Vaccine product is required.</p>}
+                {inventoryOptionsLoaded && eligibleVaccineProducts.length === 0 && (
                   <p className="mt-2 text-sm text-amber-700">No eligible vaccine product is currently available.</p>
+                )}
+                {inventoryOptionsError && (
+                  <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2">
+                    <p className="text-sm text-destructive">{inventoryOptionsError}</p>
+                    <Button type="button" variant="outline" size="sm" onClick={() => void loadDoseInventoryOptions()}>
+                      Retry
+                    </Button>
+                  </div>
                 )}
               </div>
               <div>
@@ -993,7 +1053,7 @@ export function PEPSchedule() {
                 <select
                   value={recordForm.inventoryBatchId}
                   onChange={(event) => setRecordForm((current) => ({ ...current, inventoryBatchId: event.target.value }))}
-                  disabled={savingDose || !selectedVaccineProduct || availableVaccineBatches.length === 0}
+                  disabled={savingDose || inventoryOptionsLoading || !selectedVaccineProduct || availableVaccineBatches.length === 0}
                   required
                   className="h-10 w-full rounded-lg border border-input bg-input-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
                 >
@@ -1004,7 +1064,7 @@ export function PEPSchedule() {
                     </option>
                   ))}
                 </select>
-                {!recordForm.inventoryBatchId && <p className="mt-1.5 text-xs font-medium text-destructive">Vaccine lot/batch is required.</p>}
+                {!inventoryOptionsLoading && inventoryOptionsLoaded && !recordForm.inventoryBatchId && <p className="mt-1.5 text-xs font-medium text-destructive">Vaccine lot/batch is required.</p>}
                 {selectedVaccineProduct && availableVaccineBatches.length === 0 && (
                   <p className="mt-2 text-sm text-amber-700">No unexpired vaccine batch with available stock is currently available.</p>
                 )}
@@ -1023,8 +1083,8 @@ export function PEPSchedule() {
                 />
               </div>
               <div className="flex justify-end gap-2 pt-2">
-                <Button type="button" variant="outline" onClick={() => setRecordDose(null)} disabled={savingDose}>Cancel</Button>
-                <Button type="submit" disabled={savingDose || !recordForm.administeredDate || !recordForm.administrationRoute || !recordForm.inventoryItemId || !selectedInventoryBatch}>{savingDose ? 'Saving...' : 'Save Dose Record'}</Button>
+                <Button type="button" variant="outline" onClick={closeRecordDose} disabled={savingDose}>Cancel</Button>
+                <Button type="submit" disabled={savingDose || inventoryOptionsLoading || !recordForm.administeredDate || !recordForm.administrationRoute || !recordForm.inventoryItemId || !selectedInventoryBatch}>{savingDose ? 'Saving...' : 'Save Dose Record'}</Button>
               </div>
             </form>
           </div>

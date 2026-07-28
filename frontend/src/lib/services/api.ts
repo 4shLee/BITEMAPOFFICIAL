@@ -98,6 +98,31 @@ export type BarangayListItem = {
   longitude?: number | string | null;
 };
 
+export type NotificationSummaryMeta = {
+  sms_service: {
+    enabled: boolean;
+    mode: 'enabled' | 'simulation';
+    provider: string | null;
+  };
+  summary: {
+    overdue_patients: number;
+    failed_sms: number;
+    due_today_patients: number;
+    pending_sms: number;
+  };
+  priority_alert: {
+    category: string | null;
+    count: number;
+  };
+};
+
+type BarangayListResponse = {
+  success: boolean;
+  data: BarangayListItem[];
+};
+
+let barangayListRequest: Promise<BarangayListResponse> | null = null;
+
 export type RegistryPatient = {
   id: number | string;
   first_name?: string | null;
@@ -289,8 +314,12 @@ export const patientsAPI = {
 
 // ============ PEP SCHEDULE API ============
 export const pepScheduleAPI = {
-  async getAll() {
-    return apiRequest('/pep-schedule');
+  async getAll(signal?: AbortSignal) {
+    return apiRequest('/pep-schedule', { signal });
+  },
+
+  async getDoseInventoryOptions(signal?: AbortSignal) {
+    return apiRequest('/pep-schedule/dose-inventory-options', { signal });
   },
 
   async update(id: string, updateData: ApiPayload) {
@@ -523,6 +552,10 @@ export const notificationsAPI = {
     return apiRequest('/notifications');
   },
 
+  async getSummary(): Promise<{ success: boolean; meta: NotificationSummaryMeta }> {
+    return apiRequest('/notifications/summary');
+  },
+
   async getTodaySchedules() {
     return apiRequest('/schedule-alerts/today');
   },
@@ -555,8 +588,16 @@ export const notificationsAPI = {
 
 // ============ BARANGAYS API ============
 export const barangaysAPI = {
-  async getAll() {
-    return apiRequest('/barangays', {}, false);
+  async getAll(): Promise<BarangayListResponse> {
+    if (!barangayListRequest) {
+      barangayListRequest = apiRequest('/barangays', {}, false)
+        .catch((error: unknown) => {
+          barangayListRequest = null;
+          throw error;
+        });
+    }
+
+    return barangayListRequest;
   }
 };
 

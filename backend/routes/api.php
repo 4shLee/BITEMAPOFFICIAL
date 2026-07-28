@@ -47,6 +47,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/pep-schedule', [BitemapApiController::class, 'pepSchedule'])
         ->middleware('role:clinic_admin,doctor,nurse_vaccinator');
+    Route::get('/pep-schedule/dose-inventory-options', [BitemapApiController::class, 'pepDoseInventoryOptions'])
+        ->middleware('role:clinic_admin,doctor,nurse_vaccinator');
     Route::put('/pep-schedule/{schedule}', [BitemapApiController::class, 'updatePepSchedule'])
         ->middleware('role:clinic_admin,nurse_vaccinator');
     Route::post('/pep-schedule/{schedule}/record-dose', [BitemapApiController::class, 'recordPepDose'])
@@ -76,6 +78,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/settings/{key}', [BitemapApiController::class, 'updateSetting'])->middleware('role:system_admin,clinic_admin');
 
     Route::get('/notifications', [BitemapApiController::class, 'notifications'])
+        ->middleware('role:clinic_admin,doctor,nurse_vaccinator');
+    Route::get('/notifications/summary', [BitemapApiController::class, 'notificationSummary'])
         ->middleware('role:clinic_admin,doctor,nurse_vaccinator');
     Route::get('/schedule-alerts/today', [BitemapApiController::class, 'todayScheduleAlerts'])
         ->middleware('role:clinic_admin,doctor,nurse_vaccinator');

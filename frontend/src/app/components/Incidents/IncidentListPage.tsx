@@ -61,12 +61,6 @@ export function IncidentListPage() {
   }, [searchTerm]);
 
   useEffect(() => {
-    barangaysAPI.getAll()
-      .then((response) => setBarangays(Array.isArray(response.data) ? response.data : []))
-      .catch(() => setBarangays([]));
-  }, []);
-
-  useEffect(() => {
     const controller = new AbortController();
 
     async function loadIncidents() {
@@ -99,6 +93,12 @@ export function IncidentListPage() {
     loadIncidents();
     return () => controller.abort();
   }, [barangayId, currentPage, debouncedSearch, location.key, perPage, refreshKey, status]);
+
+  useEffect(() => {
+    barangaysAPI.getAll()
+      .then((response) => setBarangays(Array.isArray(response.data) ? response.data : []))
+      .catch(() => setBarangays([]));
+  }, []);
 
   const handleDelete = async (id: number | string) => {
     if (!confirm('Delete this incident? The patient record will also be removed if this is their only incident.')) return;

@@ -50,12 +50,6 @@ export function Patients() {
   }, [searchTerm]);
 
   useEffect(() => {
-    barangaysAPI.getAll()
-      .then((response) => setBarangays(Array.isArray(response.data) ? response.data : []))
-      .catch(() => setBarangays([]));
-  }, []);
-
-  useEffect(() => {
     const controller = new AbortController();
 
     async function loadPatients() {
@@ -87,6 +81,12 @@ export function Patients() {
     loadPatients();
     return () => controller.abort();
   }, [barangayId, currentPage, debouncedSearch, perPage, refreshKey]);
+
+  useEffect(() => {
+    barangaysAPI.getAll()
+      .then((response) => setBarangays(Array.isArray(response.data) ? response.data : []))
+      .catch(() => setBarangays([]));
+  }, []);
 
   const handleEdit = (patient: RegistryPatient) => {
     navigate('/patients/' + patient.id + '/edit');

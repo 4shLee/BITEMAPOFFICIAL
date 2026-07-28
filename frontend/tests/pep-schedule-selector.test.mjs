@@ -79,3 +79,23 @@ test('closed selector and compact states use the polished combobox surface', () 
   assert.match(comboboxSource, /onClick=\{onRetry\}>Retry<\/Button>/);
   assert.doesNotMatch(comboboxSource, /heading="Patient incidents"/);
 });
+
+test('initial schedule rendering does not wait for inventory', () => {
+  const loadScheduleSource = pepSchedule.slice(
+    pepSchedule.indexOf('const loadSchedule = useCallback'),
+    pepSchedule.indexOf('const invalidateDoseInventoryOptions')
+  );
+
+  assert.match(loadScheduleSource, /pepScheduleAPI\.getAll\(controller\.signal\)/);
+  assert.doesNotMatch(loadScheduleSource, /Promise\.all/);
+  assert.doesNotMatch(loadScheduleSource, /inventoryAPI\.getAll/);
+  assert.match(loadScheduleSource, /setLoading\(false\)/);
+});
+
+test('dose inventory options are lazy, cancelable, and invalidated after mutations', () => {
+  assert.match(pepSchedule, /pepScheduleAPI\.getDoseInventoryOptions\(controller\.signal\)/);
+  assert.match(pepSchedule, /const controller = new AbortController\(\)/);
+  assert.match(pepSchedule, /void loadDoseInventoryOptions\(\)/);
+  assert.match(pepSchedule, /inventoryRequestRef\.current\?\.abort\(\)/);
+  assert.match(pepSchedule, /invalidateDoseInventoryOptions\(\);[\s\S]*?await loadSchedule\(\)/);
+});
