@@ -6,6 +6,7 @@ use App\Models\Barangay;
 use App\Models\Incident;
 use App\Models\Patient;
 use App\Models\User;
+use App\Support\DigosBarangayCoordinates;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
@@ -54,6 +55,12 @@ class GisHeatmapTest extends TestCase
                     'intensity',
                     'total_incident_count',
                 ]],
+                'incident_points' => [[
+                    'incident_id',
+                    'barangay_name',
+                    'latitude',
+                    'longitude',
+                ]],
                 'bounds' => ['southwest', 'northeast'],
                 'center',
                 'zoom',
@@ -79,18 +86,20 @@ class GisHeatmapTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.0.barangay_name', 'Aplaya')
             ->assertJsonPath('data.0.total_incident_count', 1)
-            ->assertJsonCount(1, 'heat_points');
+            ->assertJsonCount(1, 'heat_points')
+            ->assertJsonMissingPath('incident_points');
     }
 
-    public function test_null_exact_coordinates_use_the_valid_incident_barangay_location(): void
+    public function test_null_exact_coordinates_still_use_the_validated_barangay_location(): void
     {
         $this->createIncident(['location_lat' => null, 'location_lng' => null]);
 
         $this->getJson('/api/gis/heatmap')
             ->assertOk()
             ->assertJsonPath('data.0.total_incident_count', 1)
-            ->assertJsonPath('data.0.latitude', 6.76)
-            ->assertJsonPath('data.0.longitude', 125.3425);
+            ->assertJsonPath('data.0.latitude', 6.74164834)
+            ->assertJsonPath('data.0.longitude', 125.37245251)
+            ->assertJsonCount(0, 'incident_points');
     }
 
     public function test_malformed_coordinates_are_excluded_without_hiding_valid_incidents(): void
@@ -116,8 +125,38 @@ class GisHeatmapTest extends TestCase
         $this->getJson('/api/gis/heatmap')
             ->assertOk()
             ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.total_incident_count', 1)
-            ->assertJsonCount(1, 'heat_points');
+            ->assertJsonPath('data.0.total_incident_count', 2)
+            ->assertJsonCount(1, 'heat_points')
+            ->assertJsonCount(1, 'incident_points');
+    }
+
+    public function test_barangay_aggregate_never_uses_or_averages_individual_incident_coordinates(): void
+    {
+        $this->createIncident(['location_lat' => 6.73000000, 'location_lng' => 125.36000000]);
+        $this->createIncident(['location_lat' => 6.78000000, 'location_lng' => 125.38000000]);
+
+        $this->getJson('/api/gis/heatmap')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.barangay_name', 'Aplaya')
+            ->assertJsonPath('data.0.latitude', 6.74164834)
+            ->assertJsonPath('data.0.longitude', 125.37245251)
+            ->assertJsonPath('data.0.coordinate_source', 'database')
+            ->assertJsonCount(2, 'incident_points')
+            ->assertJsonPath('incident_points.0.latitude', 6.73)
+            ->assertJsonPath('incident_points.1.latitude', 6.78);
+    }
+
+    public function test_mismatched_database_coordinates_cannot_override_the_validated_fallback(): void
+    {
+        $this->createIncident();
+        $this->barangay()->update(['latitude' => 6.75, 'longitude' => 125.39]);
+
+        $this->getJson('/api/gis/heatmap')
+            ->assertOk()
+            ->assertJsonPath('data.0.latitude', 6.74164834)
+            ->assertJsonPath('data.0.longitude', 125.37245251)
+            ->assertJsonPath('data.0.coordinate_source', 'validated_fallback');
     }
 
     public function test_missing_barangay_relationship_does_not_crash_the_endpoint(): void
@@ -202,7 +241,10 @@ class GisHeatmapTest extends TestCase
     {
         return Barangay::firstOrCreate(
             ['name' => 'Aplaya'],
-            ['latitude' => 6.76000000, 'longitude' => 125.34250000]
+            [
+                'latitude' => DigosBarangayCoordinates::POINTS['Aplaya']['lat'],
+                'longitude' => DigosBarangayCoordinates::POINTS['Aplaya']['lng'],
+            ]
         );
     }
 

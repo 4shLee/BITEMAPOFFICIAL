@@ -12,6 +12,7 @@ use App\Models\Patient;
 use App\Models\PepSchedule;
 use App\Models\Setting;
 use App\Models\User;
+use App\Support\DigosBarangayCoordinates;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
@@ -148,16 +149,13 @@ class DemoDataSeeder extends Seeder
      */
     private function seedBarangays(): array
     {
-        $names = [
-            'Aplaya', 'Balabag', 'San Jose', 'Binaton', 'Cogon', 'Colorado', 'Dawis',
-            'Dulangan', 'Goma', 'Igpit', 'Kiagot', 'Lungag', 'Mahayahay', 'Matti',
-            'Kapatagan', 'Ruparan', 'San Agustin', 'San Miguel', 'San Roque',
-            'Sinawilan', 'Soong', 'Tiguman', 'Tres De Mayo', 'Zone 1', 'Zone 2', 'Zone 3',
-        ];
         $barangays = [];
 
-        foreach ($names as $name) {
-            $barangays[$name] = Barangay::firstOrCreate(['name' => $name]);
+        foreach (DigosBarangayCoordinates::POINTS as $name => $point) {
+            $barangays[$name] = Barangay::updateOrCreate(
+                ['name' => $name],
+                ['latitude' => $point['lat'], 'longitude' => $point['lng']]
+            );
         }
 
         return $barangays;
@@ -394,18 +392,6 @@ class DemoDataSeeder extends Seeder
         array $vaccineBatches
     ): array {
         $incidentBarangays = ['Aplaya', 'Balabag', 'Cogon', 'Dawis', 'Matti', 'San Jose', 'Tiguman', 'Zone 1', 'Zone 2', 'Zone 3'];
-        $coordinates = [
-            'Aplaya' => [6.7600, 125.3425],
-            'Balabag' => [6.7400, 125.3575],
-            'Cogon' => [6.7650, 125.3875],
-            'Dawis' => [6.7600, 125.3725],
-            'Matti' => [6.7560, 125.3340],
-            'San Jose' => [6.7600, 125.3575],
-            'Tiguman' => [6.7400, 125.3725],
-            'Zone 1' => [6.7500, 125.3525],
-            'Zone 2' => [6.7500, 125.3675],
-            'Zone 3' => [6.7480, 125.3800],
-        ];
         $biteSites = ['Left hand', 'Right calf', 'Left ankle', 'Right forearm', 'Lower leg', 'Left foot'];
         $today = CarbonImmutable::today();
         $incidents = collect();
@@ -432,7 +418,8 @@ class DemoDataSeeder extends Seeder
             $patientNumber = $number <= self::PATIENT_COUNT ? $number : $number - self::PATIENT_COUNT;
             $patient = $patients[$patientNumber];
             $barangayName = $incidentBarangays[($number - 1) % count($incidentBarangays)];
-            [$latitude, $longitude] = $coordinates[$barangayName];
+            $latitude = DigosBarangayCoordinates::POINTS[$barangayName]['lat'];
+            $longitude = DigosBarangayCoordinates::POINTS[$barangayName]['lng'];
             $category = ['I', 'II', 'III'][($number - 1) % 3];
             $animalType = match ($number % 10) {
                 0 => 'Other',

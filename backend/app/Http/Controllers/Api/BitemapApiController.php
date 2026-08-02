@@ -16,6 +16,7 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Services\WhoExposureClassificationService;
 use App\Support\DefaultAdminAccount;
+use App\Support\DigosBarangayCoordinates;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -32,49 +33,11 @@ use Illuminate\Validation\ValidationException;
 
 class BitemapApiController extends Controller
 {
-    private const DIGOS_CENTER = ['lat' => 6.7497, 'lng' => 125.3572];
-
     private const PEP_DOSE_DAY_OFFSETS = [0, 3, 7, 14, 28];
-
-    private const DIGOS_BOUNDS = [
-        'south' => 6.63,
-        'west' => 125.25,
-        'north' => 6.88,
-        'east' => 125.48,
-    ];
 
     private const USER_ROLE_OPTIONS = ['system_admin', 'clinic_admin', 'Clinic Admin', 'doctor', 'Doctor', 'Health Officer', 'nurse_vaccinator', 'Nurse/Vaccinator', 'Nurse', 'Vaccinator', 'nurse', 'vaccinator'];
 
     private const PUBLIC_SIGNUP_ROLE_OPTIONS = ['clinic_admin', 'Clinic Admin', 'doctor', 'Doctor', 'Health Officer', 'nurse_vaccinator', 'Nurse/Vaccinator', 'Nurse', 'Vaccinator', 'nurse', 'vaccinator'];
-
-    private const DIGOS_BARANGAY_COORDINATES = [
-        'Aplaya' => ['lat' => 6.7600, 'lng' => 125.3425],
-        'Balabag' => ['lat' => 6.7400, 'lng' => 125.3575],
-        'Binaton' => ['lat' => 6.8300, 'lng' => 125.3700],
-        'Cogon' => ['lat' => 6.7650, 'lng' => 125.3875],
-        'Colorado' => ['lat' => 6.7560, 'lng' => 125.3150],
-        'Dawis' => ['lat' => 6.7600, 'lng' => 125.3725],
-        'Dulangan' => ['lat' => 6.8100, 'lng' => 125.3600],
-        'Goma' => ['lat' => 6.7400, 'lng' => 125.3200],
-        'Igpit' => ['lat' => 6.7240, 'lng' => 125.3480],
-        'Kapatagan' => ['lat' => 6.8050, 'lng' => 125.3300],
-        'Kiagot' => ['lat' => 6.7830, 'lng' => 125.3910],
-        'Lungag' => ['lat' => 6.6700, 'lng' => 125.3000],
-        'Mahayahay' => ['lat' => 6.7400, 'lng' => 125.3425],
-        'Matti' => ['lat' => 6.7560, 'lng' => 125.3340],
-        'Ruparan' => ['lat' => 6.7800, 'lng' => 125.3500],
-        'San Agustin' => ['lat' => 6.7650, 'lng' => 125.3500],
-        'San Jose' => ['lat' => 6.7600, 'lng' => 125.3575],
-        'San Miguel' => ['lat' => 6.7330, 'lng' => 125.3580],
-        'San Roque' => ['lat' => 6.7550, 'lng' => 125.3250],
-        'Sinawilan' => ['lat' => 6.7750, 'lng' => 125.4100],
-        'Soong' => ['lat' => 6.7000, 'lng' => 125.3200],
-        'Tiguman' => ['lat' => 6.7400, 'lng' => 125.3725],
-        'Tres De Mayo' => ['lat' => 6.7610, 'lng' => 125.3660],
-        'Zone 1' => ['lat' => 6.7500, 'lng' => 125.3525],
-        'Zone 2' => ['lat' => 6.7500, 'lng' => 125.3675],
-        'Zone 3' => ['lat' => 6.7480, 'lng' => 125.3800],
-    ];
 
     public function signIn(Request $request): JsonResponse
     {
@@ -2468,7 +2431,7 @@ class BitemapApiController extends Controller
         $filters = $validator->validated();
 
         try {
-            return response()->json($this->heatmapPayload($filters));
+            return response()->json($this->heatmapPayload($filters, true));
         } catch (\Throwable $exception) {
             Log::error('GIS heatmap request failed', [
                 'exception' => $exception,
@@ -2500,7 +2463,7 @@ class BitemapApiController extends Controller
         }
 
         try {
-            return response()->json($this->heatmapPayload($validator->validated()));
+            return response()->json($this->heatmapPayload($validator->validated(), false));
         } catch (\Throwable $exception) {
             return $this->publicApiFailure($exception, 'Unable to load map data.', 'PUBLIC_MAP_UNAVAILABLE');
         }
@@ -2516,7 +2479,7 @@ class BitemapApiController extends Controller
         ];
     }
 
-    private function heatmapPayload(array $filters): array
+    private function heatmapPayload(array $filters, bool $includeIncidentPoints): array
     {
         $query = Incident::with(['barangay', 'pepSchedules'])
             ->where(function ($scopeQuery): void {
@@ -2543,11 +2506,12 @@ class BitemapApiController extends Controller
         $incidents = $query->get()
             ->map(fn (Incident $incident) => [
                 'incident' => $incident,
-                'location' => $this->incidentMapLocation($incident),
+                'aggregate_location' => $this->barangayMapLocation($incident->barangay),
+                'exact_location' => $this->exactIncidentMapLocation($incident),
             ])
             ->filter(fn (array $item) => $item['incident']->barangay !== null
                 && filled($item['incident']->barangay->name)
-                && $item['location'] !== null)
+                && $item['aggregate_location'] !== null)
             ->values();
 
         $data = $incidents
@@ -2564,16 +2528,15 @@ class BitemapApiController extends Controller
                     ->keys()
                     ->first() ?? 'N/A';
                 $latestIncident = $group->sortByDesc(fn (array $item) => $item['incident']->id)->first()['incident'] ?? null;
-                $locations = $group
-                    ->pluck('location')
-                    ->values();
+                $aggregateLocation = $group->first()['aggregate_location'];
 
                 return [
                     'incident_id' => $latestIncident?->id,
                     'incident_ids' => $group->map(fn (array $item) => $item['incident']->id)->values(),
                     'barangay_name' => $barangayName,
-                    'latitude' => round((float) $locations->avg('lat'), 8),
-                    'longitude' => round((float) $locations->avg('lng'), 8),
+                    'latitude' => round((float) $aggregateLocation['lat'], 8),
+                    'longitude' => round((float) $aggregateLocation['lng'], 8),
+                    'coordinate_source' => $aggregateLocation['source'],
                     'total_incident_count' => $totalIncidents,
                     'total_incidents' => $totalIncidents,
                     'top_animal_type' => $topAnimalType,
@@ -2594,18 +2557,32 @@ class BitemapApiController extends Controller
             'total_incident_count' => $item['total_incident_count'],
         ])->values();
 
-        return [
+        $payload = [
             'success' => true,
             'data' => $data,
             'heat_points' => $heatPoints,
             'bounds' => [
-                'southwest' => [self::DIGOS_BOUNDS['south'], self::DIGOS_BOUNDS['west']],
-                'northeast' => [self::DIGOS_BOUNDS['north'], self::DIGOS_BOUNDS['east']],
+                'southwest' => [DigosBarangayCoordinates::BOUNDS['south'], DigosBarangayCoordinates::BOUNDS['west']],
+                'northeast' => [DigosBarangayCoordinates::BOUNDS['north'], DigosBarangayCoordinates::BOUNDS['east']],
             ],
-            'center' => [self::DIGOS_CENTER['lat'], self::DIGOS_CENTER['lng']],
-            'zoom' => 13,
+            'center' => [DigosBarangayCoordinates::CENTER['lat'], DigosBarangayCoordinates::CENTER['lng']],
+            'zoom' => 11,
             'generated_at' => now()->toDateTimeString(),
         ];
+
+        if ($includeIncidentPoints) {
+            $payload['incident_points'] = $incidents
+                ->filter(fn (array $item) => $item['exact_location'] !== null)
+                ->map(fn (array $item) => [
+                    'incident_id' => $item['incident']->id,
+                    'barangay_name' => $item['incident']->barangay->name,
+                    'latitude' => $item['exact_location']['lat'],
+                    'longitude' => $item['exact_location']['lng'],
+                ])
+                ->values();
+        }
+
+        return $payload;
     }
 
     public function publicBarangayStats(): JsonResponse
@@ -4025,7 +4002,35 @@ class BitemapApiController extends Controller
         return $enumFallbacks[$canonical];
     }
 
-    private function incidentMapLocation(Incident $incident): ?array
+    /**
+     * @return array{lat: float, lng: float, source: string}|null
+     */
+    private function barangayMapLocation(?Barangay $barangay): ?array
+    {
+        if (! $barangay) {
+            return null;
+        }
+
+        $fallback = DigosBarangayCoordinates::forName($barangay->name);
+        if (! $fallback) {
+            return null;
+        }
+
+        $latitude = $barangay->getRawOriginal('latitude');
+        $longitude = $barangay->getRawOriginal('longitude');
+        $databaseMatchesValidatedPoint = $this->isInsideDigosBounds($latitude, $longitude)
+            && abs((float) $latitude - $fallback['lat']) < 0.00000001
+            && abs((float) $longitude - $fallback['lng']) < 0.00000001;
+
+        return $databaseMatchesValidatedPoint
+            ? ['lat' => (float) $latitude, 'lng' => (float) $longitude, 'source' => 'database']
+            : [...$fallback, 'source' => 'validated_fallback'];
+    }
+
+    /**
+     * @return array{lat: float, lng: float}|null
+     */
+    private function exactIncidentMapLocation(Incident $incident): ?array
     {
         if ($incident->location_scope === 'outside_digos') {
             return null;
@@ -4033,8 +4038,6 @@ class BitemapApiController extends Controller
 
         $incidentLatitude = $incident->getRawOriginal('location_lat');
         $incidentLongitude = $incident->getRawOriginal('location_lng');
-        $hasExactCoordinateValue = filled($incidentLatitude) || filled($incidentLongitude);
-
         if ($this->isInsideDigosBounds($incidentLatitude, $incidentLongitude)) {
             return [
                 'lat' => (float) $incidentLatitude,
@@ -4042,31 +4045,7 @@ class BitemapApiController extends Controller
             ];
         }
 
-        if ($hasExactCoordinateValue) {
-            return null;
-        }
-
-        $barangay = $incident->barangay;
-        if (! $barangay) {
-            return null;
-        }
-
-        $barangayLatitude = $barangay->getRawOriginal('latitude');
-        $barangayLongitude = $barangay->getRawOriginal('longitude');
-
-        if ($this->isInsideDigosBounds($barangayLatitude, $barangayLongitude)) {
-            return [
-                'lat' => (float) $barangayLatitude,
-                'lng' => (float) $barangayLongitude,
-            ];
-        }
-
-        $fallback = self::DIGOS_BARANGAY_COORDINATES[$barangay->name] ?? null;
-        if (! $fallback || ! $this->isInsideDigosBounds($fallback['lat'], $fallback['lng'])) {
-            return null;
-        }
-
-        return $fallback;
+        return null;
     }
 
     private function incidentLocationFromRequestData(array $data, mixed $barangayId): array
@@ -4081,17 +4060,10 @@ class BitemapApiController extends Controller
         if ($barangayId) {
             $barangay = Barangay::find($barangayId);
 
-            if ($barangay && $this->isInsideDigosBounds($barangay->latitude, $barangay->longitude)) {
-                return [
-                    'lat' => (float) $barangay->latitude,
-                    'lng' => (float) $barangay->longitude,
-                ];
-            }
-
             if ($barangay) {
-                $fallback = self::DIGOS_BARANGAY_COORDINATES[$barangay->name] ?? null;
-                if ($fallback && $this->isInsideDigosBounds($fallback['lat'], $fallback['lng'])) {
-                    return $fallback;
+                $location = $this->barangayMapLocation($barangay);
+                if ($location) {
+                    return ['lat' => $location['lat'], 'lng' => $location['lng']];
                 }
             }
         }
@@ -4112,10 +4084,10 @@ class BitemapApiController extends Controller
             return false;
         }
 
-        return $lat >= self::DIGOS_BOUNDS['south']
-            && $lat <= self::DIGOS_BOUNDS['north']
-            && $lng >= self::DIGOS_BOUNDS['west']
-            && $lng <= self::DIGOS_BOUNDS['east'];
+        return $lat >= DigosBarangayCoordinates::BOUNDS['south']
+            && $lat <= DigosBarangayCoordinates::BOUNDS['north']
+            && $lng >= DigosBarangayCoordinates::BOUNDS['west']
+            && $lng <= DigosBarangayCoordinates::BOUNDS['east'];
     }
 
     private function riskLevelForIncidentCount(int $incidentCount): string

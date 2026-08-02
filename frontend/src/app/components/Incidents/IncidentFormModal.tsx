@@ -13,35 +13,7 @@ import {
   type RegistryIncident,
   type RegistryPatient,
 } from '../../../lib/services/api';
-
-const DIGOS_BARANGAY_COORDINATES: Record<string, { location_lat: number; location_lng: number }> = {
-  Aplaya: { location_lat: 6.7600, location_lng: 125.3425 },
-  Balabag: { location_lat: 6.7400, location_lng: 125.3575 },
-  Binaton: { location_lat: 6.8300, location_lng: 125.3700 },
-  Cogon: { location_lat: 6.7650, location_lng: 125.3875 },
-  Colorado: { location_lat: 6.7560, location_lng: 125.3150 },
-  Dawis: { location_lat: 6.7600, location_lng: 125.3725 },
-  Dulangan: { location_lat: 6.8100, location_lng: 125.3600 },
-  Goma: { location_lat: 6.7400, location_lng: 125.3200 },
-  Igpit: { location_lat: 6.7240, location_lng: 125.3480 },
-  Kapatagan: { location_lat: 6.8050, location_lng: 125.3300 },
-  Kiagot: { location_lat: 6.7830, location_lng: 125.3910 },
-  Lungag: { location_lat: 6.6700, location_lng: 125.3000 },
-  Mahayahay: { location_lat: 6.7400, location_lng: 125.3425 },
-  Matti: { location_lat: 6.7560, location_lng: 125.3340 },
-  Ruparan: { location_lat: 6.7800, location_lng: 125.3500 },
-  'San Agustin': { location_lat: 6.7650, location_lng: 125.3500 },
-  'San Jose': { location_lat: 6.7600, location_lng: 125.3575 },
-  'San Miguel': { location_lat: 6.7330, location_lng: 125.3580 },
-  'San Roque': { location_lat: 6.7550, location_lng: 125.3250 },
-  Sinawilan: { location_lat: 6.7750, location_lng: 125.4100 },
-  Soong: { location_lat: 6.7000, location_lng: 125.3200 },
-  Tiguman: { location_lat: 6.7400, location_lng: 125.3725 },
-  'Tres De Mayo': { location_lat: 6.7610, location_lng: 125.3660 },
-  'Zone 1': { location_lat: 6.7500, location_lng: 125.3525 },
-  'Zone 2': { location_lat: 6.7500, location_lng: 125.3675 },
-  'Zone 3': { location_lat: 6.7480, location_lng: 125.3800 },
-};
+import { getDigosBarangayPoint } from '../../../data/digos-geography';
 
 interface IncidentFormModalProps {
   incident?: RegistryIncident & {
@@ -198,7 +170,10 @@ export function IncidentFormModal({ incident, onClose }: IncidentFormModalProps)
       };
     }
 
-    return DIGOS_BARANGAY_COORDINATES[selectedBarangay.name] || null;
+    const point = getDigosBarangayPoint(selectedBarangay.name);
+    return point
+      ? { location_lat: point.lat, location_lng: point.lng }
+      : null;
   };
 
   return (

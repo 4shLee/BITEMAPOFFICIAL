@@ -21,11 +21,14 @@ import {
 import { publicAPI } from '../../lib/services/api';
 import { AnimatedGISBackground } from '../components/Brand/AnimatedGISBackground';
 import { BITEMAP_FONT_FAMILY, BITEMAP_LOGO_SRC } from '../components/Brand/brand';
+import { DIGOS_BOUNDS, DIGOS_CENTER } from '../../data/digos-geography';
 
 type RiskLevel = 'LOW' | 'MODERATE' | 'HIGH' | 'SUPPRESSED' | 'NO DATA';
 
 type PublicBarangayAggregate = {
   barangay_name: string;
+  latitude: number;
+  longitude: number;
   incident_count: number | null;
   count_label: string;
   suppressed: boolean;
@@ -68,22 +71,6 @@ const initialFilters: Filters = {
   monthEnd: String(currentMonth),
   riskLevel: 'All',
   animalType: 'All',
-};
-
-const DIGOS_CENTER: [number, number] = [6.7497, 125.3572];
-const DIGOS_BOUNDS: [[number, number], [number, number]] = [[6.63, 125.25], [6.88, 125.48]];
-
-// Broad area centers are intentionally maintained separately from incident data.
-// They identify barangay-scale map areas and are not derived from patient coordinates.
-const GENERALIZED_BARANGAY_CENTERS: Record<string, [number, number]> = {
-  Aplaya: [6.766, 125.384],
-  'San Jose': [6.724, 125.342],
-  Dawis: [6.747, 125.382],
-  'Zone 1': [6.751, 125.356],
-  'Zone 2': [6.741, 125.363],
-  Mahayahay: [6.769, 125.345],
-  Balabag: [6.793, 125.326],
-  Tiguman: [6.694, 125.321],
 };
 
 const RISK_STYLES: Record<RiskLevel, { color: string; label: string }> = {
@@ -162,8 +149,8 @@ export function PublicHeatmap() {
     if (!mapContainerRef.current || mapRef.current) return;
     const map = L.map(mapContainerRef.current, {
       center: DIGOS_CENTER,
-      zoom: 13,
-      minZoom: 11,
+      zoom: 11,
+      minZoom: 10,
       maxZoom: 16,
       maxBounds: L.latLngBounds(DIGOS_BOUNDS),
       maxBoundsViscosity: 0.9,
@@ -195,8 +182,8 @@ export function PublicHeatmap() {
     layer.clearLayers();
 
     visibleData.forEach((item) => {
-      const center = GENERALIZED_BARANGAY_CENTERS[item.barangay_name];
-      if (!center) return;
+      const center: [number, number] = [Number(item.latitude), Number(item.longitude)];
+      if (!Number.isFinite(center[0]) || !Number.isFinite(center[1])) return;
       const selected = item.barangay_name === selectedBarangay;
       const style = RISK_STYLES[item.risk_level] || RISK_STYLES['NO DATA'];
       const circle = L.circle(center, {

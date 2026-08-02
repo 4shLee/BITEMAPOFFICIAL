@@ -6,6 +6,7 @@ import { Input } from '../components/UI/Input';
 import { Select } from '../components/UI/Select';
 import { Badge } from '../components/UI/Badge';
 import { gisAPI } from '../../lib/services/api';
+import { DIGOS_BOUNDS, DIGOS_CENTER } from '../../data/digos-geography';
 
 type HeatLayerOptions = {
   radius: number;
@@ -44,6 +45,13 @@ interface HeatPoint {
   longitude: number;
   intensity: number;
   total_incident_count: number;
+}
+
+interface IncidentPoint {
+  incident_id: number;
+  barangay_name: string;
+  latitude: number;
+  longitude: number;
 }
 
 const validCoordinate = (value: unknown, minimum: number, maximum: number): number | null => {
@@ -112,9 +120,6 @@ const validHeatPoints = (value: unknown): HeatPoint[] => {
   });
 };
 
-const DIGOS_CENTER: [number, number] = [6.7497, 125.3572];
-const DIGOS_BOUNDS: [[number, number], [number, number]] = [[6.63, 125.25], [6.88, 125.48]];
-
 const RISK_COLORS = {
   'LOW RISK': '#16A34A',
   'MODERATE RISK': '#F2C94C',
@@ -134,11 +139,14 @@ export function GISMap() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markerLayerRef = useRef<L.LayerGroup | null>(null);
+  const incidentLayerRef = useRef<L.LayerGroup | null>(null);
   const heatLayerRef = useRef<L.Layer | null>(null);
 
   const [selectedBarangay, setSelectedBarangay] = useState<string | null>(null);
   const [barangayData, setBarangayData] = useState<BarangayData[]>([]);
   const [heatPoints, setHeatPoints] = useState<HeatPoint[]>([]);
+  const [incidentPoints, setIncidentPoints] = useState<IncidentPoint[]>([]);
+  const [showIncidentPoints, setShowIncidentPoints] = useState(false);
   const [loading, setLoading] = useState(true);
   const [mapLoading, setMapLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -184,8 +192,8 @@ export function GISMap() {
     const maxBounds = L.latLngBounds(DIGOS_BOUNDS);
     const map = L.map(mapContainerRef.current, {
       center: DIGOS_CENTER,
-      zoom: 13,
-      minZoom: 12,
+      zoom: 11,
+      minZoom: 10,
       maxZoom: 18,
       maxBounds,
       maxBoundsViscosity: 1.0
@@ -197,6 +205,7 @@ export function GISMap() {
     }).addTo(map);
 
     markerLayerRef.current = L.layerGroup().addTo(map);
+    incidentLayerRef.current = L.layerGroup().addTo(map);
     mapInstanceRef.current = map;
     window.setTimeout(() => map.invalidateSize(), 0);
   }, [mapLoading]);
@@ -236,6 +245,19 @@ export function GISMap() {
         const nextData = validBarangayData(response.data);
         setBarangayData(nextData);
         setHeatPoints(validHeatPoints(response.heat_points));
+        setIncidentPoints(Array.isArray(response.incident_points)
+          ? response.incident_points.flatMap((item: unknown) => {
+            if (!item || typeof item !== 'object') return [];
+            const record = item as Record<string, unknown>;
+            const latitude = validCoordinate(record.latitude, -90, 90);
+            const longitude = validCoordinate(record.longitude, -180, 180);
+            const incidentId = Number(record.incident_id);
+            const barangayName = typeof record.barangay_name === 'string' ? record.barangay_name.trim() : '';
+            return latitude === null || longitude === null || !Number.isFinite(incidentId) || !barangayName
+              ? []
+              : [{ incident_id: incidentId, barangay_name: barangayName, latitude, longitude }];
+          })
+          : []);
         setSelectedBarangay((current) => {
           if (current && nextData.some((item) => item.barangay_name === current)) {
             return current;
@@ -243,7 +265,7 @@ export function GISMap() {
 
           return nextData[0]?.barangay_name ?? null;
         });
-      } catch {
+      } catch (loadError) {
         if (!cancelled) {
           setError(loadError instanceof Error && loadError.message
             ? loadError.message
@@ -318,6 +340,26 @@ export function GISMap() {
 
     window.setTimeout(() => map.invalidateSize(), 0);
   }, [barangayData, heatPoints, mapLoading]);
+
+  useEffect(() => {
+    const layer = incidentLayerRef.current;
+    if (!layer) return;
+
+    layer.clearLayers();
+    if (!showIncidentPoints) return;
+
+    incidentPoints.forEach((point) => {
+      L.circleMarker([point.latitude, point.longitude], {
+        radius: 4,
+        color: '#0F172A',
+        weight: 1,
+        fillColor: '#38BDF8',
+        fillOpacity: 0.9,
+      })
+        .bindTooltip(`Incident #${escapeHtml(point.incident_id)} · ${escapeHtml(point.barangay_name)}`)
+        .addTo(layer);
+    });
+  }, [incidentPoints, showIncidentPoints, mapLoading]);
 
   const getRiskVariant = (riskLevel: string) => {
     switch (riskLevel) {
@@ -472,6 +514,18 @@ export function GISMap() {
                 value={category}
                 onChange={(event) => setCategory(event.target.value)}
               />
+              <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                <input
+                  type="checkbox"
+                  checked={showIncidentPoints}
+                  onChange={(event) => setShowIncidentPoints(event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-teal-700"
+                />
+                <span>
+                  <span className="block text-xs font-bold text-slate-700">Show exact incident pins</span>
+                  <span className="mt-0.5 block text-[11px] text-slate-500">Separate staff-only layer</span>
+                </span>
+              </label>
             </div>
           </div>
 

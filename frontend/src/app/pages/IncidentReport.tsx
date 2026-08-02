@@ -25,6 +25,7 @@ import {
   exposureContactOptions,
   type ExposureContactType,
 } from '../../lib/whoExposureClassification';
+import { getDigosBarangayPoint } from '../../data/digos-geography';
 
 type PatientOption = {
   id: number | string;
@@ -110,35 +111,6 @@ type IncidentFormData = {
   incidentCityMunicipality: string;
   incidentProvince: string;
   incidentSpecificLocation: string;
-};
-
-const DIGOS_BARANGAY_COORDINATES: Record<string, { lat: number; lng: number }> = {
-  Aplaya: { lat: 6.7600, lng: 125.3425 },
-  Balabag: { lat: 6.7400, lng: 125.3575 },
-  Binaton: { lat: 6.8300, lng: 125.3700 },
-  Cogon: { lat: 6.7650, lng: 125.3875 },
-  Colorado: { lat: 6.7560, lng: 125.3150 },
-  Dawis: { lat: 6.7600, lng: 125.3725 },
-  Dulangan: { lat: 6.8100, lng: 125.3600 },
-  Goma: { lat: 6.7400, lng: 125.3200 },
-  Igpit: { lat: 6.7240, lng: 125.3480 },
-  Kapatagan: { lat: 6.8050, lng: 125.3300 },
-  Kiagot: { lat: 6.7830, lng: 125.3910 },
-  Lungag: { lat: 6.6700, lng: 125.3000 },
-  Mahayahay: { lat: 6.7400, lng: 125.3425 },
-  Matti: { lat: 6.7560, lng: 125.3340 },
-  Ruparan: { lat: 6.7800, lng: 125.3500 },
-  'San Agustin': { lat: 6.7650, lng: 125.3500 },
-  'San Jose': { lat: 6.7600, lng: 125.3575 },
-  'San Miguel': { lat: 6.7330, lng: 125.3580 },
-  'San Roque': { lat: 6.7550, lng: 125.3250 },
-  Sinawilan: { lat: 6.7750, lng: 125.4100 },
-  Soong: { lat: 6.7000, lng: 125.3200 },
-  Tiguman: { lat: 6.7400, lng: 125.3725 },
-  'Tres De Mayo': { lat: 6.7610, lng: 125.3660 },
-  'Zone 1': { lat: 6.7500, lng: 125.3525 },
-  'Zone 2': { lat: 6.7500, lng: 125.3675 },
-  'Zone 3': { lat: 6.7480, lng: 125.3800 },
 };
 
 const initialFormData: IncidentFormData = {
@@ -288,7 +260,8 @@ function getBarangayCoordinates(barangay?: BarangayOption) {
     return { lat: latitude, lng: longitude };
   }
 
-  return DIGOS_BARANGAY_COORDINATES[barangay.name] || null;
+  const point = getDigosBarangayPoint(barangay.name);
+  return point ? { lat: point.lat, lng: point.lng } : null;
 }
 
 function ReadOnlyPatientItem({ label, value }: { label: string; value?: string | number | null }) {

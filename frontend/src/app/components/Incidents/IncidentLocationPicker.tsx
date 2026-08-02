@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { DIGOS_BOUNDS, DIGOS_CENTER } from '../../../data/digos-geography';
 
 type Coordinates = {
   lat: number;
@@ -17,9 +18,6 @@ type IncidentLocationPickerProps = {
   exactPin: boolean;
   onPinSelect: (latitude: string, longitude: string) => void;
 };
-
-const DIGOS_CENTER: [number, number] = [6.7497, 125.3572];
-const DIGOS_BOUNDS: [[number, number], [number, number]] = [[6.63, 125.25], [6.88, 125.48]];
 
 export function IncidentLocationPicker({
   barangayName,
@@ -47,7 +45,7 @@ export function IncidentLocationPicker({
     const map = L.map(containerRef.current, {
       center: DIGOS_CENTER,
       zoom: 13,
-      minZoom: 12,
+      minZoom: 10,
       maxZoom: 18,
       maxBounds: L.latLngBounds(DIGOS_BOUNDS),
       maxBoundsViscosity: 1,
@@ -128,7 +126,7 @@ export function IncidentLocationPicker({
     if (center) {
       map.setView([center.lat, center.lng], reviewCoordinates || confirmedCoordinates ? 17 : 15, { animate: false });
     } else {
-      map.setView(DIGOS_CENTER, 13, { animate: false });
+      map.setView(DIGOS_CENTER, 11, { animate: false });
     }
   }, [barangayCoordinates, barangayName, exactPin, latitude, longitude, pendingLatitude, pendingLongitude]);
 

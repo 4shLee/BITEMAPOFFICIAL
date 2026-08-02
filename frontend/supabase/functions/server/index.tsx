@@ -1113,6 +1113,35 @@ app.post("/make-server-e1d15c13/send-email", async (c) => {
 
 // Authenticated staff GIS aggregation. This route is deliberately separate from
 // the public contract and cannot be requested without a valid staff session.
+const DIGOS_BARANGAY_POINTS: Record<string, { latitude: number; longitude: number }> = {
+  Aplaya: { latitude: 6.74164834, longitude: 125.37245251 },
+  Balabag: { latitude: 6.85685429, longitude: 125.26978155 },
+  "San Jose": { latitude: 6.73125205, longitude: 125.35463070 },
+  Binaton: { latitude: 6.84838618, longitude: 125.33803610 },
+  Cogon: { latitude: 6.75742356, longitude: 125.37724579 },
+  Colorado: { latitude: 6.75506963, longitude: 125.29556990 },
+  Dawis: { latitude: 6.73009357, longitude: 125.36827608 },
+  Dulangan: { latitude: 6.83769091, longitude: 125.31446776 },
+  Goma: { latitude: 6.85286242, longitude: 125.29052371 },
+  Igpit: { latitude: 6.73338652, longitude: 125.31541972 },
+  Kiagot: { latitude: 6.78090818, longitude: 125.35800284 },
+  Lungag: { latitude: 6.79466699, longitude: 125.27767847 },
+  Mahayahay: { latitude: 6.79668215, longitude: 125.29340182 },
+  Matti: { latitude: 6.76590191, longitude: 125.30570925 },
+  Kapatagan: { latitude: 6.92605084, longitude: 125.31445063 },
+  Ruparan: { latitude: 6.79071808, longitude: 125.32848162 },
+  "San Agustin": { latitude: 6.77762873, longitude: 125.31501883 },
+  "San Miguel": { latitude: 6.73901160, longitude: 125.34085046 },
+  "San Roque": { latitude: 6.77930377, longitude: 125.28642543 },
+  Sinawilan: { latitude: 6.77581148, longitude: 125.37787301 },
+  Soong: { latitude: 6.81067777, longitude: 125.35310403 },
+  Tiguman: { latitude: 6.75099690, longitude: 125.32413033 },
+  "Tres De Mayo": { latitude: 6.76795080, longitude: 125.33903558 },
+  "Zone 1": { latitude: 6.75787339, longitude: 125.35641175 },
+  "Zone 2": { latitude: 6.75207111, longitude: 125.35295619 },
+  "Zone 3": { latitude: 6.74419295, longitude: 125.35539780 },
+};
+
 app.get("/make-server-e1d15c13/gis/heatmap", async (c) => {
   try {
     const user = await getAuthUser(c.req.header("Authorization"));
@@ -1139,7 +1168,7 @@ app.get("/make-server-e1d15c13/gis/heatmap", async (c) => {
       if (!incident.barangay_id) return;
       const current = groups.get(incident.barangay_id) || {
         barangay_name: incident.barangay?.name || "Unknown",
-        ids: [], count: 0, completed: 0, latitudeTotal: 0, longitudeTotal: 0, coordinateCount: 0,
+        ids: [], count: 0, completed: 0, incidentPoints: [],
         animals: new Map<string, number>()
       };
       current.ids.push(incident.id);
@@ -1147,21 +1176,26 @@ app.get("/make-server-e1d15c13/gis/heatmap", async (c) => {
       if (incident.status === "Completed") current.completed += 1;
       current.animals.set(incident.animal_type, (current.animals.get(incident.animal_type) || 0) + 1);
       if (incident.location_lat != null && incident.location_lng != null) {
-        current.latitudeTotal += Number(incident.location_lat);
-        current.longitudeTotal += Number(incident.location_lng);
-        current.coordinateCount += 1;
+        current.incidentPoints.push({
+          incident_id: incident.id,
+          barangay_name: current.barangay_name,
+          latitude: Number(incident.location_lat),
+          longitude: Number(incident.location_lng),
+        });
       }
       groups.set(incident.barangay_id, current);
     });
 
-    const data = Array.from(groups.values()).filter((group) => group.coordinateCount > 0).map((group) => {
+    const data = Array.from(groups.values()).filter((group) => DIGOS_BARANGAY_POINTS[group.barangay_name]).map((group) => {
       const topAnimal = Array.from(group.animals.entries()).sort((a: any, b: any) => b[1] - a[1])[0]?.[0] || "Not available";
+      const aggregatePoint = DIGOS_BARANGAY_POINTS[group.barangay_name];
       return {
         incident_id: null,
         incident_ids: group.ids,
         barangay_name: group.barangay_name,
-        latitude: group.latitudeTotal / group.coordinateCount,
-        longitude: group.longitudeTotal / group.coordinateCount,
+        latitude: aggregatePoint.latitude,
+        longitude: aggregatePoint.longitude,
+        coordinate_source: "validated_fallback",
         total_incident_count: group.count,
         total_incidents: group.count,
         top_animal_type: topAnimal,
@@ -1177,8 +1211,9 @@ app.get("/make-server-e1d15c13/gis/heatmap", async (c) => {
       intensity: item.total_incident_count / maxCount,
       total_incident_count: item.total_incident_count
     }));
+    const incident_points = Array.from(groups.values()).flatMap((group) => group.incidentPoints);
 
-    return c.json({ success: true, data, heat_points });
+    return c.json({ success: true, data, heat_points, incident_points });
   } catch (error) {
     console.error("Authenticated GIS heatmap error:", error);
     return c.json({ success: false, error: "Unable to load staff GIS data." }, 500);
@@ -1253,6 +1288,8 @@ async function getPublicBarangayAggregation(filters: any) {
   const grouped = new Map<string, any>();
   (barangays || []).forEach((barangay: any) => grouped.set(barangay.id, {
     barangay_name: barangay.name,
+    latitude: DIGOS_BARANGAY_POINTS[barangay.name]?.latitude ?? null,
+    longitude: DIGOS_BARANGAY_POINTS[barangay.name]?.longitude ?? null,
     population: Number(barangay.population || 0),
     count: 0,
     completed: 0,
@@ -1281,6 +1318,8 @@ async function getPublicBarangayAggregation(filters: any) {
 
     return {
       barangay_name: row.barangay_name,
+      latitude: row.latitude,
+      longitude: row.longitude,
       incident_count: suppressed ? null : row.count,
       count_label: suppressed ? "Fewer than 5 incidents" : row.count === 0 ? "No recorded data" : `${row.count} incidents`,
       suppressed,

@@ -1,4 +1,4 @@
-# BITEMAP Codex Progress Log
+# BITEMAP Progress Log
 
 **June 29, 2026**
 
@@ -2362,3 +2362,258 @@ The working tree was clean at reporting time.
 
 BITEMAP now has a working local MariaDB development environment and a safe, repeatable fictional dataset suitable for capstone demonstrations. The data exercises registry pagination, incident relationships, WHO classifications, PEP scheduling, inventory alerts, reminders, public clinic settings, and dashboard statistics without using real patient information.
 
+DATE OF WORK: July 28, 2026  
+REPORT PREPARED: August 2, 2026
+
+# BITEMAP Performance Optimization and GIS Coordinate Audit
+
+## Overview
+
+Work focused on three major areas:
+
+1. Patient Registry and Incident Management loading performance
+2. PEP Schedule loading performance
+3. Full GIS coordinate audit for all 26 Digos City barangays
+
+The registry and PEP performance work was completed and committed under:
+
+`3df959d — perf: optimize registry, notification, and PEP loading`
+
+The GIS correction work was implemented locally and its database migration was applied, but final backend test execution and browser-based visual verification were still pending when the work was interrupted.
+
+## 1. Patient Registry and Incident Management Optimization
+
+### Problems investigated
+
+- Patient and incident pages rendered skeleton rows immediately but took several seconds to display records.
+- Each page loaded the full notifications dataset through the shared Header.
+- Barangays were repeatedly requested during navigation.
+- Laravel’s development server processes requests serially, allowing the notification request to compete with or delay registry requests.
+
+### Changes completed
+
+- Created a lightweight authenticated notification-summary endpoint.
+- The Header now requests only alert counts and priority information instead of the full Notifications module dataset.
+- Moved notification-summary loading to `MainLayout`.
+- Added `HeaderAlertsContext` so Header instances reuse layout-level notification state.
+- Prevented notification-summary requests from repeating on every page navigation.
+- Added a shared in-memory promise cache for the barangay list.
+- Preserved server-side pagination, with 20 records remaining the default.
+- Preserved patient and incident search, status filters, barangay filters, page selection, permissions, and displayed table fields.
+- Kept registry queries limited to required columns and relationships.
+- Avoided loading all patients, incidents, or unrelated nested relationships.
+
+### Main files changed
+
+- `backend/app/Http/Controllers/Api/BitemapApiController.php`
+- `backend/routes/api.php`
+- `backend/tests/Feature/NotificationSummaryTest.php`
+- `frontend/src/app/components/Incidents/IncidentListPage.tsx`
+- `frontend/src/app/components/Layout/Header.tsx`
+- `frontend/src/app/components/Layout/HeaderAlertsContext.tsx`
+- `frontend/src/app/components/Layout/MainLayout.tsx`
+- `frontend/src/app/pages/Patients.tsx`
+- `frontend/src/lib/services/api.ts`
+
+## 2. PEP Schedule Loading Optimization
+
+### Root causes found
+
+- The page used `Promise.all()` for the schedule and full inventory requests.
+- Schedule rendering therefore waited for the slower inventory endpoint.
+- The inventory endpoint returned every item, every batch, and transaction history.
+- The PEP endpoint loaded more nested relationship data than the initial table needed.
+- Approximately 200 schedule rows amplified serialization and response-size costs.
+
+### Changes completed
+
+- Removed inventory loading from the initial PEP Schedule request.
+- Schedule information now displays as soon as the PEP endpoint completes.
+- Inventory options are loaded only when the Record Dose modal is opened.
+- Added the authenticated endpoint:
+
+`GET /api/pep-schedule/dose-inventory-options`
+
+- The endpoint returns only:
+
+  - Eligible anti-rabies vaccine items
+  - Item ID
+  - Item name
+  - Current stock
+  - Batches with remaining stock
+  - Non-expired batches
+
+- Inventory transaction history is not returned by the options endpoint.
+- Preserved the existing vaccine eligibility rules.
+- Reduced the PEP list query to fields and relationships required by the interface and available actions.
+- Added a lightweight list serializer while retaining the complete serializer for mutation responses.
+- Added request cancellation and stale-response protection for lazy inventory requests.
+- Added inventory-options invalidation after dose recording and other relevant mutations.
+- Preserved dose status evaluation, schedule dates, record-dose workflow, batch linkage, inventory deductions, rescheduling, SMS reminders, permissions, and clinical rules.
+
+### Main files changed
+
+- `backend/app/Http/Controllers/Api/BitemapApiController.php`
+- `backend/routes/api.php`
+- `backend/tests/Feature/PepScheduleLoadingTest.php`
+- `frontend/src/app/pages/PEPSchedule.tsx`
+- `frontend/src/lib/services/api.ts`
+- `frontend/tests/pep-schedule-selector.test.mjs`
+
+## 3. Full Digos GIS Coordinate Audit
+
+### Data sources and validation method
+
+The audit used:
+
+- The [Philippine Statistics Authority PSGC listing for Digos City](https://psa.gov.ph/classification/psgc/barangays/1102403000) to verify the official 26 barangay names and PSGC codes.
+- A documented [GeoJSON barangay boundary release](https://bendlikeabamboo.github.io/barangay-boundaries-repository/boundaries/barangays.html) derived from NAMRIA administrative-boundary shapefiles and matched to PSA PSGC records.
+- The selected boundary data was marked valid on November 6, 2023.
+- Digos features had exact PSGC matches with full match confidence.
+- Interior polygon representative points were calculated instead of estimating locations from map labels.
+
+### Major findings
+
+- The database contained exactly 26 barangays with no duplicate names.
+- Before the correction, all 26 database latitude and longitude fields were null.
+- Consequently, the backend always depended on hardcoded fallback coordinates.
+- All 26 old fallback points fell outside their matched NAMRIA barangay polygons.
+- The previous approved bounds extended too far east into the sea.
+- The previous northern boundary stopped before the full northern area of Kapatagan.
+- The backend aggregate-marker logic averaged individual incident coordinates.
+- This allowed exact incident pins to move the barangay aggregate marker.
+- The same incident-coordinate averaging existed in the alternate Supabase GIS handler.
+- The public map had a separate incomplete list containing only eight generalized barangay centers.
+- The removed `digos-barangays.ts` file contained artificial rectangular polygons rather than validated barangay boundaries.
+- No corrected barangays share duplicate representative coordinates.
+- No latitude/longitude swaps were found in the corrected dataset.
+- Existing spelling matched the current PSA names, including `Zone 1`, `Zone 2`, `Zone 3`, and `Tres De Mayo`.
+
+### GIS corrections implemented
+
+- Added one canonical backend coordinate registry for all 26 barangays.
+- Added a synchronized frontend coordinate registry.
+- Included each barangay’s official PSGC code.
+- Replaced the inaccurate Digos bounds with an envelope based on the validated boundary dataset.
+- Added a data-fix migration that populated every live barangay row.
+- Applied the migration successfully to the local MariaDB database.
+- Updated the regular Barangay seeder.
+- Updated the demo-data seeder.
+- Updated incident-form coordinate fallbacks.
+- Removed the unused artificial barangay-polygon file.
+- Changed GIS aggregation to use exactly one validated barangay point per barangay.
+- Aggregate markers no longer use or average incident coordinates.
+- Added `coordinate_source` reporting:
+
+  - `database` when the stored value matches the validated point
+  - `validated_fallback` when database values are absent or inconsistent
+
+- Prevented incorrect database values from overriding the validated fallback.
+- Added a separate authenticated `incident_points` collection.
+- Added an optional staff-only exact-incident layer, disabled by default.
+- The public endpoint does not return exact incident pins.
+- Updated the public heatmap to use API-provided validated coordinates instead of eight hardcoded centers.
+- Updated the alternate Supabase GIS implementation to follow the same separation.
+
+### Corrected representative points
+
+| Barangay | Corrected latitude | Corrected longitude |
+|---|---:|---:|
+| Aplaya | 6.74164834 | 125.37245251 |
+| Balabag | 6.85685429 | 125.26978155 |
+| San Jose | 6.73125205 | 125.35463070 |
+| Binaton | 6.84838618 | 125.33803610 |
+| Cogon | 6.75742356 | 125.37724579 |
+| Colorado | 6.75506963 | 125.29556990 |
+| Dawis | 6.73009357 | 125.36827608 |
+| Dulangan | 6.83769091 | 125.31446776 |
+| Goma | 6.85286242 | 125.29052371 |
+| Igpit | 6.73338652 | 125.31541972 |
+| Kiagot | 6.78090818 | 125.35800284 |
+| Lungag | 6.79466699 | 125.27767847 |
+| Mahayahay | 6.79668215 | 125.29340182 |
+| Matti | 6.76590191 | 125.30570925 |
+| Kapatagan | 6.92605084 | 125.31445063 |
+| Ruparan | 6.79071808 | 125.32848162 |
+| San Agustin | 6.77762873 | 125.31501883 |
+| San Miguel | 6.73901160 | 125.34085046 |
+| San Roque | 6.77930377 | 125.28642543 |
+| Sinawilan | 6.77581148 | 125.37787301 |
+| Soong | 6.81067777 | 125.35310403 |
+| Tiguman | 6.75099690 | 125.32413033 |
+| Tres De Mayo | 6.76795080 | 125.33903558 |
+| Zone 1 | 6.75787339 | 125.35641175 |
+| Zone 2 | 6.75207111 | 125.35295619 |
+| Zone 3 | 6.74419295 | 125.35539780 |
+
+### GIS files changed or added
+
+- `backend/app/Support/DigosBarangayCoordinates.php`
+- `backend/app/Http/Controllers/Api/BitemapApiController.php`
+- `backend/database/migrations/2026_07_28_000001_set_validated_digos_barangay_coordinates.php`
+- `backend/database/seeders/BarangaySeeder.php`
+- `backend/database/seeders/DemoDataSeeder.php`
+- `backend/tests/Feature/DigosBarangayCoordinateIntegrityTest.php`
+- `backend/tests/Feature/GisHeatmapTest.php`
+- `frontend/src/data/digos-geography.ts`
+- `frontend/src/data/digos-barangays.ts` — removed because it contained artificial polygons
+- `frontend/src/app/pages/GISMap.tsx`
+- `frontend/src/app/pages/PublicHeatmap.tsx`
+- `frontend/src/app/pages/IncidentReport.tsx`
+- `frontend/src/app/components/Incidents/IncidentFormModal.tsx`
+- `frontend/src/app/components/Incidents/IncidentLocationPicker.tsx`
+- `frontend/supabase/functions/server/index.tsx`
+- `frontend/tests/digos-geography.test.mjs`
+- `scripts/audit-digos-boundaries.mjs`
+
+## Testing and Verification
+
+### Completed
+
+- Ran frontend automated tests successfully.
+- Result: 22 tests passed, 0 failed.
+- Added tests checking:
+
+  - All 26 barangays are represented
+  - Coordinates are unique
+  - Coordinates fall within the corrected Digos bounds
+  - Backend, frontend, and edge-handler coordinate sets remain synchronized
+  - Cogon, Aplaya, Dawis, Sinawilan, Zone 1, Zone 2, and Zone 3 match validated positions
+  - Initial PEP rendering does not wait for inventory
+  - Inventory options are lazy-loaded, cancelable, and invalidated after mutations
+
+- Ran the production frontend build successfully.
+- Applied the GIS coordinate migration successfully.
+- Confirmed the live database originally had 26 rows with null coordinates and no duplicate barangay names.
+- Confirmed the migration populated all 26 rows.
+
+### Pending or blocked
+
+- Backend PHPUnit execution was blocked because the local PHP command-line installation did not include the required `pdo_sqlite` extension used by the test environment.
+- Final visual browser verification of the rendered GIS map was interrupted before completion.
+- A temporary downloaded boundary file and temporary application directory remained untracked and should not be committed:
+
+  - `.tmp-barangays.geojson`
+  - `backend/.tmp-appdata/`
+
+- The GIS changes were not yet committed at the time this report was prepared.
+
+## Preserved Behavior
+
+Throughout these changes, the following were intentionally preserved:
+
+- Patient and incident server-side pagination
+- Registry searches and filters
+- Displayed table fields
+- Incident totals
+- Risk-level calculations
+- PEP compliance calculations
+- PEP date and dose-status rules
+- Dose-recording and inventory-deduction workflow
+- Batch linkage
+- Rescheduling
+- SMS reminder behavior
+- Notification priority rules
+- Permissions and role restrictions
+- Public-data privacy protections
+- Authenticated GIS access behavior
