@@ -26,24 +26,15 @@ class DemoDataSeeder extends Seeder
 
     private const PEP_DAYS = [0, 3, 7, 14, 28];
 
-    private const DEMO_USER_EMAILS = [
-        'system_admin' => 'demo.system.admin@example.invalid',
-        'clinic_admin' => 'demo.clinic.admin@example.invalid',
-        'doctor' => 'demo.doctor@example.invalid',
-        'nurse_vaccinator' => 'demo.nurse@example.invalid',
-    ];
-
     /**
      * Seed clearly fictional, local-only capstone demonstration data.
      */
     public function run(): void
     {
         $this->guardLocalDatabase();
-        $password = $this->demoPassword();
-
-        DB::transaction(function () use ($password): void {
+        DB::transaction(function (): void {
             $barangays = $this->seedBarangays();
-            $users = $this->seedUsers($password);
+            $users = app(DemoUserSeeder::class)->seedUsers();
             [$inventory, $batches, $batchDefinitions] = $this->seedInventory($users['clinic_admin']);
             $patients = $this->seedPatients($barangays);
             [$incidents, $schedules, $completedPerBatch] = $this->seedIncidentsAndSchedules(
@@ -74,7 +65,7 @@ class DemoDataSeeder extends Seeder
         $this->command?->table(
             ['Demo record type', 'Count'],
             [
-                ['Users', User::whereIn('email', array_values(self::DEMO_USER_EMAILS))->count()],
+                ['Users', User::whereIn('email', array_values(DemoUserSeeder::EMAILS))->count()],
                 ['Patients', Patient::where('email', 'like', 'demo.patient.%@example.invalid')->count()],
                 ['Incidents', Incident::where('notes', 'like', '%[DEMO:INC-%')->count()],
                 ['PEP schedules', PepSchedule::whereHas('incident', fn ($query) => $query->where('notes', 'like', '%[DEMO:INC-%'))->count()],
@@ -84,8 +75,8 @@ class DemoDataSeeder extends Seeder
                 ['Notifications', Notification::whereNotNull('reminder_key')->where('message', 'like', '[DEMO] %')->count()],
             ]
         );
-        $this->command?->warn('Demo login password (local use only): '.$password);
-        $this->command?->line('Demo user emails: '.implode(', ', array_values(self::DEMO_USER_EMAILS)));
+        $this->command?->warn('Demo login password (local use only): '.DemoUserSeeder::PASSWORD);
+        $this->command?->line('Demo user emails: '.implode(', ', array_values(DemoUserSeeder::EMAILS)));
     }
 
     private function guardLocalDatabase(): void
@@ -124,26 +115,6 @@ class DemoDataSeeder extends Seeder
         }
     }
 
-    private function demoPassword(): string
-    {
-        $configured = trim((string) env('DEMO_USER_PASSWORD', ''));
-
-        if ($configured !== '') {
-            if (mb_strlen($configured) < 12) {
-                throw new RuntimeException('DEMO_USER_PASSWORD must be at least 12 characters long.');
-            }
-
-            return $configured;
-        }
-
-        $applicationKey = (string) config('app.key');
-        if ($applicationKey === '') {
-            throw new RuntimeException('APP_KEY is required to derive the local demo password.');
-        }
-
-        return 'Demo-'.strtoupper(substr(hash_hmac('sha256', 'bitemap-demo-users', $applicationKey), 0, 12)).'!';
-    }
-
     /**
      * @return array<string, Barangay>
      */
@@ -159,42 +130,6 @@ class DemoDataSeeder extends Seeder
         }
 
         return $barangays;
-    }
-
-    /**
-     * @return array<string, User>
-     */
-    private function seedUsers(string $password): array
-    {
-        $definitions = [
-            'system_admin' => ['Demo', 'System', 'Administrator', '09000001001'],
-            'clinic_admin' => ['Demo', 'Clinic', 'Administrator', '09000001002'],
-            'doctor' => ['Demo', 'Clinical', 'Doctor', '09000001003'],
-            'nurse_vaccinator' => ['Demo', 'Nurse', 'Vaccinator', '09000001004'],
-        ];
-        $users = [];
-
-        foreach ($definitions as $role => [$firstName, $middleName, $lastName, $phone]) {
-            $name = implode(' ', [$firstName, $middleName, $lastName]);
-            $users[$role] = User::updateOrCreate(
-                ['email' => self::DEMO_USER_EMAILS[$role]],
-                [
-                    'name' => $name,
-                    'first_name' => $firstName,
-                    'middle_name' => $middleName,
-                    'last_name' => $lastName,
-                    'suffix' => null,
-                    'password' => $password,
-                    'role' => $role,
-                    'phone' => $phone,
-                    'is_active' => true,
-                    'approval_status' => 'approved',
-                    'email_verified_at' => now(),
-                ]
-            );
-        }
-
-        return $users;
     }
 
     /**
