@@ -159,181 +159,6 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
   );
 }
 
-// ─── Choropleth heatmap — Digos City barangays ────────────────────────────────
-
-// Color scale: green (low) → yellow → orange → red (high), matching choropleth convention
-function choroColor(cases: number): string {
-  if (cases >= 20) return '#B71C1C';
-  if (cases >= 16) return '#E53935';
-  if (cases >= 12) return '#F4511E';
-  if (cases >= 9)  return '#FF7043';
-  if (cases >= 6)  return '#FFA726';
-  if (cases >= 3)  return '#FDD835';
-  if (cases >= 1)  return '#9CCC65';
-  return '#43A047';
-}
-
-function labelColor(cases: number): string {
-  return cases >= 9 ? '#fff' : '#222';
-}
-
-function HeatmapPreview() {
-  // Each barangay: name, case count, SVG rect coords, label position
-  // Layout: coast (water) on left, urban core centre-left, rural inland right
-  // viewBox 0 0 310 220
-  // Water strip x=0..28
-  // Grid x=28..304, y=12..208  → 276×196 split into rows/cols
-
-  // 5 rows × varied columns = ~27 barangays (all of Digos City)
-  const cells: { name: string; cases: number; x: number; y: number; w: number; h: number }[] = [
-    // ── Row 1  y=12..56 (northern belt) ──────────────────────────────────────
-    { name: 'Balabag',        cases: 5,  x: 28,  y: 12, w: 46, h: 44 },
-    { name: 'Napungas',       cases: 3,  x: 74,  y: 12, w: 44, h: 44 },
-    { name: 'Nueva Vida N.',  cases: 3,  x: 118, y: 12, w: 44, h: 44 },
-    { name: 'Kapatagan',      cases: 2,  x: 162, y: 12, w: 44, h: 44 },
-    { name: 'Kiagot',         cases: 2,  x: 206, y: 12, w: 46, h: 44 },
-    { name: 'Matutungan',     cases: 1,  x: 252, y: 12, w: 52, h: 44 },
-
-    // ── Row 2  y=56..100 ──────────────────────────────────────────────────────
-    { name: 'Tiguman',        cases: 6,  x: 28,  y: 56, w: 46, h: 44 },
-    { name: 'Dulangan',       cases: 10, x: 74,  y: 56, w: 44, h: 44 },
-    { name: 'Zone I–III',     cases: 13, x: 118, y: 56, w: 52, h: 44 },
-    { name: 'Dawis Norte',    cases: 4,  x: 170, y: 56, w: 44, h: 44 },
-    { name: 'Nueva Vida S.',  cases: 2,  x: 214, y: 56, w: 44, h: 44 },
-    { name: 'Lungag',         cases: 1,  x: 258, y: 56, w: 46, h: 44 },
-
-    // ── Row 3  y=100..144  (urban core) ──────────────────────────────────────
-    { name: 'Aplaya',         cases: 23, x: 28,  y: 100, w: 46, h: 44 },
-    { name: 'San Jose',       cases: 18, x: 74,  y: 100, w: 44, h: 44 },
-    { name: 'Cogon',          cases: 12, x: 118, y: 100, w: 44, h: 44 },
-    { name: 'Poblacion',      cases: 15, x: 162, y: 100, w: 44, h: 44 },
-    { name: 'S. Agustin',     cases: 8,  x: 206, y: 100, w: 46, h: 44 },
-    { name: 'Dawis Sur',      cases: 3,  x: 252, y: 100, w: 52, h: 44 },
-
-    // ── Row 4  y=144..188 ────────────────────────────────────────────────────
-    { name: 'Ruparan',        cases: 4,  x: 28,  y: 144, w: 46, h: 44 },
-    { name: 'Pagalungan',     cases: 3,  x: 74,  y: 144, w: 44, h: 44 },
-    { name: 'Mahayahay',      cases: 7,  x: 118, y: 144, w: 44, h: 44 },
-    { name: 'Matti',          cases: 5,  x: 162, y: 144, w: 44, h: 44 },
-    { name: 'Goma',           cases: 2,  x: 206, y: 144, w: 46, h: 44 },
-    { name: 'Pangubatan',     cases: 1,  x: 252, y: 144, w: 52, h: 44 },
-
-    // ── Row 5  y=188..208 (southern fringe) ──────────────────────────────────
-    { name: 'Pampanga',       cases: 2,  x: 28,  y: 188, w: 70, h: 20 },
-    { name: 'Palili',         cases: 1,  x: 98,  y: 188, w: 70, h: 20 },
-    { name: 'Pandaitan',      cases: 1,  x: 168, y: 188, w: 68, h: 20 },
-    { name: 'Binaton',        cases: 1,  x: 236, y: 188, w: 68, h: 20 },
-  ];
-
-  const legendSteps = [
-    { color: '#B71C1C', label: '20+' },
-    { color: '#E53935', label: '16–19' },
-    { color: '#F4511E', label: '12–15' },
-    { color: '#FF7043', label: '9–11' },
-    { color: '#FFA726', label: '6–8' },
-    { color: '#FDD835', label: '3–5' },
-    { color: '#9CCC65', label: '1–2' },
-    { color: '#43A047', label: '0' },
-  ];
-
-  return (
-    <div className="relative w-full h-full">
-      <svg viewBox="0 0 310 220" className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
-
-        {/* Sea background */}
-        <rect x="0" y="0" width="310" height="220" fill="#D6EAF3" />
-
-        {/* Land background behind cells */}
-        <rect x="28" y="12" width="276" height="196" fill="#f5f5f5" />
-
-        {/* Choropleth cells */}
-        {cells.map((c) => (
-          <g key={c.name}>
-            <rect
-              x={c.x} y={c.y} width={c.w} height={c.h}
-              fill={choroColor(c.cases)}
-              stroke="#fff"
-              strokeWidth="1.2"
-            />
-            {/* Barangay name */}
-            <text
-              x={c.x + c.w / 2}
-              y={c.h >= 40 ? c.y + c.h / 2 - 3 : c.y + c.h / 2 + 1}
-              textAnchor="middle"
-              fontSize={c.name.length > 9 ? 4.6 : 5.2}
-              fontWeight="600"
-              fill={labelColor(c.cases)}
-              style={{ pointerEvents: 'none' }}
-            >
-              {c.name}
-            </text>
-            {/* Case count badge (only for taller cells) */}
-            {c.h >= 40 && (
-              <text
-                x={c.x + c.w / 2}
-                y={c.y + c.h / 2 + 8}
-                textAnchor="middle"
-                fontSize="4.4"
-                fill={labelColor(c.cases)}
-                style={{ pointerEvents: 'none', opacity: 0.85 }}
-              >
-                {c.cases} cases
-              </text>
-            )}
-          </g>
-        ))}
-
-        {/* City outer border */}
-        <rect x="28" y="12" width="276" height="196" fill="none" stroke="#666" strokeWidth="1" />
-
-        {/* Water label */}
-        <text x="14" y="110" textAnchor="middle" fontSize="5" fill="#3a7ea8" fontWeight="600"
-          transform="rotate(-90 14 110)">Davao Gulf</text>
-
-        {/* North indicator */}
-        <g transform="translate(298, 22)">
-          <circle cx="0" cy="0" r="8" fill="white" stroke="#aaa" strokeWidth="0.8" />
-          <text x="0" y="3.5" textAnchor="middle" fontSize="7" fill="#333" fontWeight="800">N</text>
-        </g>
-      </svg>
-
-      {/* Graduated legend — right side, matching reference image */}
-      <div className="absolute top-2 right-2 bg-white/95 border border-gray-200 rounded shadow-sm px-2 py-1.5">
-        <p className="text-[9px] font-bold text-gray-600 mb-1 uppercase tracking-wide">Bite Cases</p>
-        <div className="space-y-0.5">
-          {legendSteps.map((s) => (
-            <div key={s.label} className="flex items-center gap-1.5">
-              <span className="w-4 h-3 rounded-sm inline-block shrink-0" style={{ background: s.color }} />
-              <span className="text-[9px] text-gray-600 tabular-nums">{s.label}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Ranked bar row ────────────────────────────────────────────────────────
-
-function RankedBar({ rank, name, value, max, color }: {
-  rank: number; name: string; value: number; max: number; color: string;
-}) {
-  const pct = Math.round((value / max) * 100);
-  return (
-    <div className="flex items-center gap-3 group">
-      <span className="w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0
-        bg-muted text-muted-foreground group-hover:bg-border transition-colors tabular-nums">
-        {rank}
-      </span>
-      <span className="text-xs font-medium text-foreground w-[88px] truncate">{name}</span>
-      <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
-      </div>
-      <span className="text-xs font-bold text-foreground w-6 text-right tabular-nums">{value}</span>
-    </div>
-  );
-}
-
 // ─── Dashboard ─────────────────────────────────────────────────────────────
 
 function NurseKpiCard({ title, value, helper, icon: Icon, tone }: {
@@ -608,22 +433,18 @@ function ClinicAdminDashboard({
   stats,
   recentIncidents,
   lowStockItems,
-  barangayFilter,
-  setBarangayFilter,
-  visibleBarangays,
   lastUpdated,
   complianceRate,
   getCategoryVariant,
+  isDoctor,
 }: {
   stats: DashboardStats;
   recentIncidents: DashboardIncident[];
   lowStockItems: DashboardInventoryItem[];
-  barangayFilter: 'top5' | 'all';
-  setBarangayFilter: (filter: 'top5' | 'all') => void;
-  visibleBarangays: typeof barangayCasesData;
   lastUpdated: string;
   complianceRate: number;
   getCategoryVariant: (cat?: string | null) => BadgeVariant;
+  isDoctor?: boolean;
 }) {
   const highRiskWatchlist = highRiskBarangays.slice(0, 5);
   const highRiskAlertCount = highRiskWatchlist.filter((barangay) => barangay.level === 'Critical' || barangay.level === 'High').length;
@@ -722,68 +543,7 @@ function ClinicAdminDashboard({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-          <div className="xl:col-span-2 overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
-            <div className="px-6 py-4 border-b border-slate-100 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <h2 className="text-[16px] font-bold text-slate-950">Bite Cases Per Barangay</h2>
-                <p className="text-[12px] font-normal text-slate-500 mt-0.5">Incident density by location for {new Date().getFullYear()}</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="flex rounded-xl bg-emerald-50 p-0.5 text-[12px] font-semibold">
-                  {(['top5', 'all'] as const).map((filter) => (
-                    <button
-                      key={filter}
-                      type="button"
-                      onClick={() => setBarangayFilter(filter)}
-                      className={'rounded-lg px-3 py-1 transition-colors ' + (barangayFilter === filter ? 'bg-white text-emerald-800 shadow-sm' : 'text-emerald-700/70 hover:text-emerald-900')}
-                    >
-                      {filter === 'top5' ? 'Top 5' : 'All'}
-                    </button>
-                  ))}
-                </div>
-                <a href="/gis-map" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">
-                  View GIS map <ChevronRight className="w-3 h-3" />
-                </a>
-              </div>
-            </div>
-            <div className="px-6 py-4 space-y-3">
-              {visibleBarangays.map((barangay, index) => (
-                <RankedBar key={barangay.name} rank={index + 1} name={barangay.name} value={barangay.cases} max={barangayCasesData[0].cases} color={barangay.fill} />
-              ))}
-            </div>
-          </div>
-
-          <div className="overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-[16px] font-bold text-slate-950">High-Risk Areas</h2>
-                <p className="text-[12px] font-normal text-slate-500 mt-0.5">Top barangays needing oversight</p>
-              </div>
-              <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-bold text-red-700">{displayedHighRiskCount} active</span>
-            </div>
-            <div className="divide-y divide-slate-100">
-              {highRiskWatchlist.map((barangay) => (
-                <div key={barangay.name} className="px-5 py-3 flex items-center justify-between gap-3 hover:bg-emerald-50/40 transition-colors">
-                  <div className="min-w-0 flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: barangay.dotColor }} />
-                    <span className="truncate text-[13px] font-semibold text-slate-900">{barangay.name}</span>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <span className="text-[12px] text-slate-500 tabular-nums">{barangay.cases} cases</span>
-                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${barangay.badgeClass}`}>{barangay.level}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="border-t border-slate-100 px-5 py-3">
-              <a href="/reports" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">
-                Open reports <ChevronRight className="w-3 h-3" />
-              </a>
-            </div>
-          </div>
-        </div>
-
+        
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
           <div className="xl:col-span-2 overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
@@ -819,12 +579,12 @@ function ClinicAdminDashboard({
                     {recentIncidentRows.map((incident) => (
                       <tr key={incident.id} className="hover:bg-emerald-50/40 transition-colors">
                         <td className="px-5 py-3 text-[12px] text-slate-500 whitespace-nowrap">
-                          {new Date(incident.incident_date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          {new Date(incident.incident_date || '').toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
                         </td>
                         <td className="px-5 py-3 text-[13px] font-semibold text-slate-900">{incident.patient?.full_name || '-'}</td>
                         <td className="px-5 py-3 text-[12px] text-slate-500">{incident.barangay?.name || '-'}</td>
                         <td className="px-5 py-3"><Badge variant={getCategoryVariant(incident.who_category)}>{incident.who_category?.replace('Category ', 'Cat ') || '-'}</Badge></td>
-                        <td className="px-5 py-3"><Badge variant={incident.status === 'Active' ? 'info' : 'success'}>{incident.status}</Badge></td>
+                        <td className="px-5 py-3"><Badge variant={incident.status === 'Active' ? 'info' : 'success'}>{incident.status || '-'}</Badge></td>
                       </tr>
                     ))}
                   </tbody>
@@ -833,39 +593,83 @@ function ClinicAdminDashboard({
             )}
           </div>
 
-          <div className="overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-[16px] font-bold text-slate-950">Vaccine & Supply Status</h2>
-                <p className="text-[12px] font-normal text-slate-500 mt-0.5">Low and critical stock watchlist</p>
+          {!isDoctor && (
+            <div className="overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
+              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-[16px] font-bold text-slate-950">Vaccine & Supply Status</h2>
+                  <p className="text-[12px] font-normal text-slate-500 mt-0.5">Low and critical stock watchlist</p>
+                </div>
+                <a href="/inventory" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">
+                  Inventory <ChevronRight className="w-3 h-3" />
+                </a>
               </div>
-              <a href="/inventory" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">
-                Inventory <ChevronRight className="w-3 h-3" />
-              </a>
-            </div>
-            <div className="p-5 space-y-3">
-              {clinicSupplyRows.length === 0 ? (
-                <p className="py-5 text-center text-[13px] text-slate-500">All vaccine and supply levels are adequate.</p>
-              ) : clinicSupplyRows.map((item) => {
-                const name = item.item_name || item.name;
-                const stock = item.current_stock ?? item.stock;
-                const unit = item.unit || 'units';
-                const status = item.status || (stock <= 10 ? 'critical' : 'low');
-                const color = STATUS_COLOR[status] || STATUS_COLOR.low;
-                return (
-                  <div key={name} className="rounded-2xl bg-slate-50/80 px-3 py-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="text-[13px] font-semibold leading-tight text-slate-900">{name}</p>
-                      <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={{ color, background: color + '1A' }}>
-                        {STATUS_LABEL[status] || 'Low Stock'}
-                      </span>
+              <div className="p-5 space-y-3">
+                {clinicSupplyRows.length === 0 ? (
+                  <p className="py-5 text-center text-[13px] text-slate-500">All vaccine and supply levels are adequate.</p>
+                ) : clinicSupplyRows.map((item) => {
+                  const name = item.item_name || item.name;
+                  const stock = item.current_stock ?? item.stock;
+                  const unit = item.unit || 'units';
+                  const status = item.status || (Number(stock) <= 10 ? 'critical' : 'low');
+                  const color = STATUS_COLOR[status] || STATUS_COLOR.low;
+                  return (
+                    <div key={name} className="rounded-2xl bg-slate-50/80 px-3 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-[13px] font-semibold leading-tight text-slate-900">{name}</p>
+                        <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={{ color, background: color + '1A' }}>
+                          {STATUS_LABEL[status] || 'Low Stock'}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[12px] text-slate-500"><span className="font-semibold text-slate-900 tabular-nums">{stock}</span> {unit} remaining</p>
                     </div>
-                    <p className="mt-1 text-[12px] text-slate-500"><span className="font-semibold text-slate-900 tabular-nums">{stock}</span> {unit} remaining</p>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
+
+          {isDoctor && (
+            <div className="overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)] flex flex-col">
+              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-[16px] font-bold text-slate-950">GIS Overview</h2>
+                  <p className="text-[12px] font-normal text-slate-500 mt-0.5">Geographic incident monitoring</p>
+                </div>
+                <a href="/gis-map" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline whitespace-nowrap">
+                  View GIS map <ChevronRight className="w-3 h-3" />
+                </a>
+              </div>
+              <div className="p-5 space-y-4 flex-1">
+                <div>
+                  <p className="text-[12px] font-semibold text-slate-700 uppercase tracking-wide">High-risk areas</p>
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <span className="flex items-center justify-center bg-red-50 text-red-700 font-bold text-[18px] w-8 h-8 rounded-lg">{highRiskAlertCount}</span>
+                    <span className="text-[13px] font-medium text-slate-900">active Critical/High barangays</span>
+                  </div>
+                </div>
+                {highRiskWatchlist.length > 0 && (
+                  <div>
+                    <p className="text-[12px] font-semibold text-slate-700 uppercase tracking-wide">Top area</p>
+                    <p className="mt-1 text-[16px] font-bold text-slate-950">{highRiskWatchlist[0].name}</p>
+                    <p className="text-[13px] text-slate-500">{highRiskWatchlist[0].cases} cases</p>
+                  </div>
+                )}
+                {highRiskWatchlist.length > 1 && (
+                  <div>
+                    <p className="text-[12px] font-semibold text-slate-700 uppercase tracking-wide mb-1.5">Other monitored areas</p>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-[13px]">
+                      {highRiskWatchlist.slice(1, 4).map(b => (
+                        <span key={b.name} className="text-slate-600">
+                          <span className="font-semibold text-slate-900">{b.name}</span> &middot; {b.cases}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -892,36 +696,47 @@ function ClinicAdminDashboard({
             </div>
           </div>
 
-          <div className="xl:col-span-2 overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-[16px] font-bold text-slate-950">GIS Summary</h2>
-                <p className="text-[12px] font-normal text-slate-500 mt-0.5">Barangay hotspot overview for clinic planning</p>
-              </div>
-              <a href="/gis-map" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">
-                View GIS map <ChevronRight className="w-3 h-3" />
-              </a>
-            </div>
-            <div className="grid grid-cols-1 gap-4 p-5 lg:grid-cols-[1.25fr_0.75fr]">
-              <div className="h-56 overflow-hidden rounded-2xl bg-slate-100">
-                <HeatmapPreview />
-              </div>
-              <div className="space-y-3">
-                <div className="rounded-2xl bg-emerald-50 px-4 py-3">
-                  <p className="text-[12px] font-semibold text-emerald-800">Priority area</p>
-                  <p className="mt-1 text-[24px] font-bold leading-none text-slate-950">{highRiskWatchlist[0]?.name || 'None'}</p>
-                  <p className="mt-1 text-[12px] text-slate-500">{highRiskWatchlist[0]?.cases || 0} cases in the current watchlist.</p>
+          {!isDoctor && (
+            <div className="overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)] flex flex-col">
+              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-[16px] font-bold text-slate-950">GIS Overview</h2>
+                  <p className="text-[12px] font-normal text-slate-500 mt-0.5">Geographic incident monitoring</p>
                 </div>
-                <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                  <p className="text-[12px] font-semibold text-slate-700">Operational links</p>
-                  <div className="mt-2 flex flex-col gap-2">
-                    <a href="/reports" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">Open reports <ChevronRight className="w-3 h-3" /></a>
-                    <a href="/notifications" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">View notifications <ChevronRight className="w-3 h-3" /></a>
+                <a href="/gis-map" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline whitespace-nowrap">
+                  View GIS map <ChevronRight className="w-3 h-3" />
+                </a>
+              </div>
+              <div className="p-5 space-y-4 flex-1">
+                <div>
+                  <p className="text-[12px] font-semibold text-slate-700 uppercase tracking-wide">High-risk areas</p>
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <span className="flex items-center justify-center bg-red-50 text-red-700 font-bold text-[18px] w-8 h-8 rounded-lg">{highRiskAlertCount}</span>
+                    <span className="text-[13px] font-medium text-slate-900">active Critical/High barangays</span>
                   </div>
                 </div>
+                {highRiskWatchlist.length > 0 && (
+                  <div>
+                    <p className="text-[12px] font-semibold text-slate-700 uppercase tracking-wide">Top area</p>
+                    <p className="mt-1 text-[16px] font-bold text-slate-950">{highRiskWatchlist[0].name}</p>
+                    <p className="text-[13px] text-slate-500">{highRiskWatchlist[0].cases} cases</p>
+                  </div>
+                )}
+                {highRiskWatchlist.length > 1 && (
+                  <div>
+                    <p className="text-[12px] font-semibold text-slate-700 uppercase tracking-wide mb-1.5">Other monitored areas</p>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-[13px]">
+                      {highRiskWatchlist.slice(1, 4).map(b => (
+                        <span key={b.name} className="text-slate-600">
+                          <span className="font-semibold text-slate-900">{b.name}</span> &middot; {b.cases}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
