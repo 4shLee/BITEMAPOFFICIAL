@@ -1,3 +1,20 @@
+**Quick Start**
+
+BITEMAP STARTUP
+
+Terminal 1
+cd BITEMAPOFFICIAL
+docker compose up -d
+
+Terminal 2
+cd BITEMAPOFFICIAL/backend
+php artisan serve
+
+Terminal 3
+cd BITEMAPOFFICIAL/frontend
+npm run dev
+
+
 # BITEMAP
 
 **A GIS-Based Animal Bite Incident Tracking and Anti-Rabies Vaccination Monitoring System**
