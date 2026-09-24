@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router";
 import { ArrowLeft, ArrowRight, Check, ChevronDown, Eye, EyeOff, Globe2, Lock, Mail, ShieldAlert, ShieldCheck, Zap, UserPlus } from "lucide-react";
 import { authAPI, getErrorMessage } from "../../lib/services/api";
@@ -8,96 +8,7 @@ import { AnimatedGISBackground } from "../components/Brand/AnimatedGISBackground
 import { BITEMAP_FONT_FAMILY, BITEMAP_LOGO_SRC } from "../components/Brand/brand";
 
 const DEMO_MODE = false;
-const REQUESTABLE_ROLES = ASSIGNABLE_ROLES.filter((role) => role.value !== 'system_admin');
 
-const initialRequestForm = {
-  firstName: "",
-  middleName: "",
-  lastName: "",
-  suffix: "",
-  email: "",
-  phone: "",
-  role: "",
-  password: "",
-  confirmPassword: "",
-};
-
-function RequestedRoleDropdown({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const selectedRole = REQUESTABLE_ROLES.find((role) => role.value === value);
-
-  useEffect(() => {
-    const handlePointerDown = (event: MouseEvent) => {
-      if (!dropdownRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, []);
-
-  return (
-    <div ref={dropdownRef} className="relative">
-      <button
-        type="button"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
-        onKeyDown={(event) => {
-          if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            setOpen(true);
-          }
-        }}
-        className={'flex w-full items-center justify-between rounded-xl border px-3.5 py-2.5 text-left text-sm shadow-sm shadow-slate-900/5 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20 ' + (open ? 'border-teal-600 bg-white ring-2 ring-teal-500/20' : 'border-slate-200 bg-slate-50/70')}
-      >
-        <span className={selectedRole ? 'font-medium text-slate-900' : 'text-slate-400'}>
-          {selectedRole?.label || 'Select requested role'}
-        </span>
-        <ChevronDown className={'h-4 w-4 text-slate-400 transition-transform ' + (open ? 'rotate-180 text-teal-700' : '')} />
-      </button>
-
-      {open && (
-        <div
-          role="listbox"
-          className="absolute left-0 right-0 top-[calc(100%+6px)] z-30 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl shadow-teal-950/12"
-        >
-          {REQUESTABLE_ROLES.map((role) => {
-            const selected = role.value === value;
-
-            return (
-              <button
-                key={role.value}
-                type="button"
-                role="option"
-                aria-selected={selected}
-                onClick={() => {
-                  onChange(role.value);
-                  setOpen(false);
-                }}
-                className={'flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-semibold transition-colors ' + (selected ? 'bg-teal-50 text-teal-800' : 'text-slate-700 hover:bg-emerald-50 hover:text-teal-800')}
-              >
-                {role.label}
-                {selected && <Check className="h-4 w-4" />}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
 
 export function Login() {
   const navigate = useNavigate();
@@ -105,11 +16,6 @@ export function Login() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [showRequestModal, setShowRequestModal] = useState(false);
-  const [requestForm, setRequestForm] = useState(initialRequestForm);
-  const [showRequestPassword, setShowRequestPassword] = useState(false);
-  const [isRequestSubmitting, setIsRequestSubmitting] = useState(false);
-  const [requestSubmitted, setRequestSubmitted] = useState(false);
 
   useEffect(() => {
     const user = getStoredUser();
@@ -117,18 +23,6 @@ export function Login() {
       navigate(getDefaultPathForRole(user.role), { replace: true });
     }
   }, [navigate]);
-
-  useEffect(() => {
-    if (!showRequestModal) return;
-
-    document.documentElement.classList.add("request-account-route");
-    document.body.classList.add("request-account-route");
-
-    return () => {
-      document.documentElement.classList.remove("request-account-route");
-      document.body.classList.remove("request-account-route");
-    };
-  }, [showRequestModal]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -148,58 +42,6 @@ export function Login() {
     }
   };
 
-  const handleRequestSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-
-    if (!requestForm.role) {
-      toast.error("Please select a requested role.");
-      return;
-    }
-
-    if (requestForm.password.length < 8) {
-      toast.error("Password must be at least 8 characters.");
-      return;
-    }
-
-    if (requestForm.password !== requestForm.confirmPassword) {
-      toast.error("Passwords do not match.");
-      return;
-    }
-
-    setIsRequestSubmitting(true);
-    try {
-      const result = await authAPI.signUp(
-        requestForm.email.trim(),
-        requestForm.password,
-        {
-          firstName: requestForm.firstName,
-          middleName: requestForm.middleName,
-          lastName: requestForm.lastName,
-          suffix: requestForm.suffix,
-        },
-        requestForm.role,
-        requestForm.phone.trim() || undefined
-      );
-
-      if (result.success) {
-        setRequestSubmitted(true);
-        setRequestForm(initialRequestForm);
-        toast.success(result.message || "Account request submitted for System Administrator approval.");
-      }
-    } catch (error: unknown) {
-      toast.error(getErrorMessage(error, "Failed to submit account request."));
-    } finally {
-      setIsRequestSubmitting(false);
-    }
-  };
-
-  const closeRequestModal = () => {
-    setShowRequestModal(false);
-    setRequestSubmitted(false);
-    setShowRequestPassword(false);
-    setRequestForm(initialRequestForm);
-  };
-
   const handleDemoAccess = () => {
     toast.success("Demo access granted - welcome!");
     navigate("/dashboard");
@@ -207,7 +49,7 @@ export function Login() {
 
   return (
     <div
-      className={`relative isolate flex min-h-screen flex-col bg-slate-50 ${showRequestModal ? "request-account-scroll" : "overflow-hidden"}`}
+      className="relative isolate flex min-h-screen flex-col bg-slate-50 overflow-hidden"
       style={{
         fontFamily: BITEMAP_FONT_FAMILY,
       }}
@@ -237,197 +79,21 @@ export function Login() {
       </header>
 
       <main
-        className="relative z-10 flex min-h-[calc(100vh-108px)] flex-1 items-center justify-center px-4 py-3 sm:py-4"
+        className="relative z-10 flex min-h-[calc(100vh-108px)] flex-1 items-center justify-center px-4 py-6 sm:py-8"
       >
-        <section className="relative w-full max-w-[480px] rounded-[28px] border border-white/85 bg-white/95 px-6 py-5 shadow-[0_22px_70px_rgba(15,118,110,0.24)] backdrop-blur-md sm:px-8 sm:py-6">
-          <div className="mb-4 text-center">
-            <div className="mx-auto mb-2 flex h-16 w-16 items-center justify-center rounded-full bg-teal-50 shadow-inner shadow-teal-900/5">
+        <section className="relative w-full max-w-[440px] rounded-[28px] border border-white/85 bg-white/95 px-6 py-8 shadow-[0_22px_70px_rgba(15,118,110,0.24)] backdrop-blur-md sm:px-10 sm:py-10">
+          <div className="mb-6 text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-teal-50 shadow-inner shadow-teal-900/5">
               <img src={BITEMAP_LOGO_SRC} alt="BITEMAP logo" className="h-12 w-12 object-contain" />
             </div>
-            <p className="text-[30px] font-extrabold leading-tight text-teal-800 sm:text-[34px]">BITEMAP</p>
-            <p className="mx-auto mt-1.5 max-w-[390px] text-[13px] font-medium leading-relaxed text-slate-600">
-              GIS-Based Animal Bite Incident Tracking and Anti-Rabies Vaccination Monitoring System
-            </p>
           </div>
 
-          {requestSubmitted ? (
-            <div className="text-center">
-              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-50 text-teal-700">
-                <ShieldCheck className="h-7 w-7" />
-              </div>
-              <h2 className="text-[23px] font-extrabold leading-tight text-slate-900 sm:text-[25px]">Request Submitted</h2>
-              <p className="mx-auto mt-2 max-w-[360px] text-sm leading-relaxed text-slate-500">
-                Your account request is now pending administrator approval. You can sign in after the administrator approves it.
-              </p>
-              <button
-                type="button"
-                onClick={closeRequestModal}
-                className="mt-6 inline-flex h-11 w-full items-center justify-center rounded-full bg-teal-700 px-4 text-sm font-bold text-white transition-colors hover:bg-teal-800"
-              >
-                Back to Sign In
-              </button>
-            </div>
-          ) : showRequestModal ? (
-            <>
-              <div className="mb-4 text-center">
-                <div className="mx-auto mb-2 h-1 w-11 rounded-full bg-teal-200" />
-                <h2 className="text-[23px] font-extrabold leading-tight text-slate-900 sm:text-[25px]">Request Account Approval</h2>
-                <p className="mt-1 text-[13px] font-semibold text-slate-500">For authorized clinic personnel</p>
-              </div>
+          <div className="mb-6 text-center">
+            <h2 className="text-[24px] font-extrabold leading-tight text-slate-900 sm:text-[26px]">Staff Sign In</h2>
+            <p className="mt-1.5 text-[14px] font-medium text-slate-500">Access your BITEMAP workspace</p>
+          </div>
 
-              <form onSubmit={handleRequestSubmit} className="space-y-3">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-slate-800">First Name</label>
-                    <input
-                      type="text"
-                      autoComplete="given-name"
-                      value={requestForm.firstName}
-                      onChange={(e) => setRequestForm({ ...requestForm, firstName: e.target.value })}
-                      required
-                      placeholder="First name"
-                      className="w-full rounded-xl border border-slate-200 bg-white/90 px-3.5 py-2.5 text-sm text-slate-900 shadow-sm shadow-slate-900/5 placeholder:text-slate-400 focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-slate-800">Middle Name <span className="font-normal text-slate-400">(optional)</span></label>
-                    <input
-                      type="text"
-                      autoComplete="additional-name"
-                      value={requestForm.middleName}
-                      onChange={(e) => setRequestForm({ ...requestForm, middleName: e.target.value })}
-                      placeholder="Middle name"
-                      className="w-full rounded-xl border border-slate-200 bg-white/90 px-3.5 py-2.5 text-sm text-slate-900 shadow-sm shadow-slate-900/5 placeholder:text-slate-400 focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-slate-800">Last Name</label>
-                    <input
-                      type="text"
-                      autoComplete="family-name"
-                      value={requestForm.lastName}
-                      onChange={(e) => setRequestForm({ ...requestForm, lastName: e.target.value })}
-                      required
-                      placeholder="Last name"
-                      className="w-full rounded-xl border border-slate-200 bg-white/90 px-3.5 py-2.5 text-sm text-slate-900 shadow-sm shadow-slate-900/5 placeholder:text-slate-400 focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-slate-800">Suffix <span className="font-normal text-slate-400">(optional)</span></label>
-                    <input
-                      type="text"
-                      autoComplete="honorific-suffix"
-                      value={requestForm.suffix}
-                      onChange={(e) => setRequestForm({ ...requestForm, suffix: e.target.value })}
-                      placeholder="Jr., Sr., II, III, IV"
-                      className="w-full rounded-xl border border-slate-200 bg-white/90 px-3.5 py-2.5 text-sm text-slate-900 shadow-sm shadow-slate-900/5 placeholder:text-slate-400 focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-slate-800">Email</label>
-                    <input
-                      type="email"
-                      value={requestForm.email}
-                      onChange={(e) => setRequestForm({ ...requestForm, email: e.target.value })}
-                      required
-                      placeholder="Enter email address"
-                      className="w-full rounded-xl border border-slate-200 bg-white/90 px-3.5 py-2.5 text-sm text-slate-900 shadow-sm shadow-slate-900/5 placeholder:text-slate-400 focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-slate-800">Phone</label>
-                    <input
-                      type="tel"
-                      value={requestForm.phone}
-                      onChange={(e) => setRequestForm({ ...requestForm, phone: e.target.value })}
-                      placeholder="09XXXXXXXXX"
-                      className="w-full rounded-xl border border-slate-200 bg-white/90 px-3.5 py-2.5 text-sm text-slate-900 shadow-sm shadow-slate-900/5 placeholder:text-slate-400 focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-sm font-semibold text-slate-800">Requested Role</label>
-                  <RequestedRoleDropdown
-                    value={requestForm.role}
-                    onChange={(role) => setRequestForm({ ...requestForm, role })}
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-slate-800">Password</label>
-                    <div className="relative">
-                      <input
-                        type={showRequestPassword ? "text" : "password"}
-                        value={requestForm.password}
-                        onChange={(e) => setRequestForm({ ...requestForm, password: e.target.value })}
-                        required
-                        minLength={8}
-                        placeholder="At least 8 characters"
-                        className="w-full rounded-xl border border-slate-200 bg-white/90 px-3.5 py-2.5 pr-10 text-sm text-slate-900 shadow-sm shadow-slate-900/5 placeholder:text-slate-400 focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowRequestPassword((value) => !value)}
-                        className="absolute inset-y-0 right-3 flex items-center text-slate-400 transition-colors hover:text-teal-800"
-                        aria-label={showRequestPassword ? "Hide password" : "Show password"}
-                      >
-                        {showRequestPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-slate-800">Confirm Password</label>
-                    <input
-                      type={showRequestPassword ? "text" : "password"}
-                      value={requestForm.confirmPassword}
-                      onChange={(e) => setRequestForm({ ...requestForm, confirmPassword: e.target.value })}
-                      required
-                      minLength={8}
-                      placeholder="Repeat password"
-                      className="w-full rounded-xl border border-slate-200 bg-white/90 px-3.5 py-2.5 text-sm text-slate-900 shadow-sm shadow-slate-900/5 placeholder:text-slate-400 focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
-                    />
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-amber-200/80 bg-amber-50 px-4 py-2.5">
-                  <p className="text-xs leading-relaxed text-amber-700">
-                    Account access remains blocked until an administrator approves this request.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={closeRequestModal}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-teal-700/35 bg-white px-4 text-sm font-bold text-teal-800 transition-colors hover:bg-teal-50"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                    Back to Sign In
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isRequestSubmitting}
-                    className="inline-flex h-11 items-center justify-center rounded-full bg-teal-700 px-4 text-sm font-bold text-white transition-colors hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {isRequestSubmitting ? "Submitting..." : "Submit Request"}
-                  </button>
-                </div>
-              </form>
-            </>
-          ) : (
-            <>
-              <div className="mb-4 text-center">
-                <div className="mx-auto mb-2 h-1 w-11 rounded-full bg-teal-200" />
-                <h2 className="text-[23px] font-extrabold leading-tight text-slate-900 sm:text-[25px]">Sign In</h2>
-                <p className="mt-1 text-[13px] font-semibold text-slate-500">Authorized Staff Login</p>
-              </div>
-
-              <form onSubmit={handleSubmit} className="space-y-3">
+              <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <label htmlFor="username" className="sr-only">
                     Email
@@ -512,28 +178,19 @@ export function Login() {
                   )}
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => setShowRequestModal(true)}
-                  className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border border-teal-700/55 bg-white px-4 text-[14px] font-extrabold text-teal-800 transition-colors hover:border-teal-700 hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-teal-500/25 focus:ring-offset-2"
-                >
-                  <UserPlus className="h-5 w-5" />
-                  Request Account Approval
-                </button>
+                <div className="mt-4 text-center">
+                  <Link
+                    to="/request-account-approval"
+                    className="text-[14px] font-medium text-teal-700 transition-colors hover:text-teal-900 hover:underline focus:outline-none"
+                  >
+                    Need an account? Request access
+                  </Link>
+                </div>
               </form>
 
-              <div className="mt-4 flex items-center justify-center gap-2.5 rounded-2xl border border-rose-200/80 bg-rose-50/80 px-4 py-2.5">
-                <ShieldAlert className="h-4 w-4 shrink-0 text-rose-600" />
-                <p className="text-center text-[13px] font-semibold leading-snug text-rose-700">
-                  Access is restricted to authorized clinic personnel only.
-                </p>
-              </div>
-
-              <p className="mx-auto mt-2 text-center text-[13px] font-medium leading-snug text-slate-500">
-                Access depends on your assigned role.
+              <p className="mt-6 text-center text-[13px] font-medium text-slate-400">
+                Authorized clinic staff only
               </p>
-            </>
-          )}
         </section>
       </main>
 
