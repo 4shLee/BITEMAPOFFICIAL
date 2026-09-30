@@ -55,6 +55,8 @@ class BitemapApiController extends Controller
         $user = User::where('email', $email)->first();
 
         if (! $user || ! Hash::check($credentials['password'], $user->password)) {
+            $this->writeAudit($request, 'Failed login', 'Authentication', $user?->id, 'Failed login attempt for email: '.$email.'.', $user);
+
             return response()->json([
                 'success' => false,
                 'error' => 'Invalid email or password.',
@@ -273,9 +275,11 @@ class BitemapApiController extends Controller
         ]);
     }
 
-    public function showPatient(Patient $patient): JsonResponse
+    public function showPatient(Request $request, Patient $patient): JsonResponse
     {
         $patient->load(['barangay', 'incidents.barangay', 'incidents.pepSchedules', 'notifications']);
+
+        $this->writeAudit($request, 'View record', 'Patients', $patient->id, 'Viewed patient record #'.$patient->id.'.');
 
         return response()->json([
             'success' => true,
@@ -291,6 +295,8 @@ class BitemapApiController extends Controller
         $data = $this->validatePatient($request, true);
         $patient = Patient::create($data);
 
+        $this->writeAudit($request, 'Create record', 'Patients', $patient->id, 'Created patient record #'.$patient->id.'.');
+
         return response()->json([
             'success' => true,
             'data' => $this->patientPayload($patient->load('barangay')),
@@ -300,6 +306,8 @@ class BitemapApiController extends Controller
     public function updatePatient(Request $request, Patient $patient): JsonResponse
     {
         $patient->update($this->validatePatient($request, false));
+
+        $this->writeAudit($request, 'Edit record', 'Patients', $patient->id, 'Updated patient record #'.$patient->id.'.');
 
         return response()->json([
             'success' => true,
@@ -398,8 +406,10 @@ class BitemapApiController extends Controller
         ]);
     }
 
-    public function showIncident(Incident $incident): JsonResponse
+    public function showIncident(Request $request, Incident $incident): JsonResponse
     {
+        $this->writeAudit($request, 'View record', 'Incidents', $incident->id, 'Viewed incident record #'.$incident->id.'.');
+
         return response()->json([
             'success' => true,
             'data' => $this->incidentPayload($incident->load(['patient', 'barangay', 'pepSchedules', 'whoCategoryConfirmer'])),
@@ -415,6 +425,8 @@ class BitemapApiController extends Controller
 
             return $incident;
         });
+
+        $this->writeAudit($request, 'Create record', 'Incidents', $incident->id, 'Created incident record #'.$incident->id.'.');
 
         return response()->json([
             'success' => true,
@@ -447,6 +459,8 @@ class BitemapApiController extends Controller
             $updatedIncident = $incident->fresh();
             $this->syncPepScheduleForIncident($updatedIncident, $pepStartDateChanged);
         });
+
+        $this->writeAudit($request, 'Edit record', 'Incidents', $incident->id, 'Updated incident record #'.$incident->id.'.');
 
         return response()->json([
             'success' => true,

@@ -88,8 +88,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/send-email', [BitemapApiController::class, 'sendEmail'])
         ->middleware('role:clinic_admin,nurse_vaccinator');
 
-    Route::get('/audit-logs', [BitemapApiController::class, 'auditLogs'])->middleware('role:system_admin');
-    Route::get('/audit-logs/download', [BitemapApiController::class, 'downloadAuditLogs'])->middleware('role:system_admin');
+    Route::get('/audit-logs', [BitemapApiController::class, 'auditLogs'])->middleware('role:system_admin,clinic_admin');
+    Route::get('/audit-logs/download', [BitemapApiController::class, 'downloadAuditLogs'])->middleware('role:system_admin,clinic_admin');
 
     Route::get('/reports/summary', [BitemapApiController::class, 'reportSummary'])
         ->middleware('role:clinic_admin,doctor');
