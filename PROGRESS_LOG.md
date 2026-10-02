@@ -2617,3 +2617,93 @@ Throughout these changes, the following were intentionally preserved:
 - Permissions and role restrictions
 - Public-data privacy protections
 - Authenticated GIS access behavior
+## September 30, 2026 – Account Request & Login UI Refactoring
+
+### 1. Dedicated Account Request Route
+**Status:** Completed
+**Files updated:**
+- rontend/src/app/App.tsx
+- rontend/src/app/pages/Login.tsx
+- rontend/src/app/pages/RequestAccountApproval.tsx
+
+**Summary:**
+- Extracted the account request modal from the Login page into a dedicated standalone route (/request-account-approval).
+- Updated the Login page to link to this new route rather than handling modal state inline.
+- Stripped unused state and form handlers from Login.tsx to keep the authentication entry point clean.
+- Created a robust 2-column responsive layout for the request form to improve readability and user experience.
+
+### 2. UI Polish & Visual Identity Restoration
+**Status:** Completed
+**Files updated:**
+- rontend/src/app/pages/RequestAccountApproval.tsx
+
+**Summary:**
+- Restored the vibrant AnimatedGISBackground to its original unmasked appearance.
+- Simplified the form card by softening the shadow and removing heavy borders on section headers.
+- Removed inner shadows from input fields and dropdowns, opting for clean borders and simple focus states.
+- Refined vertical spacing to make the form feel professionally compact without being cramped.
+- Removed the bulky circular container behind the BITEMAP logo to maintain a cleaner header.
+
+**Expected behavior:**
+- Clicking "Need an account? Request access" redirects to the new route.
+- The request form matches the modern, minimal visual language of the application.
+- All form logic, API calls, and validation rules operate exactly as they did before the UI updates.
+
+## October 1, 2026 - Dockerization for Testing Environment
+
+### 1. Fully Containerized Development Environment
+**Status:** Completed
+**Files created/updated:**
+- ackend/Dockerfile
+- rontend/Dockerfile
+- web/nginx.conf
+- docker-compose.yml
+- .env.docker.example
+- .env.docker
+- ackend/.dockerignore
+- rontend/.dockerignore
+
+**Summary:**
+- Transitioned BITEMAP to a fully containerized architecture using Docker Compose.
+- **MariaDB (itemap-mariadb)**: Uses mariadb:10.11 with a persistent named volume and health checks.
+- **Backend (itemap-backend)**: Uses php:8.5-fpm (as required by Laravel 13 dependencies) with pdo_mysql and other necessary extensions. Includes standard Laravel optimization.
+- **Web (itemap-web)**: Uses 
+ginx:alpine to serve Laravel on port 8000 and proxy API requests to itemap-backend. Fixed BOM encoding issue in nginx config.
+- **Queue Worker (itemap-queue)**: Runs php artisan queue:work using the backend image to handle SMS reminders and background jobs.
+- **Scheduler (itemap-scheduler)**: Runs php artisan schedule:work to automatically trigger missed PEP detection and cron jobs.
+- **Frontend (itemap-frontend)**: Uses Node 24 on Alpine to run the Vite dev server (
+pm run dev) on port 5173, supporting hot-reload.
+- **Environment config**: Preserved existing configurations by creating .env.docker based on .env.docker.example. Configured containers to communicate via Docker network hostnames (e.g., DB_HOST=db).
+
+**Expected behavior:**
+- Running docker compose up -d --build spins up the entire application stack.
+- The web server responds on http://localhost:8000 for API requests.
+- The frontend Vite server is accessible on http://localhost:5173.
+- Laravel can connect to MariaDB and execute migrations without modifying localhost assumptions in the source code.
+- Database state persists across container restarts via itemap_mariadb_data volume.
+- Scheduled tasks and SMS queue workers function properly in the background.
+
+**Verification:**
+- Containers built successfully and are healthy.
+- Backend API responds correctly with 401 Unauthorized for protected routes (verifying connectivity).
+- Frontend serves the React application successfully on port 5173.
+- Database migrations and seeders ran successfully in the backend container.
+
+### 2. Docker Setup Security and Workflow Audit
+**Status:** Completed
+**Files created/updated:**
+- .env.docker.example
+- .env.docker
+- README.md
+
+**Summary:**
+- Removed root user privileges for the Laravel application database connection.
+- Configured MariaDB to initialize with a dedicated itemap user and itemap_db database.
+- Verified that PHP dependencies in composer.lock require PHP >= 8.4.1, justifying the use of php:8.5-fpm in the backend Dockerfile.
+- Completely rewrote the README.md instructions to provide a clear, Docker-first workflow for first-time setup, daily development, and dependency rebuilds.
+- Ensured .env.docker is properly ignored in .gitignore to prevent leaking secrets.
+
+**Expected behavior:**
+- New developers cloning the repository will follow a robust, container-only setup guide in the README.
+- The application connects to MariaDB using a restricted user account instead of root.
+- The Docker environment supports Vite hot-reload and Laravel live code edits seamlessly without rebuilding containers.
