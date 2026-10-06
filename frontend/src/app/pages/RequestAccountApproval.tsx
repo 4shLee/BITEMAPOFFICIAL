@@ -59,7 +59,7 @@ function RequestedRoleDropdown({ value, onChange }: { value: string; onChange: (
             setOpen(true);
           }
         }}
-        className={'flex w-full items-center justify-between rounded-lg border px-3 py-1.5 text-left [@media(max-height:760px)]:py-1 text-[13px] transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20 ' + (open ? 'border-teal-600 bg-white ring-2 ring-teal-500/20' : 'border-slate-200 bg-white/90')}
+        className={'flex h-8 w-full items-center justify-between rounded-lg border px-3 py-1 text-left text-[13px] transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20 ' + (open ? 'border-teal-600 bg-white ring-2 ring-teal-500/20' : 'border-slate-200 bg-white/90')}
       >
         <span className={selectedRole ? 'font-medium text-slate-900' : 'text-slate-400'}>
           {selectedRole?.label || 'Select the role you are requesting'}
@@ -70,7 +70,7 @@ function RequestedRoleDropdown({ value, onChange }: { value: string; onChange: (
       {open && (
         <div
           role="listbox"
-          className="absolute left-0 right-0 top-[calc(100%+6px)] z-30 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl shadow-teal-950/12"
+          className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl shadow-teal-950/12 [scrollbar-width:thin]"
         >
           {REQUESTABLE_ROLES.map((role) => {
             const selected = role.value === value;
@@ -85,7 +85,7 @@ function RequestedRoleDropdown({ value, onChange }: { value: string; onChange: (
                   onChange(role.value);
                   setOpen(false);
                 }}
-                className={'flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-[14px] font-semibold transition-colors ' + (selected ? 'bg-teal-50 text-teal-800' : 'text-slate-700 hover:bg-emerald-50 hover:text-teal-800')}
+                className={'flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left text-[13px] font-semibold transition-colors ' + (selected ? 'bg-teal-50 text-teal-800' : 'text-slate-700 hover:bg-emerald-50 hover:text-teal-800')}
               >
                 {role.label}
                 {selected && <Check className="h-4 w-4" />}
@@ -151,7 +151,7 @@ export function RequestAccountApproval() {
 
   return (
     <div
-      className="relative isolate flex min-h-screen flex-col bg-slate-50 overflow-hidden"
+      className="relative isolate flex h-screen max-h-screen h-dvh max-h-dvh flex-col bg-slate-50 overflow-hidden"
       style={{
         fontFamily: BITEMAP_FONT_FAMILY,
       }}
@@ -180,43 +180,43 @@ export function RequestAccountApproval() {
         </div>
       </header>
 
-      <main className="relative z-10 flex min-h-0 flex-1 items-center justify-center px-4 py-2 sm:py-3 [@media(max-height:760px)]:py-1.5 [@media(max-height:640px)]:py-0.5">
-        <section className="relative w-full max-w-[560px] rounded-[24px] border border-slate-100 bg-white/95 px-5 py-3.5 shadow-xl shadow-slate-200/50 backdrop-blur-md sm:px-6 sm:py-4 [@media(max-height:760px)]:py-2.5 [@media(max-height:640px)]:py-1.5 [@media(max-height:640px)]:px-4">
-          <div className="mb-1.5 text-center [@media(max-height:760px)]:mb-1">
-            <img src={BITEMAP_LOGO_SRC} alt="BITEMAP logo" className="mx-auto h-9 w-9 sm:h-10 sm:w-10 object-contain [@media(max-height:760px)]:h-8 [@media(max-height:760px)]:w-8" />
+      <main className="relative z-10 overflow-hidden flex-1 min-h-0 flex items-center justify-center px-4 py-2 sm:py-3 [@media(max-height:760px)]:py-1.5 [@media(max-height:640px)]:py-0.5">
+        <section className="relative max-h-full w-full max-w-[560px] overflow-y-auto rounded-[24px] border border-slate-100 bg-white/95 px-5 py-2 sm:px-6 sm:py-3 shadow-xl shadow-slate-200/50 backdrop-blur-md [scrollbar-width:thin] [scrollbar-color:rgb(203_213_225)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-transparent">
+          <div className="mb-1 text-center">
+            <img src={BITEMAP_LOGO_SRC} alt="BITEMAP logo" className="mx-auto h-8 w-8 sm:h-9 sm:w-9 object-contain" />
           </div>
 
           {requestSubmitted ? (
-            <div className="text-center">
-              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-50 text-teal-700">
-                <ShieldCheck className="h-7 w-7" />
+            <div className="text-center py-2">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-teal-50 text-teal-700">
+                <ShieldCheck className="h-6 w-6" />
               </div>
-              <h2 className="text-[23px] font-extrabold leading-tight text-slate-900 sm:text-[25px]">Request Submitted</h2>
+              <h2 className="text-[22px] font-extrabold leading-tight text-slate-900 sm:text-[24px]">Request Submitted</h2>
               <p className="mx-auto mt-2 max-w-[360px] text-sm leading-relaxed text-slate-500">
                 Your account request is now pending administrator approval. You can sign in after the administrator approves it.
               </p>
               <Link
                 to="/login"
-                className="mt-6 inline-flex h-12 w-full items-center justify-center rounded-full bg-teal-700 px-4 text-[15px] font-bold text-white transition-colors hover:bg-teal-800"
+                className="mt-5 inline-flex h-11 w-full items-center justify-center rounded-full bg-teal-700 px-4 text-[14px] font-bold text-white transition-colors hover:bg-teal-800"
               >
                 Return to Sign In
               </Link>
             </div>
           ) : (
             <>
-              <div className="mb-2 text-center [@media(max-height:760px)]:mb-1.5 [@media(max-height:640px)]:mb-0.5">
-                <h2 className="text-[21px] font-extrabold leading-tight text-slate-900 sm:text-[23px] [@media(max-height:640px)]:text-[19px]">Request Account Approval</h2>
+              <div className="mb-1.5 text-center">
+                <h2 className="text-[20px] font-extrabold leading-tight text-slate-900 sm:text-[22px] [@media(max-height:640px)]:text-[18px]">Request Account Approval</h2>
                 <p className="mt-0.5 text-[12px] font-medium text-slate-500 [@media(max-height:640px)]:hidden">Submit your details for authorized staff review.</p>
               </div>
 
-              <form onSubmit={handleRequestSubmit} className="space-y-2.5 [@media(max-height:760px)]:space-y-1.5 [@media(max-height:640px)]:space-y-1">
+              <form onSubmit={handleRequestSubmit} className="space-y-1.5">
                 {/* Personal Information Section */}
-                <div className="space-y-1.5 [@media(max-height:760px)]:space-y-1 [@media(max-height:640px)]:space-y-0.5">
-                  <h3 className="text-[13px] font-semibold text-slate-500 [@media(max-height:760px)]:leading-tight">Personal Information</h3>
+                <div className="space-y-1">
+                  <h3 className="text-[12px] font-semibold text-slate-500 leading-tight">Personal Information</h3>
                   
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-2.5">
                     <div>
-                      <label className="mb-0.5 block text-[12px] font-semibold text-slate-800 [@media(max-height:760px)]:leading-tight">First Name</label>
+                      <label className="mb-0.5 block text-[12px] font-semibold text-slate-800 leading-tight">First Name</label>
                       <input
                         type="text"
                         autoComplete="given-name"
@@ -224,11 +224,11 @@ export function RequestAccountApproval() {
                         onChange={(e) => setRequestForm({ ...requestForm, firstName: e.target.value })}
                         required
                         placeholder="First name"
-                        className="w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1.5 [@media(max-height:760px)]:py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                        className="h-8 w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                       />
                     </div>
                     <div>
-                      <label className="mb-0.5 block text-[12px] font-semibold text-slate-800 [@media(max-height:760px)]:leading-tight">Last Name</label>
+                      <label className="mb-0.5 block text-[12px] font-semibold text-slate-800 leading-tight">Last Name</label>
                       <input
                         type="text"
                         autoComplete="family-name"
@@ -236,67 +236,67 @@ export function RequestAccountApproval() {
                         onChange={(e) => setRequestForm({ ...requestForm, lastName: e.target.value })}
                         required
                         placeholder="Last name"
-                        className="w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1.5 [@media(max-height:760px)]:py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                        className="h-8 w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                       />
                     </div>
                   </div>
                   
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-2.5">
                     <div>
-                      <label className="mb-0.5 block text-[12px] font-semibold text-slate-800 [@media(max-height:760px)]:leading-tight">Middle Name <span className="font-normal text-slate-400">(optional)</span></label>
+                      <label className="mb-0.5 block text-[12px] font-semibold text-slate-800 leading-tight">Middle Name <span className="font-normal text-slate-400">(optional)</span></label>
                       <input
                         type="text"
                         autoComplete="additional-name"
                         value={requestForm.middleName}
                         onChange={(e) => setRequestForm({ ...requestForm, middleName: e.target.value })}
                         placeholder="Middle name"
-                        className="w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1.5 [@media(max-height:760px)]:py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                        className="h-8 w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                       />
                     </div>
                     <div>
-                      <label className="mb-0.5 block text-[12px] font-semibold text-slate-800 [@media(max-height:760px)]:leading-tight">Suffix <span className="font-normal text-slate-400">(optional)</span></label>
+                      <label className="mb-0.5 block text-[12px] font-semibold text-slate-800 leading-tight">Suffix <span className="font-normal text-slate-400">(optional)</span></label>
                       <input
                         type="text"
                         autoComplete="honorific-suffix"
                         value={requestForm.suffix}
                         onChange={(e) => setRequestForm({ ...requestForm, suffix: e.target.value })}
                         placeholder="Jr., Sr., II, etc."
-                        className="w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1.5 [@media(max-height:760px)]:py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                        className="h-8 w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                       />
                     </div>
                   </div>
                 </div>
 
                 {/* Account Information Section */}
-                <div className="space-y-1.5 [@media(max-height:760px)]:space-y-1 [@media(max-height:640px)]:space-y-0.5">
-                  <h3 className="text-[13px] font-semibold text-slate-500 [@media(max-height:760px)]:leading-tight">Account Information</h3>
+                <div className="space-y-1">
+                  <h3 className="text-[12px] font-semibold text-slate-500 leading-tight">Account Information</h3>
                   
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-2.5">
                     <div>
-                      <label className="mb-0.5 block text-[12px] font-semibold text-slate-800 [@media(max-height:760px)]:leading-tight">Email</label>
+                      <label className="mb-0.5 block text-[12px] font-semibold text-slate-800 leading-tight">Email</label>
                       <input
                         type="email"
                         value={requestForm.email}
                         onChange={(e) => setRequestForm({ ...requestForm, email: e.target.value })}
                         required
                         placeholder="Email address"
-                        className="w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1.5 [@media(max-height:760px)]:py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                        className="h-8 w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                       />
                     </div>
                     <div>
-                      <label className="mb-0.5 block text-[12px] font-semibold text-slate-800 [@media(max-height:760px)]:leading-tight">Phone <span className="font-normal text-slate-400">(optional)</span></label>
+                      <label className="mb-0.5 block text-[12px] font-semibold text-slate-800 leading-tight">Phone <span className="font-normal text-slate-400">(optional)</span></label>
                       <input
                         type="tel"
                         value={requestForm.phone}
                         onChange={(e) => setRequestForm({ ...requestForm, phone: e.target.value })}
                         placeholder="09XXXXXXXXX"
-                        className="w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1.5 [@media(max-height:760px)]:py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                        className="h-8 w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="mb-0.5 block text-[12px] font-semibold text-slate-800 [@media(max-height:760px)]:leading-tight">Requested Role</label>
+                    <label className="mb-0.5 block text-[12px] font-semibold text-slate-800 leading-tight">Requested Role</label>
                     <RequestedRoleDropdown
                       value={requestForm.role}
                       onChange={(role) => setRequestForm({ ...requestForm, role })}
@@ -304,9 +304,9 @@ export function RequestAccountApproval() {
                     <p className="mt-0.5 text-[11px] leading-tight text-slate-500">Reviewed by an authorized clinic administrator.</p>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-2.5">
                     <div>
-                      <label className="mb-0.5 block text-[12px] font-semibold text-slate-800 [@media(max-height:760px)]:leading-tight">Password</label>
+                      <label className="mb-0.5 block text-[12px] font-semibold text-slate-800 leading-tight">Password</label>
                       <div className="relative">
                         <input
                           type={showRequestPassword ? "text" : "password"}
@@ -315,7 +315,7 @@ export function RequestAccountApproval() {
                           required
                           minLength={8}
                           placeholder="Password"
-                          className="w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1.5 [@media(max-height:760px)]:py-1 pr-10 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                          className="h-8 w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1 pr-10 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                         />
                         <button
                           type="button"
@@ -329,7 +329,7 @@ export function RequestAccountApproval() {
                       <p className="mt-0.5 text-[11px] leading-tight text-slate-500">Must be at least 8 characters.</p>
                     </div>
                     <div>
-                      <label className="mb-0.5 block text-[12px] font-semibold text-slate-800 [@media(max-height:760px)]:leading-tight">Confirm Password</label>
+                      <label className="mb-0.5 block text-[12px] font-semibold text-slate-800 leading-tight">Confirm Password</label>
                       <input
                         type={showRequestPassword ? "text" : "password"}
                         value={requestForm.confirmPassword}
@@ -337,7 +337,7 @@ export function RequestAccountApproval() {
                         required
                         minLength={8}
                         placeholder="Repeat password"
-                        className="w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1.5 [@media(max-height:760px)]:py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                        className="h-8 w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                       />
                     </div>
                   </div>
@@ -364,7 +364,7 @@ export function RequestAccountApproval() {
                 </div>
               </form>
               
-              <p className="mt-2 text-center text-[11px] font-medium text-slate-400 [@media(max-height:640px)]:hidden">
+              <p className="mt-1.5 text-center text-[11px] font-medium text-slate-400 [@media(max-height:640px)]:hidden">
                 Account requests are reviewed by authorized clinic administrators.
               </p>
             </>
