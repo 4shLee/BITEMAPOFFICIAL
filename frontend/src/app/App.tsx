@@ -23,7 +23,7 @@ import { PublicStatistics } from './pages/PublicStatistics';
 import { PublicClinics } from './pages/PublicClinics';
 import { MainLayout } from './components/Layout/MainLayout';
 import { Login } from './pages/Login';
-import { Signup } from './pages/Signup';
+import { RequestAccountApproval } from './pages/RequestAccountApproval';
 import { canAccessPath, getDefaultPathForRole, getStoredUser, hasAuthSession } from '../lib/auth/roleAccess';
 
 function DefaultEntry() {
@@ -88,7 +88,8 @@ export default function App() {
         <Routes>
           <Route path="/" element={<DefaultEntry />} />
           <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<Signup />} />
+          <Route path="/request-account-approval" element={<RequestAccountApproval />} />
+          <Route path="/signup" element={<Navigate to="/request-account-approval" replace />} />
 
           <Route path="/public" element={<PublicPortalLayout />}>
             <Route index element={<PublicPortal />} />
