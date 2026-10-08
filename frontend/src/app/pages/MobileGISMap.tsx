@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Filter, MapPin, TrendingUp, Users, AlertTriangle } from 'lucide-react';
-import { Badge } from '../components/UI/Badge';
-import { BottomSheet } from '../components/UI/BottomSheet';
+import { Badge } from '../components/ui/Badge';
+import { BottomSheet } from '../components/ui/BottomSheet';
 
 interface BarangayData {
   name: string;

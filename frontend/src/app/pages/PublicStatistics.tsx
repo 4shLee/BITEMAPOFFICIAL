@@ -3,7 +3,7 @@ import { AlertCircle, ArrowLeft, Calendar, RefreshCw, TrendingUp, Users } from '
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, LineChart, Line } from 'recharts';
 import { useCallback, useState, useEffect } from 'react';
 import { publicAPI } from '../../lib/services/api';
-import { LoadingSpinner } from '../components/UI/LoadingSpinner';
+import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 
 type MonthlyCase = {
   month: string;

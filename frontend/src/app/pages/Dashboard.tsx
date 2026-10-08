@@ -10,10 +10,10 @@ import {
   PieChart, Pie, Cell
 } from 'recharts';
 import { Header } from '../components/Layout/Header';
-import { Badge } from '../components/UI/Badge';
-import { AlertBanner } from '../components/UI/AlertBanner';
+import { Badge } from '../components/ui/Badge';
+import { AlertBanner } from '../components/ui/AlertBanner';
 import { auditLogsAPI, dashboardAPI, getErrorMessage, settingsAPI, usersAPI } from '../../lib/services/api';
-import { LoadingSpinner } from '../components/UI/LoadingSpinner';
+import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { toast } from 'sonner';
 import { canPerformAction, getRoleLabel, getStoredUser, normalizeRoleKey } from '../../lib/auth/roleAccess';
 

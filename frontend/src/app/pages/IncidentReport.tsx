@@ -4,9 +4,9 @@ import { CalendarDays, CheckCircle2, MapPin, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { Header } from '../components/Layout/Header';
 import { IncidentLocationPicker } from '../components/Incidents/IncidentLocationPicker';
-import { Input } from '../components/UI/Input';
-import { Select } from '../components/UI/Select';
-import { Button } from '../components/UI/Button';
+import { Input } from '../components/ui/Input';
+import { Select } from '../components/ui/Select';
+import { Button } from '../components/ui/Button';
 import { ApiError, barangaysAPI, getErrorMessage, incidentsAPI, patientsAPI } from '../../lib/services/api';
 import { getStoredUser, normalizeRoleKey } from '../../lib/auth/roleAccess';
 import {

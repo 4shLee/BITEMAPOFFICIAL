@@ -18,8 +18,8 @@ import {
   X,
 } from 'lucide-react';
 import { Header } from '../components/Layout/Header';
-import { Badge } from '../components/UI/Badge';
-import { Button } from '../components/UI/Button';
+import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
 import { toast } from 'sonner';
 import { auditLogsAPI, getErrorMessage, notificationsAPI, pepScheduleAPI } from '../../lib/services/api';
 import { canPerformAction, getStoredUser, isSystemAdminRole } from '../../lib/auth/roleAccess';

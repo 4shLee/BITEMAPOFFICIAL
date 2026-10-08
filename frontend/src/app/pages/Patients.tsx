@@ -3,7 +3,7 @@ import { Search, Filter, Plus, Edit, Eye, Trash2, AlertCircle, RefreshCw } from 
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { Header } from '../components/Layout/Header';
-import { Button } from '../components/UI/Button';
+import { Button } from '../components/ui/Button';
 import {
   barangaysAPI,
   getErrorMessage,

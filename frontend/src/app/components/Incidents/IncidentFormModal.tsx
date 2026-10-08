@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, Phone, User } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '../UI/Button';
-import { Input } from '../UI/Input';
-import { Select } from '../UI/Select';
+import { Button } from '../ui/Button';
+import { Input } from '../ui/Input';
+import { Select } from '../ui/Select';
 import {
   incidentsAPI,
   patientsAPI,

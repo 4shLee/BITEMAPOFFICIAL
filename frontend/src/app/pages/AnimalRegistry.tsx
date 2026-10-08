@@ -2,8 +2,8 @@ import { useCallback, useState, useEffect } from 'react';
 import { Search, Filter, Plus, Edit } from 'lucide-react';
 import { toast } from 'sonner';
 import { Header } from '../components/Layout/Header';
-import { Badge } from '../components/UI/Badge';
-import { Button } from '../components/UI/Button';
+import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
 import { animalsAPI } from '../../lib/services/api';
 import { AnimalFormModal } from '../components/Animals/AnimalFormModal';
 

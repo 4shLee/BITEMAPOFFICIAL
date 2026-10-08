@@ -3,8 +3,8 @@ import { Search, Filter, Plus, Edit, Trash2, Eye, ClipboardCheck, Stethoscope, R
 import { useLocation, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { Header } from '../Layout/Header';
-import { Badge } from '../UI/Badge';
-import { Button } from '../UI/Button';
+import { Badge } from '../ui/Badge';
+import { Button } from '../ui/Button';
 import {
   barangaysAPI,
   incidentsAPI,

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Search, UserPlus, Edit, X, Users as UsersIcon, ShieldCheck, UserCheck, UserX, CheckCircle, XCircle, Stethoscope } from 'lucide-react';
 import { Header } from '../components/Layout/Header';
-import { Badge } from '../components/UI/Badge';
-import { Button } from '../components/UI/Button';
+import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
 import { toast } from 'sonner';
 import { getErrorMessage, usersAPI, type ApiPayload } from '../../lib/services/api';
 import { ASSIGNABLE_ROLES, getRoleLabel, getStoredUser, isSystemAdminRole, normalizeRoleKey } from '../../lib/auth/roleAccess';

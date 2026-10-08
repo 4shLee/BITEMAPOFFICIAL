@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Download, Search, XCircle } from 'lucide-react';
 import { Header } from '../components/Layout/Header';
-import { Badge } from '../components/UI/Badge';
-import { Input } from '../components/UI/Input';
-import { Select } from '../components/UI/Select';
-import { Button } from '../components/UI/Button';
+import { Badge } from '../components/ui/Badge';
+import { Input } from '../components/ui/Input';
+import { Select } from '../components/ui/Select';
+import { Button } from '../components/ui/Button';
 import { auditLogsAPI, getErrorMessage } from '../../lib/services/api';
 import { toast } from 'sonner';
 import { getRoleLabel } from '../../lib/auth/roleAccess';

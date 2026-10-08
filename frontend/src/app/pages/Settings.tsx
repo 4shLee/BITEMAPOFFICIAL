@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { Bell, Building2, CheckCircle2, MessageSquare, RotateCcw, Save, Shield, X, type LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Header } from '../components/Layout/Header';
-import { Input } from '../components/UI/Input';
-import { Select } from '../components/UI/Select';
-import { Button } from '../components/UI/Button';
+import { Input } from '../components/ui/Input';
+import { Select } from '../components/ui/Select';
+import { Button } from '../components/ui/Button';
 import { getErrorMessage, settingsAPI } from '../../lib/services/api';
 import { getStoredUser, isSystemAdminRole, normalizeRoleKey } from '../../lib/auth/roleAccess';
 

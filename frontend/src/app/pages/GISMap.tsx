@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Header } from '../components/Layout/Header';
-import { Input } from '../components/UI/Input';
-import { Select } from '../components/UI/Select';
-import { Badge } from '../components/UI/Badge';
+import { Input } from '../components/ui/Input';
+import { Select } from '../components/ui/Select';
+import { Badge } from '../components/ui/Badge';
 import { gisAPI } from '../../lib/services/api';
 import { DIGOS_BOUNDS, DIGOS_CENTER } from '../../data/digos-geography';
 
