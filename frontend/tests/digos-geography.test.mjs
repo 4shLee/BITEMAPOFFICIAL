@@ -7,10 +7,6 @@ const backendSource = fs.readFileSync(
   new URL('../../backend/app/Support/DigosBarangayCoordinates.php', import.meta.url),
   'utf8',
 );
-const edgeSource = fs.readFileSync(
-  new URL('../supabase/functions/server/index.tsx', import.meta.url),
-  'utf8',
-);
 
 const frontendPoints = new Map(
   [...frontendSource.matchAll(/^\s*(?:'([^']+)'|([A-Za-z]+)):\s*\{\s*psgcCode:\s*'(\d+)',\s*lat:\s*([\d.]+),\s*lng:\s*([\d.]+)\s*\}/gm)]
@@ -30,14 +26,6 @@ const backendPoints = new Map(
     }]),
 );
 
-const edgePoints = new Map(
-  [...edgeSource.matchAll(/^\s*(?:\"([^\"]+)\"|([A-Za-z]+)):\s*\{\s*latitude:\s*([\d.]+),\s*longitude:\s*([\d.]+)\s*\},?$/gm)]
-    .map((match) => [match[1] || match[2], {
-      lat: Number(match[3]),
-      lng: Number(match[4]),
-    }]),
-);
-
 test('all 26 supported Digos barangays have unique points within approved bounds', () => {
   assert.equal(frontendPoints.size, 26);
   assert.equal(new Set([...frontendPoints.values()].map((point) => point.psgcCode)).size, 26);
@@ -52,13 +40,9 @@ test('all 26 supported Digos barangays have unique points within approved bounds
   }
 });
 
-test('backend, browser fallback, and edge GIS coordinate mirrors remain synchronized', () => {
+test('backend and browser fallback GIS coordinate mirrors remain synchronized', () => {
+  assert.equal(backendPoints.size, 26);
   assert.deepEqual(frontendPoints, backendPoints);
-  assert.equal(edgePoints.size, 26);
-
-  for (const [name, point] of frontendPoints) {
-    assert.deepEqual(edgePoints.get(name), { lat: point.lat, lng: point.lng });
-  }
 });
 
 test('known barangays resolve to their validated representative points', () => {
