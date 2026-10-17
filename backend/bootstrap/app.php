@@ -4,10 +4,11 @@ use App\Http\Middleware\EnsureUserHasRole;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
-return Application::configure(basePath: dirname(__DIR__))
+$app = Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
         api: __DIR__.'/../routes/api.php',
@@ -47,3 +48,16 @@ return Application::configure(basePath: dirname(__DIR__))
             ], 500);
         });
     })->create();
+
+$app->booted(function (): void {
+    // Railway terminates TLS at its edge proxy. Set TRUSTED_PROXIES=* (or a comma-separated
+    // list) there so the real client IP / https scheme are used. Unset = trust none.
+    $trustedProxies = config('app.trusted_proxies');
+    if (filled($trustedProxies)) {
+        TrustProxies::at(
+            $trustedProxies === '*' ? '*' : array_map('trim', explode(',', (string) $trustedProxies))
+        );
+    }
+});
+
+return $app;

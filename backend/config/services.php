@@ -36,10 +36,12 @@ return [
     ],
 
     'sms' => [
-        // Null enables automatic detection from provider credentials.
-        // Set SMS_SERVICE_ENABLED=false to force safe simulation mode.
-        'enabled' => env('SMS_SERVICE_ENABLED'),
+        // Live sending is OFF unless SMS_SERVICE_ENABLED is explicitly true.
+        'enabled' => env('SMS_SERVICE_ENABLED', false),
         'provider' => env('SMS_PROVIDER', 'Twilio'),
+        // Null = allow credentials saved in the Settings screen (plaintext in the DB) only in
+        // local/testing. Set SMS_ALLOW_DB_CREDENTIALS=true to allow them elsewhere.
+        'allow_database_credentials' => env('SMS_ALLOW_DB_CREDENTIALS'),
     ],
 
     'slack' => [

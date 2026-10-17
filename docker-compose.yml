@@ -19,6 +19,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      target: dev
     container_name: bitemap-backend
     restart: unless-stopped
     working_dir: /var/www
@@ -34,6 +35,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      target: dev
     container_name: bitemap-queue
     restart: unless-stopped
     working_dir: /var/www
@@ -50,6 +52,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      target: dev
     container_name: bitemap-scheduler
     restart: unless-stopped
     working_dir: /var/www

@@ -4,12 +4,18 @@ namespace Database\Seeders;
 
 use App\Models\Setting;
 use Illuminate\Database\Seeder;
+use RuntimeException;
 
 class SettingSeeder extends Seeder
 {
-    public function run(): void
+    /**
+     * Default clinic/system settings. Shared with ProductionReferenceSeeder (insert-only).
+     *
+     * @return array<string, string>
+     */
+    public static function defaults(): array
     {
-        $settings = [
+        return [
             'organization_name' => 'BITEMAP Animal Bite Center',
             'clinic_name' => 'Animal Bite Center',
             'clinic_address' => '',
@@ -35,8 +41,19 @@ class SettingSeeder extends Seeder
             'force_password_change_approved_users' => 'true',
             'map_default_center' => '6.7494,125.3569',
         ];
+    }
 
-        foreach ($settings as $key => $value) {
+    public function run(): void
+    {
+        // updateOrCreate() below RESETS existing settings, so it must never touch real data.
+        if (! app()->environment(['local', 'testing'])) {
+            throw new RuntimeException(
+                'SettingSeeder overwrites existing settings and is restricted to local and testing environments. '
+                .'Use: php artisan db:seed --class=ProductionReferenceSeeder --force'
+            );
+        }
+
+        foreach (self::defaults() as $key => $value) {
             Setting::updateOrCreate(
                 ['setting_key' => $key],
                 ['setting_value' => $value]

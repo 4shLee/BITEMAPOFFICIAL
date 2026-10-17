@@ -17,6 +17,8 @@ use App\Models\User;
 use App\Services\WhoExposureClassificationService;
 use App\Support\DefaultAdminAccount;
 use App\Support\DigosBarangayCoordinates;
+use App\Support\PhoneNumber;
+use App\Support\SmsCredentials;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -1148,6 +1150,13 @@ class BitemapApiController extends Controller
 
     public function updateSmsCredentials(Request $request): JsonResponse
     {
+        if (! SmsCredentials::databaseOverridesAllowed()) {
+            return response()->json([
+                'success' => false,
+                'error' => 'SMS credentials are managed through server environment variables (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER) in this environment.',
+            ], 403);
+        }
+
         $data = $request->validate([
             'account_sid' => ['required', 'string', 'max:255'],
             'auth_token' => ['required', 'string', 'max:255'],
@@ -1345,6 +1354,13 @@ class BitemapApiController extends Controller
 
     public function devStatus(): JsonResponse
     {
+        // Development diagnostics only. Fail closed: anything other than local/testing
+        // (production, staging, or an unset environment) gets an opaque 404 before any
+        // query runs, so no metadata or raw exception text can leak.
+        if (! app()->environment(['local', 'testing'])) {
+            return response()->json(['message' => 'Not Found'], 404);
+        }
+
         try {
             $admin = User::where('email', DefaultAdminAccount::EMAIL)->first();
 
@@ -3304,9 +3320,11 @@ class BitemapApiController extends Controller
 
     private function smsCredentialsConfigured(): bool
     {
-        return ! blank($this->settingValue('twilio_account_sid', config('services.twilio.sid')))
-            && ! blank($this->settingValue('twilio_auth_token', config('services.twilio.token')))
-            && ! blank($this->settingValue('twilio_from_number', config('services.twilio.from')));
+        $credentials = SmsCredentials::resolve();
+
+        return ! blank($credentials['sid'])
+            && ! blank($credentials['token'])
+            && ! blank($credentials['from']);
     }
 
     private function smsServiceEnabled(): bool
@@ -3574,9 +3592,7 @@ class BitemapApiController extends Controller
 
     private function sendSmsThroughGateway(string $recipient, string $message): array
     {
-        $sid = $this->settingValue('twilio_account_sid', config('services.twilio.sid'));
-        $token = $this->settingValue('twilio_auth_token', config('services.twilio.token'));
-        $from = $this->settingValue('twilio_from_number', config('services.twilio.from'));
+        ['sid' => $sid, 'token' => $token, 'from' => $from] = SmsCredentials::resolve();
 
         if (! $this->smsServiceEnabled() || blank($sid) || blank($token) || blank($from)) {
             return ['Pending', 'SMS simulation mode is active. No real SMS was sent; the reminder is recorded for testing and review.'];
@@ -3587,7 +3603,7 @@ class BitemapApiController extends Controller
                 ->withBasicAuth($sid, $token)
                 ->post('https://api.twilio.com/2010-04-01/Accounts/'.$sid.'/Messages.json', [
                     'From' => $from,
-                    'To' => $recipient,
+                    'To' => PhoneNumber::toE164($recipient),
                     'Body' => $message,
                 ]);
 

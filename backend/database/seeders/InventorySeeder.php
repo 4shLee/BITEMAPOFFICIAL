@@ -4,11 +4,20 @@ namespace Database\Seeders;
 
 use App\Models\Inventory;
 use Illuminate\Database\Seeder;
+use RuntimeException;
 
 class InventorySeeder extends Seeder
 {
     public function run(): void
     {
+        // Seeds placeholder stock levels and overwrites existing rows: never for real data.
+        if (! app()->environment(['local', 'testing'])) {
+            throw new RuntimeException(
+                'InventorySeeder creates placeholder stock and overwrites existing inventory; it is restricted to local and testing environments. '
+                .'Enter real stock through the application.'
+            );
+        }
+
         $items = [
             [
                 'item_name' => 'Anti-rabies Vaccine',

@@ -1,6 +1,23 @@
 node_modules
 vendor
+.git
 .env
+.env.*
 .phpunit.cache
+.phpunit.result.cache
 storage/*.key
 phpunit.xml
+
+# Local runtime state must never be baked into an image (may contain patient data / local paths)
+storage/logs/*
+!storage/logs/.gitignore
+storage/framework/cache/*
+!storage/framework/cache/.gitignore
+storage/framework/sessions/*
+!storage/framework/sessions/.gitignore
+storage/framework/views/*
+!storage/framework/views/.gitignore
+storage/framework/testing/*
+!storage/framework/testing/.gitignore
+bootstrap/cache/*.php
+database/*.sqlite

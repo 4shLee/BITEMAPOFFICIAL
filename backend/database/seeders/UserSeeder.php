@@ -7,11 +7,20 @@ use App\Support\DefaultAdminAccount;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
+use RuntimeException;
 
 class UserSeeder extends Seeder
 {
     public function run(): void
     {
+        // Creates/overwrites accounts using a hardcoded password: never for real data.
+        if (! app()->environment(['local', 'testing'])) {
+            throw new RuntimeException(
+                'UserSeeder creates accounts with a hardcoded password and is restricted to local and testing environments. '
+                .'Create the first administrator with: php artisan bitemap:create-admin <email>'
+            );
+        }
+
         $legacyDoctor = User::where('email', 'health.officer@bitemap.local')->first();
         $doctorExists = User::where('email', 'doctor@bitemap.local')->exists();
 

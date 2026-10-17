@@ -3,8 +3,9 @@
 use App\Models\AuditLog;
 use App\Models\Notification;
 use App\Models\PepSchedule;
-use App\Models\Setting;
 use App\Support\DefaultAdminAccount;
+use App\Support\PhoneNumber;
+use App\Support\SmsCredentials;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
@@ -15,6 +16,13 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Artisan::command('bitemap:reset-admin', function () {
+    if (! app()->environment(['local', 'testing'])) {
+        $this->error('bitemap:reset-admin sets a well-known default password and only runs in local/testing environments.');
+        $this->line('To create the first production administrator, run: php artisan bitemap:create-admin');
+
+        return 1;
+    }
+
     $user = DefaultAdminAccount::reset();
 
     $this->info('BITEMAP admin account is ready.');
@@ -55,12 +63,7 @@ Artisan::command('bitemap:send-sms-reminders {--scope=today}', function () {
         $query->whereDate('scheduled_date', today());
     }
 
-    $configuredSettings = Setting::query()
-        ->whereIn('setting_key', ['twilio_account_sid', 'twilio_auth_token', 'twilio_from_number'])
-        ->pluck('setting_value', 'setting_key');
-    $sid = $configuredSettings->get('twilio_account_sid') ?: config('services.twilio.sid');
-    $token = $configuredSettings->get('twilio_auth_token') ?: config('services.twilio.token');
-    $from = $configuredSettings->get('twilio_from_number') ?: config('services.twilio.from');
+    ['sid' => $sid, 'token' => $token, 'from' => $from] = SmsCredentials::resolve();
     $serviceFlag = config('services.sms.enabled');
     $smsServiceEnabled = ! blank($sid) && ! blank($token) && ! blank($from)
         && ($serviceFlag === null || filter_var($serviceFlag, FILTER_VALIDATE_BOOL));
@@ -162,7 +165,7 @@ Artisan::command('bitemap:send-sms-reminders {--scope=today}', function () {
                     ->withBasicAuth($sid, $token)
                     ->post('https://api.twilio.com/2010-04-01/Accounts/'.$sid.'/Messages.json', [
                         'From' => $from,
-                        'To' => $recipient,
+                        'To' => PhoneNumber::toE164((string) $recipient),
                         'Body' => $message,
                     ]);
 

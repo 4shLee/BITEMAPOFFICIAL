@@ -65,7 +65,7 @@ return [
     |
     */
 
-    'timezone' => 'UTC',
+    'timezone' => env('APP_TIMEZONE', 'UTC'),
 
     /*
     |--------------------------------------------------------------------------
@@ -122,5 +122,18 @@ return [
         'driver' => env('APP_MAINTENANCE_DRIVER', 'file'),
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Trusted Proxies
+    |--------------------------------------------------------------------------
+    |
+    | Behind a reverse proxy (such as Railway or an AWS ALB), set this to "*"
+    | or a comma-separated list of proxy IP addresses so client IP addresses
+    | and TLS schemes are accurately detected. Leave null/empty to trust none.
+    |
+    */
+
+    'trusted_proxies' => env('TRUSTED_PROXIES'),
 
 ];
