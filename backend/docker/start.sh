@@ -36,5 +36,18 @@ fi
 # Caches were written as root; Apache runs as www-data.
 chown -R www-data:www-data storage bootstrap/cache
 
+# mod_php requires exactly one MPM (prefork). Enforce it at runtime, immediately before
+# Apache starts, and fail with diagnostics (module/config names only, no secrets) otherwise.
+a2dismod -f mpm_event mpm_worker
+a2enmod mpm_prefork
+mpm_count="$(find /etc/apache2/mods-enabled -maxdepth 1 -name 'mpm_*.load' | wc -l)"
+if [ "$mpm_count" -ne 1 ] || [ ! -e /etc/apache2/mods-enabled/mpm_prefork.load ]; then
+    echo "FATAL: expected exactly one enabled Apache MPM (mpm_prefork), found ${mpm_count}." >&2
+    ls -l /etc/apache2/mods-enabled | grep -i mpm >&2 || true
+    grep -rn -i 'LoadModule mpm_' /etc/apache2 >&2 || true
+    apache2ctl -M >&2 || true
+    exit 1
+fi
+
 echo "Starting Apache on 0.0.0.0:${PORT}"
 exec apache2-foreground
