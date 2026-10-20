@@ -58,8 +58,11 @@ RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" \
 
 # Apache: serve /var/www/public, listen on ${PORT} (set at runtime by Railway)
 COPY docker/apache-laravel.conf /etc/apache2/conf-available/laravel.conf
-RUN a2enmod rewrite headers \
+RUN a2dismod -f mpm_event mpm_worker \
+    && a2enmod mpm_prefork rewrite headers \
     && a2enconf laravel \
+    && test "$(ls /etc/apache2/mods-enabled/mpm_*.load | wc -l)" -eq 1 \
+    && test -e /etc/apache2/mods-enabled/mpm_prefork.load \
     && sed -ri 's!/var/www/html!/var/www/public!g' /etc/apache2/sites-available/000-default.conf \
     && sed -ri 's/^Listen 80$/Listen ${PORT}/' /etc/apache2/ports.conf \
     && sed -ri 's/<VirtualHost \*:80>/<VirtualHost *:${PORT}>/' /etc/apache2/sites-available/000-default.conf
