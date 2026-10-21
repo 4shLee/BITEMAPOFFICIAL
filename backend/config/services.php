@@ -35,10 +35,23 @@ return [
         'facility_name' => env('BITEMAP_FACILITY_NAME', 'Animal Bite Treatment Center'),
     ],
 
+    'philsms' => [
+        'token' => env('PHILSMS_API_TOKEN'),
+        'sender_id' => env('PHILSMS_SENDER_ID', 'PhilSMS'),
+        'endpoint' => env('PHILSMS_ENDPOINT', 'https://app.philsms.com/api/v3/sms/send'),
+    ],
+
+    'semaphore' => [
+        'api_key' => env('SEMAPHORE_API_KEY'),
+        'sender_name' => env('SEMAPHORE_SENDER_NAME'),
+        'endpoint' => env('SEMAPHORE_ENDPOINT', 'https://api.semaphore.co/api/v4/messages'),
+    ],
+
     'sms' => [
         // Live sending is OFF unless SMS_SERVICE_ENABLED is explicitly true.
         'enabled' => env('SMS_SERVICE_ENABLED', false),
         'provider' => env('SMS_PROVIDER', 'Twilio'),
+        'facility_name' => env('BITEMAP_FACILITY_NAME', 'Animal Bite Treatment Center'),
         // Null = allow credentials saved in the Settings screen (plaintext in the DB) only in
         // local/testing. Set SMS_ALLOW_DB_CREDENTIALS=true to allow them elsewhere.
         'allow_database_credentials' => env('SMS_ALLOW_DB_CREDENTIALS'),

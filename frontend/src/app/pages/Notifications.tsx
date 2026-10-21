@@ -1085,7 +1085,7 @@ export function Notifications() {
     { label: 'Patients Due Today', value: dueTodayCount, icon: CalendarDays, tone: 'border-blue-100 bg-blue-50 text-blue-700' },
     { label: 'Overdue Patients', value: overduePatientCount, icon: AlertTriangle, tone: 'border-red-100 bg-red-50 text-red-700' },
     smsService.enabled
-      ? { label: 'Successfully Sent SMS', value: filterCounts.sent, description: 'SMS reminders are delivered through ' + (smsService.provider || 'the configured provider') + '.', icon: CheckCircle2, tone: 'border-emerald-100 bg-emerald-50 text-emerald-700' }
+      ? { label: 'Successfully Sent SMS', value: filterCounts.sent, description: 'SMS reminders accepted for dispatch through ' + (smsService.provider || 'the configured provider') + '.', icon: CheckCircle2, tone: 'border-emerald-100 bg-emerald-50 text-emerald-700' }
       : {
           label: 'SMS Service Status',
           value: 'Simulation Mode',
@@ -1204,7 +1204,7 @@ export function Notifications() {
                           </div>
                           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
                             <p className={'text-xs font-medium ' + (status === 'Sent' ? 'text-emerald-700' : status === 'Failed' ? 'text-destructive' : 'text-amber-700')}>
-                              {status === 'Sent' ? 'Delivered successfully.' : status === 'Failed' ? 'SMS delivery failed.' : smsService.enabled ? 'SMS is pending dispatch.' : 'Reminder queued in simulation mode.'}
+                              {status === 'Sent' ? 'Accepted by SMS gateway (awaiting handset delivery).' : status === 'Failed' ? 'SMS delivery failed.' : smsService.enabled ? 'SMS is pending dispatch.' : 'Reminder queued in simulation mode.'}
                             </p>
                             {canSendNotifications && status === 'Pending' && (
                               <Button type="button" variant="outline" size="sm" disabled>

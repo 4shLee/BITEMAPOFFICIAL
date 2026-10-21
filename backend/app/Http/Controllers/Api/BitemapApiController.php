@@ -14,6 +14,8 @@ use App\Models\Patient;
 use App\Models\PepSchedule;
 use App\Models\Setting;
 use App\Models\User;
+use App\Services\Sms\SmsGateway;
+use App\Services\Sms\VaccinationReminderService;
 use App\Services\WhoExposureClassificationService;
 use App\Support\DefaultAdminAccount;
 use App\Support\DigosBarangayCoordinates;
@@ -1195,16 +1197,25 @@ class BitemapApiController extends Controller
             'message' => ['required', 'string', 'max:320'],
         ]);
 
-        $phone = str_starts_with($data['phone'], '09') ? '+63'.substr($data['phone'], 1) : $data['phone'];
-        [$status, $deliveryResponse] = $this->sendSmsThroughGateway($phone, $data['message']);
+        $phone = PhoneNumber::toE164($data['phone']);
+        $result = app(SmsGateway::class)->send($phone, $data['message'], ['source' => 'settings_test']);
+        [$status, $deliveryResponse] = $result->toTuple();
 
-        $this->writeAudit($request, 'Send SMS', 'Settings', null, 'Sent test SMS to '.$phone.' marked as '.$status.'.');
+        $this->writeAudit($request, 'Send SMS', 'Settings', null, 'Sent test SMS to '.PhoneNumber::mask($phone).' marked as '.$status.'.');
+
+        $messageText = $result->simulated
+            ? 'Test SMS recorded in simulation mode (no real SMS was sent).'
+            : ($status === 'Sent'
+                ? 'Test SMS accepted by '.$result->provider.' gateway (awaiting handset delivery).'
+                : 'Test SMS '.$status.'.');
 
         return response()->json([
             'success' => $status !== 'Failed',
-            'message' => 'Test SMS '.$status.'.',
+            'message' => $messageText,
             'data' => [
                 'status' => $status,
+                'simulated' => $result->simulated,
+                'provider' => $result->provider,
                 'delivery_response' => $deliveryResponse,
             ],
         ], $status === 'Failed' ? 422 : 200);
@@ -3134,7 +3145,7 @@ class BitemapApiController extends Controller
         $patient = $incident?->patient ?? ($patientId ? Patient::find($patientId) : null);
         $schedule = $pepScheduleId ? PepSchedule::find($pepScheduleId) : null;
 
-        if ($channel === 'SMS' && (! $patient || $patient->sms_consent !== true)) {
+        if ($channel === 'SMS' && (! $patient || ! app(VaccinationReminderService::class)->hasExplicitSmsConsent($patient, $incident))) {
             return response()->json([
                 'success' => false,
                 'message' => 'Reminder skipped because explicit SMS consent is not available.',
@@ -3142,7 +3153,7 @@ class BitemapApiController extends Controller
             ], 422);
         }
 
-        if ($channel === 'SMS' && (blank($recipient) || preg_match('/^(09|\+639)\d{9}$/', (string) $recipient) !== 1)) {
+        if ($channel === 'SMS' && (blank($recipient) || ! PhoneNumber::isValidPhilippineMobile((string) $recipient))) {
             return response()->json([
                 'success' => false,
                 'message' => 'Reminder skipped because a valid contact number is not available.',
@@ -3155,13 +3166,13 @@ class BitemapApiController extends Controller
         $resolvedScheduledDate = $schedule?->scheduled_date?->toDateString() ?? ($scheduledDate ? Carbon::parse($scheduledDate)->toDateString() : null);
         $resolvedReminderType = trim((string) ($reminderType ?: 'Vaccination Reminder'));
         $reminderKey = $channel === 'SMS' && $resolvedPatientId && $resolvedIncidentId && $pepScheduleId && $resolvedScheduledDate
-            ? hash('sha256', implode('|', [
+            ? app(VaccinationReminderService::class)->buildReminderKey(
                 $resolvedPatientId,
                 $resolvedIncidentId,
                 $pepScheduleId,
-                strtolower($resolvedReminderType),
-                $resolvedScheduledDate,
-            ]))
+                $resolvedReminderType,
+                $resolvedScheduledDate
+            )
             : null;
 
         if ($channel === 'SMS' && $retryNotificationId) {
@@ -3183,6 +3194,8 @@ class BitemapApiController extends Controller
                 'delivery_response' => $deliveryResponse,
             ]);
 
+            $this->writeAudit($request, 'Retry '.$channel, 'Notifications', $notification->id, $channel.' reminder retry to '.PhoneNumber::mask((string) $recipient).' marked as '.$status.'.');
+
             return response()->json([
                 'success' => $status !== 'Failed',
                 'message' => $channel.' '.strtolower($status).'.',
@@ -3193,6 +3206,26 @@ class BitemapApiController extends Controller
 
         $notification = null;
         if ($resolvedPatientId && $reminderKey) {
+            if ($channel === 'SMS' && $pepScheduleId && $resolvedScheduledDate) {
+                $existingScheduleReminder = Notification::query()
+                    ->where('patient_id', $resolvedPatientId)
+                    ->where('incident_id', $resolvedIncidentId)
+                    ->where('pep_schedule_id', $pepScheduleId)
+                    ->where('notification_type', 'SMS')
+                    ->whereDate('scheduled_date', $resolvedScheduledDate)
+                    ->whereIn('status', ['Pending', 'Sent', 'Delivered'])
+                    ->first();
+
+                if ($existingScheduleReminder) {
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'This reminder is already recorded as '.$existingScheduleReminder->status.'.',
+                        'data' => $existingScheduleReminder,
+                        'meta' => ['duplicate' => true, 'retried' => false],
+                    ]);
+                }
+            }
+
             $legacyPending = Notification::query()
                 ->whereNull('reminder_key')
                 ->where('patient_id', $resolvedPatientId)
@@ -3265,7 +3298,8 @@ class BitemapApiController extends Controller
             ]);
         }
 
-        $this->writeAudit($request, 'Send '.$channel, 'Notifications', $notification?->id, $channel.' reminder to '.$recipient.' marked as '.$status.'.');
+        $maskedRecipient = $channel === 'SMS' ? PhoneNumber::mask((string) $recipient) : (string) $recipient;
+        $this->writeAudit($request, 'Send '.$channel, 'Notifications', $notification?->id, $channel.' reminder to '.$maskedRecipient.' marked as '.$status.'.');
 
         return response()->json([
             'success' => $status !== 'Failed',
@@ -3320,24 +3354,12 @@ class BitemapApiController extends Controller
 
     private function smsCredentialsConfigured(): bool
     {
-        $credentials = SmsCredentials::resolve();
-
-        return ! blank($credentials['sid'])
-            && ! blank($credentials['token'])
-            && ! blank($credentials['from']);
+        return app(SmsGateway::class)->isConfigured();
     }
 
     private function smsServiceEnabled(): bool
     {
-        if (! $this->smsCredentialsConfigured()) {
-            return false;
-        }
-
-        $configuredFlag = config('services.sms.enabled');
-
-        return $configuredFlag === null
-            ? true
-            : filter_var($configuredFlag, FILTER_VALIDATE_BOOL);
+        return app(SmsGateway::class)->isLiveSendingEnabled();
     }
 
     private function settingValue(string $key, mixed $fallback = null): mixed
@@ -3355,11 +3377,11 @@ class BitemapApiController extends Controller
             ->whereDate('pep_schedules.scheduled_date', '<=', $today)
             ->whereNotIn('pep_schedules.status', ['Done', 'Completed', 'Cancelled', 'Skipped'])
             ->selectRaw(
-                'COUNT(DISTINCT CASE WHEN pep_schedules.scheduled_date < ? THEN incidents.patient_id END) as overdue_patients',
+                'COUNT(DISTINCT CASE WHEN DATE(pep_schedules.scheduled_date) < ? THEN incidents.patient_id END) as overdue_patients',
                 [$today]
             )
             ->selectRaw(
-                'COUNT(DISTINCT CASE WHEN pep_schedules.scheduled_date = ? THEN incidents.patient_id END) as due_today_patients',
+                'COUNT(DISTINCT CASE WHEN DATE(pep_schedules.scheduled_date) = ? THEN incidents.patient_id END) as due_today_patients',
                 [$today]
             )
             ->first();
@@ -3387,7 +3409,7 @@ class BitemapApiController extends Controller
                 'enabled' => $smsServiceEnabled,
                 'mode' => $smsServiceEnabled ? 'enabled' : 'simulation',
                 'provider' => $smsServiceEnabled
-                    ? $this->settingValue('sms_provider', config('services.sms.provider', 'SMS Provider'))
+                    ? $this->settingValue('sms_provider', app(SmsGateway::class)->providerDisplayName())
                     : null,
             ],
             'summary' => [
@@ -3592,29 +3614,7 @@ class BitemapApiController extends Controller
 
     private function sendSmsThroughGateway(string $recipient, string $message): array
     {
-        ['sid' => $sid, 'token' => $token, 'from' => $from] = SmsCredentials::resolve();
-
-        if (! $this->smsServiceEnabled() || blank($sid) || blank($token) || blank($from)) {
-            return ['Pending', 'SMS simulation mode is active. No real SMS was sent; the reminder is recorded for testing and review.'];
-        }
-
-        try {
-            $response = Http::asForm()
-                ->withBasicAuth($sid, $token)
-                ->post('https://api.twilio.com/2010-04-01/Accounts/'.$sid.'/Messages.json', [
-                    'From' => $from,
-                    'To' => PhoneNumber::toE164($recipient),
-                    'Body' => $message,
-                ]);
-
-            if ($response->successful()) {
-                return ['Sent', $response->body()];
-            }
-
-            return ['Failed', $response->body()];
-        } catch (\Throwable $exception) {
-            return ['Failed', $exception->getMessage()];
-        }
+        return app(SmsGateway::class)->send($recipient, $message)->toTuple();
     }
 
     private function patientPayload(Patient $patient): array

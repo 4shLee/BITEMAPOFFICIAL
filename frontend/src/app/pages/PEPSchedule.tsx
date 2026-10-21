@@ -673,8 +673,8 @@ export function PEPSchedule() {
     }
 
     const message = 'BITEMAP Reminder: ' + schedule.patient + ', your Day ' + target.day + ' anti-rabies vaccination is scheduled on ' + target.date + '.';
-    await notificationsAPI.sendSMS(schedule.contact_number, message, schedule.patientId, schedule.incidentId);
-    toast.success('SMS reminder logged for ' + schedule.patient + '.');
+    const response = await notificationsAPI.sendSMS(schedule.contact_number, message, schedule.patientId, schedule.incidentId, { pepScheduleId: target.id, reminderType: target.status === 'Missed' ? 'Missed Appointment Follow-up' : 'Vaccination Reminder', scheduledDate: target.date });
+    toast.success(response?.meta?.duplicate ? 'Reminder already recorded for ' + schedule.patient + ' (duplicate skipped).' : 'SMS reminder logged for ' + schedule.patient + '.');
     loadSchedule();
   };
 

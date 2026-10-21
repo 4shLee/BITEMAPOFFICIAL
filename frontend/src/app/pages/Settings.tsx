@@ -102,8 +102,10 @@ const clinicSettingKeys: Record<keyof ClinicSettings, string> = {
 };
 
 const smsProviderOptions = [
+  { value: 'PhilSMS', label: 'PhilSMS (PH Primary)' },
+  { value: 'Semaphore', label: 'Semaphore (PH Fallback)' },
   { value: 'Twilio', label: 'Twilio' },
-  { value: 'Semaphore', label: 'Semaphore' },
+  { value: 'Mock', label: 'Mock / Simulation Only' },
   { value: 'Other', label: 'Other provider' },
 ];
 
@@ -352,9 +354,9 @@ export function Settings() {
 
     try {
       setTestSending(true);
-      await settingsAPI.testSms(testSmsForm);
+      const response = await settingsAPI.testSms(testSmsForm);
       setShowTestSmsModal(false);
-      toast.success('Test SMS request completed.');
+      toast.success(response?.message || 'Test SMS request completed.');
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, 'Failed to send test SMS.'));
     } finally {

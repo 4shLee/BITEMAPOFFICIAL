@@ -32,5 +32,12 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="SMS_SERVICE_ENABLED" value="false"/>
+        <env name="SMS_PROVIDER" value="Twilio"/>
+        <env name="PHILSMS_API_TOKEN" value=""/>
+        <env name="SEMAPHORE_API_KEY" value=""/>
+        <env name="TWILIO_ACCOUNT_SID" value=""/>
+        <env name="TWILIO_AUTH_TOKEN" value=""/>
+        <env name="TWILIO_FROM_NUMBER" value=""/>
     </php>
 </phpunit>
