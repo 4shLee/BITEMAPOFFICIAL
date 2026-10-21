@@ -1,4 +1,5 @@
 import { useCallback, useState, useEffect, type ReactNode } from 'react';
+import { Link } from 'react-router';
 import {
   Users, Syringe, Clock, MapPin, AlertTriangle,
   ChevronRight, RefreshCw, CalendarDays, Package,
@@ -261,9 +262,9 @@ function NurseDashboard({
                 <h2 className="text-[16px] font-bold text-slate-950">Today's PEP Schedule</h2>
                 <p className="text-[12px] font-normal text-slate-500 mt-0.5">Patients due for vaccination or schedule review</p>
               </div>
-              <a href="/pep-schedule" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">
+              <Link to="/pep-schedule" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">
                 Open schedule <ChevronRight className="w-3 h-3" />
-              </a>
+              </Link>
             </div>
             <div className="divide-y divide-slate-100">
               {scheduleRows.map((row) => (
@@ -301,9 +302,9 @@ function NurseDashboard({
                   </div>
                 </div>
               ))}
-              <a href="/notifications" className="mt-1 inline-flex items-center gap-1 text-[13px] font-bold text-emerald-700 hover:underline">
+              <Link to="/notifications" className="mt-1 inline-flex items-center gap-1 text-[13px] font-bold text-emerald-700 hover:underline">
                 View notifications <ChevronRight className="w-3 h-3" />
-              </a>
+              </Link>
             </div>
           </div>
         </div>
@@ -316,10 +317,10 @@ function NurseDashboard({
                 <p className="text-[12px] font-normal text-slate-500 mt-0.5">Latest cases for clinic encoding and follow-up</p>
               </div>
               {canCreateIncident && (
-                <a href="/incidents/new" className="text-[13px] text-emerald-700 font-bold flex items-center gap-1 hover:underline">
+                <Link to="/incidents/new" className="text-[13px] text-emerald-700 font-bold flex items-center gap-1 hover:underline">
                   <ClipboardPlus className="w-3.5 h-3.5" />
                   Record Incident
-                </a>
+                </Link>
               )}
             </div>
             {recentIncidents.length === 0 ? (
@@ -370,9 +371,9 @@ function NurseDashboard({
                 <h2 className="text-[16px] font-bold text-slate-950">Vaccine & Supply Status</h2>
                 <p className="text-[12px] font-normal text-slate-500 mt-0.5">Low and critical stock watchlist</p>
               </div>
-              <a href="/inventory" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">
+              <Link to="/inventory" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">
                 Inventory <ChevronRight className="w-3 h-3" />
-              </a>
+              </Link>
             </div>
             <div className="p-5 space-y-3.5">
               {supplyRows.length === 0 ? (
@@ -551,9 +552,9 @@ function ClinicAdminDashboard({
                 <h2 className="text-[16px] font-bold text-slate-950">Recent Incidents</h2>
                 <p className="text-[12px] font-normal text-slate-500 mt-0.5">Latest 5 bite cases reported</p>
               </div>
-              <a href="/incidents" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">
+              <Link to="/incidents" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">
                 View all incidents <ChevronRight className="w-3 h-3" />
-              </a>
+              </Link>
             </div>
             {recentIncidentRows.length === 0 ? (
               <div className="px-6 py-7 text-center">
@@ -600,9 +601,9 @@ function ClinicAdminDashboard({
                   <h2 className="text-[16px] font-bold text-slate-950">Vaccine & Supply Status</h2>
                   <p className="text-[12px] font-normal text-slate-500 mt-0.5">Low and critical stock watchlist</p>
                 </div>
-                <a href="/inventory" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">
+                <Link to="/inventory" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">
                   Inventory <ChevronRight className="w-3 h-3" />
-                </a>
+                </Link>
               </div>
               <div className="p-5 space-y-3">
                 {clinicSupplyRows.length === 0 ? (
@@ -636,9 +637,9 @@ function ClinicAdminDashboard({
                   <h2 className="text-[16px] font-bold text-slate-950">GIS Overview</h2>
                   <p className="text-[12px] font-normal text-slate-500 mt-0.5">Geographic incident monitoring</p>
                 </div>
-                <a href="/gis-map" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline whitespace-nowrap">
+                <Link to="/gis-map" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline whitespace-nowrap">
                   View GIS map <ChevronRight className="w-3 h-3" />
-                </a>
+                </Link>
               </div>
               <div className="p-5 space-y-4 flex-1">
                 <div>
@@ -703,9 +704,9 @@ function ClinicAdminDashboard({
                   <h2 className="text-[16px] font-bold text-slate-950">GIS Overview</h2>
                   <p className="text-[12px] font-normal text-slate-500 mt-0.5">Geographic incident monitoring</p>
                 </div>
-                <a href="/gis-map" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline whitespace-nowrap">
+                <Link to="/gis-map" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline whitespace-nowrap">
                   View GIS map <ChevronRight className="w-3 h-3" />
-                </a>
+                </Link>
               </div>
               <div className="p-5 space-y-4 flex-1">
                 <div>
@@ -958,13 +959,13 @@ function SystemAdminDashboard({
               ].map((action) => {
                 const Icon = action.icon;
                 return (
-                  <a key={action.href} href={action.href} className="flex items-center justify-between rounded-2xl border border-slate-100 bg-white px-4 py-3 text-[13px] font-bold text-slate-700 shadow-sm transition-colors hover:bg-emerald-50 hover:text-emerald-800">
+                  <Link key={action.href} to={action.href} className="flex items-center justify-between rounded-2xl border border-slate-100 bg-white px-4 py-3 text-[13px] font-bold text-slate-700 shadow-sm transition-colors hover:bg-emerald-50 hover:text-emerald-800">
                     <span className="flex items-center gap-3">
                       <Icon className="h-4 w-4 text-emerald-700" />
                       {action.label}
                     </span>
                     <ChevronRight className="h-4 w-4 text-slate-400" />
-                  </a>
+                  </Link>
                 );
               })}
             </div>
