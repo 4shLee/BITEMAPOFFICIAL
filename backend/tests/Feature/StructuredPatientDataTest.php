@@ -250,6 +250,117 @@ class StructuredPatientDataTest extends TestCase
         $this->assertGreaterThan(0, $response->json('meta.summary.overdue_patients'));
     }
 
+    public function test_patient_registry_record_saves_persists_and_appears_in_list_and_barangay_filter(): void
+    {
+        $barangay = Barangay::create(['name' => 'Aplaya']);
+
+        $response = $this->postJson('/api/patients', $this->patientPayload([
+            'first_name' => 'Maria',
+            'middle_name' => null,
+            'last_name' => 'Santos',
+            'suffix' => null,
+            'age' => 35,
+            'sex' => 'Female',
+            'contact_number' => '09175550143',
+            'email' => null,
+            'address_line' => 'Purok 5, Carmona St.',
+            'residence_barangay' => 'Aplaya',
+            'city_municipality' => 'Digos City',
+            'province' => 'Davao del Sur',
+            'sms_consent' => true,
+        ]));
+
+        $response->assertCreated()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.first_name', 'Maria')
+            ->assertJsonPath('data.last_name', 'Santos')
+            ->assertJsonPath('data.full_name', 'Maria Santos')
+            ->assertJsonPath('data.contact_number', '09175550143')
+            ->assertJsonPath('data.residence_barangay', 'Aplaya')
+            ->assertJsonPath('data.address', 'Purok 5, Carmona St., Aplaya, Digos City, Davao del Sur')
+            ->assertJsonPath('data.sms_consent', true);
+
+        $patientId = $response->json('data.id');
+
+        $this->assertDatabaseHas('patients', [
+            'id' => $patientId,
+            'first_name' => 'Maria',
+            'last_name' => 'Santos',
+            'full_name' => 'Maria Santos',
+            'contact_number' => '09175550143',
+            'residence_barangay' => 'Aplaya',
+            'sms_consent' => true,
+        ]);
+
+        $this->getJson('/api/patients')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $patientId)
+            ->assertJsonPath('data.0.display_name', 'Maria Santos')
+            ->assertJsonPath('data.0.residence_barangay', 'Aplaya');
+
+        $this->getJson('/api/patients?barangay_id='.$barangay->id)
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $patientId);
+
+        $this->getJson('/api/patients/'.$patientId)
+            ->assertOk()
+            ->assertJsonPath('data.id', $patientId)
+            ->assertJsonPath('data.full_name', 'Maria Santos');
+    }
+
+    public function test_patient_registry_rejects_unauthorized_roles_from_creating_or_updating_records(): void
+    {
+        $patient = Patient::create($this->patientPayload());
+
+        foreach (['doctor', 'system_admin'] as $role) {
+            Sanctum::actingAs(User::factory()->create([
+                'role' => $role,
+                'is_active' => true,
+                'approval_status' => 'approved',
+            ]));
+
+            $this->postJson('/api/patients', $this->patientPayload([
+                'first_name' => 'Blocked',
+                'last_name' => 'Patient',
+            ]))->assertForbidden();
+
+            $this->putJson('/api/patients/'.$patient->id, $this->patientPayload([
+                'first_name' => 'Blocked',
+                'last_name' => 'Update',
+            ]))->assertForbidden();
+        }
+
+        $this->assertDatabaseMissing('patients', ['first_name' => 'Blocked']);
+    }
+
+    public function test_patient_registry_missing_required_fields_return_clear_validation_errors(): void
+    {
+        $this->postJson('/api/patients', [
+            'first_name' => '',
+            'last_name' => '',
+            'age' => null,
+            'sex' => '',
+            'address_line' => 'ab',
+            'residence_barangay' => 'A',
+            'city_municipality' => '',
+            'province' => '',
+            'contact_number' => null,
+            'sms_consent' => true,
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors([
+                'first_name',
+                'last_name',
+                'age',
+                'sex',
+                'address_line',
+                'residence_barangay',
+                'city_municipality',
+                'province',
+                'contact_number',
+            ]);
+    }
+
     private function patientPayload(array $overrides = []): array
     {
         return array_merge([

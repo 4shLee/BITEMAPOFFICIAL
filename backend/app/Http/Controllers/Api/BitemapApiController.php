@@ -236,6 +236,9 @@ class BitemapApiController extends Controller
         ]);
         $perPage = (int) ($filters['per_page'] ?? 20);
         $search = trim((string) ($filters['search'] ?? ''));
+        $selectedBarangayName = filled($filters['barangay_id'] ?? null)
+            ? Barangay::whereKey($filters['barangay_id'])->value('name')
+            : null;
 
         $query = Patient::query()
             ->select([
@@ -267,7 +270,12 @@ class BitemapApiController extends Controller
             })
             ->when(
                 filled($filters['barangay_id'] ?? null),
-                fn ($query) => $query->where('barangay_id', $filters['barangay_id'])
+                fn ($query) => $query->where(function ($barangayFilterQuery) use ($filters, $selectedBarangayName): void {
+                    $barangayFilterQuery->where('barangay_id', $filters['barangay_id']);
+                    if (filled($selectedBarangayName)) {
+                        $barangayFilterQuery->orWhereRaw('LOWER(residence_barangay) = ?', [strtolower((string) $selectedBarangayName)]);
+                    }
+                })
             )
             ->latest('id');
 

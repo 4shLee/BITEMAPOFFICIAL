@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { ArrowLeft, MessageSquare, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
@@ -6,7 +6,7 @@ import { Header } from '../components/Layout/Header';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Button } from '../components/ui/Button';
-import { getErrorMessage, patientsAPI } from '../../lib/services/api';
+import { ApiError, getErrorMessage, patientsAPI } from '../../lib/services/api';
 import { canPerformAction, getStoredUser } from '../../lib/auth/roleAccess';
 import {
   PATIENT_SUFFIX_OPTIONS,
@@ -36,6 +36,37 @@ type PatientFormData = {
 };
 
 type PatientFormErrors = Partial<Record<keyof PatientFormData, string>>;
+
+const backendFieldMap: Record<string, keyof PatientFormData> = {
+  first_name: 'firstName',
+  middle_name: 'middleName',
+  last_name: 'lastName',
+  suffix: 'suffix',
+  age: 'age',
+  sex: 'sex',
+  contact_number: 'contactNumber',
+  email: 'email',
+  address_line: 'addressLine',
+  residence_barangay: 'residenceBarangay',
+  city_municipality: 'cityMunicipality',
+  province: 'province',
+};
+
+function mapBackendErrors(errors: Record<string, string[]>): PatientFormErrors {
+  return Object.entries(errors).reduce<PatientFormErrors>((mapped, [backendField, messages]) => {
+    const formField = backendFieldMap[backendField.replace(/\.\d+$/, '')];
+    if (formField && messages[0]) mapped[formField] = messages[0];
+    return mapped;
+  }, {});
+}
+
+function focusFirstInvalidField() {
+  requestAnimationFrame(() => {
+    const firstInvalidField = document.querySelector<HTMLElement>('[aria-invalid="true"]');
+    firstInvalidField?.focus({ preventScroll: true });
+    firstInvalidField?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+}
 
 const initialFormData: PatientFormData = {
   firstName: '',
@@ -75,6 +106,7 @@ export function PatientRecordForm() {
   const [loadingPatient, setLoadingPatient] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const isSubmittingRef = useRef(false);
 
   useEffect(() => {
     async function loadPatient() {
@@ -145,7 +177,8 @@ export function PatientRecordForm() {
     if (!isValidPatientName(formData.lastName, 2)) nextErrors.lastName = 'Enter 2–50 letters; spaces, hyphens, and apostrophes are allowed.';
     if (!formData.age || !Number.isInteger(age) || age < 0 || age > 120) nextErrors.age = 'Enter a whole-number age from 0 to 120.';
     if (!formData.sex) nextErrors.sex = 'Sex is required.';
-    nextErrors.contactNumber = contactNumberError(formData.contactNumber, formData.smsConsent);
+    const contactError = contactNumberError(formData.contactNumber, formData.smsConsent);
+    if (contactError) nextErrors.contactNumber = contactError;
     if (formData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
       nextErrors.email = 'Enter a valid email address.';
     }
@@ -160,13 +193,14 @@ export function PatientRecordForm() {
 
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
-      requestAnimationFrame(() => document.querySelector('[aria-invalid="true"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+      focusFirstInvalidField();
     }
     return Object.keys(nextErrors).length === 0;
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (saving || isSubmittingRef.current) return;
     if (!canSavePatient) {
       toast.error('You do not have permission to save patient records.');
       return;
@@ -196,6 +230,7 @@ export function PatientRecordForm() {
     };
 
     try {
+      isSubmittingRef.current = true;
       setSaving(true);
       const response = isEditMode && id
         ? await patientsAPI.update(id, payload)
@@ -205,8 +240,16 @@ export function PatientRecordForm() {
       toast.success(isEditMode ? 'Patient record updated successfully.' : 'Patient record created successfully.');
       navigate('/patients/' + patientId);
     } catch (error: unknown) {
-      toast.error(getErrorMessage(error, isEditMode ? 'Failed to update patient record.' : 'Failed to create patient record.'));
+      if (error instanceof ApiError && Object.keys(error.errors).length > 0) {
+        const backendErrors = mapBackendErrors(error.errors);
+        setErrors((current) => ({ ...current, ...backendErrors }));
+        focusFirstInvalidField();
+        toast.error(Object.values(backendErrors)[0] || error.message);
+      } else {
+        toast.error(getErrorMessage(error, isEditMode ? 'Failed to update patient record.' : 'Failed to create patient record.'));
+      }
     } finally {
+      isSubmittingRef.current = false;
       setSaving(false);
     }
   };
