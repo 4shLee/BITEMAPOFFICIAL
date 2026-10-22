@@ -49,3 +49,23 @@ test('Patient Registry list loads fresh records on mount and displays structured
   assert.match(patientsPage, /patient\.residence_barangay \|\| patient\.barangay\?\.name \|\| 'Not recorded'/);
   assert.match(patientHelpers, /export function contactNumberError/);
 });
+
+test('SMS Reminder Permission is placed in the right column above Patient Summary', () => {
+  const asideBlock = patientRecordForm.slice(
+    patientRecordForm.indexOf('<aside'),
+    patientRecordForm.indexOf('</aside>')
+  );
+  const smsHeadingIndex = asideBlock.indexOf('D. SMS Reminder Permission');
+  const summaryHeadingIndex = asideBlock.indexOf('Patient Summary');
+
+  assert.ok(smsHeadingIndex > -1, 'SMS Reminder Permission should be inside the right-hand <aside>');
+  assert.ok(summaryHeadingIndex > smsHeadingIndex, 'Patient Summary should appear below SMS Reminder Permission');
+});
+
+test('Barangay combobox filters Digos City barangays on type and City/Municipality uses Davao del Sur dropdown', () => {
+  assert.match(patientHelpers, /export const DIGOS_BARANGAY_NAMES = \[/);
+  assert.match(patientHelpers, /export const DAVAO_DEL_SUR_MUNICIPALITIES = \[/);
+  assert.match(patientRecordForm, /aria-controls="patient-barangay-listbox"/);
+  assert.match(patientRecordForm, /name\.toLowerCase\(\)\.startsWith\(query\)/);
+  assert.match(patientRecordForm, /label="City \/ Municipality \*"[\s\S]*?options=\{municipalityOptions\}/);
+});

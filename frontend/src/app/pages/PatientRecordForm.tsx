@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { ArrowLeft, MessageSquare, UserRound } from 'lucide-react';
+import { ArrowLeft, ChevronDown, MessageSquare, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { Header } from '../components/Layout/Header';
 import { Input } from '../components/ui/Input';
@@ -9,6 +9,8 @@ import { Button } from '../components/ui/Button';
 import { ApiError, getErrorMessage, patientsAPI } from '../../lib/services/api';
 import { canPerformAction, getStoredUser } from '../../lib/auth/roleAccess';
 import {
+  DAVAO_DEL_SUR_MUNICIPALITIES,
+  DIGOS_BARANGAY_NAMES,
   PATIENT_SUFFIX_OPTIONS,
   composePatientAddress,
   composePatientFullName,
@@ -106,7 +108,43 @@ export function PatientRecordForm() {
   const [loadingPatient, setLoadingPatient] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [barangayDropdownOpen, setBarangayDropdownOpen] = useState(false);
+  const barangayContainerRef = useRef<HTMLDivElement>(null);
   const isSubmittingRef = useRef(false);
+
+  const filteredBarangays = useMemo(() => {
+    const query = normalizePatientText(formData.residenceBarangay).toLowerCase();
+    if (!query) return DIGOS_BARANGAY_NAMES;
+
+    const startsWithMatches = DIGOS_BARANGAY_NAMES.filter((name) => name.toLowerCase().startsWith(query));
+    const containsMatches = DIGOS_BARANGAY_NAMES.filter(
+      (name) => !name.toLowerCase().startsWith(query) && name.toLowerCase().includes(query)
+    );
+    return [...startsWithMatches, ...containsMatches];
+  }, [formData.residenceBarangay]);
+
+  const municipalityOptions = useMemo(() => {
+    const current = normalizePatientText(formData.cityMunicipality);
+    const list = current && !DAVAO_DEL_SUR_MUNICIPALITIES.includes(current)
+      ? [current, ...DAVAO_DEL_SUR_MUNICIPALITIES]
+      : DAVAO_DEL_SUR_MUNICIPALITIES;
+
+    return [
+      { value: '', label: 'Select city / municipality' },
+      ...list.map((name) => ({ value: name, label: name })),
+    ];
+  }, [formData.cityMunicipality]);
+
+  useEffect(() => {
+    function handleOutsideClick(event: MouseEvent) {
+      if (barangayContainerRef.current && !barangayContainerRef.current.contains(event.target as Node)) {
+        setBarangayDropdownOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
 
   useEffect(() => {
     async function loadPatient() {
@@ -348,13 +386,104 @@ export function PatientRecordForm() {
                 )}
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <Input label="House No. / Purok / Street *" placeholder="Enter house number, purok, subdivision, or street" value={formData.addressLine} onChange={(event) => updateField('addressLine', event.target.value)} error={errors.addressLine} />
-                  <Input label="Barangay *" placeholder="Enter residential barangay" value={formData.residenceBarangay} onChange={(event) => updateField('residenceBarangay', event.target.value)} error={errors.residenceBarangay} />
-                  <Input label="City / Municipality *" placeholder="Enter city or municipality" value={formData.cityMunicipality} onChange={(event) => updateField('cityMunicipality', event.target.value)} error={errors.cityMunicipality} />
+
+                  <div ref={barangayContainerRef} className="relative w-full">
+                    <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                      Barangay *
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        role="combobox"
+                        aria-expanded={barangayDropdownOpen}
+                        aria-controls="patient-barangay-listbox"
+                        aria-autocomplete="list"
+                        aria-invalid={errors.residenceBarangay ? true : undefined}
+                        placeholder="Type or select residential barangay"
+                        value={formData.residenceBarangay}
+                        onFocus={() => setBarangayDropdownOpen(true)}
+                        onChange={(event) => {
+                          updateField('residenceBarangay', event.target.value);
+                          setBarangayDropdownOpen(true);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Escape') {
+                            setBarangayDropdownOpen(false);
+                          } else if (event.key === 'Enter' && barangayDropdownOpen && filteredBarangays.length > 0) {
+                            event.preventDefault();
+                            updateField('residenceBarangay', filteredBarangays[0]);
+                            setBarangayDropdownOpen(false);
+                          }
+                        }}
+                        className={`h-10 w-full rounded-xl border bg-input-background pl-3 pr-9 text-sm text-foreground shadow-sm placeholder:text-muted-foreground/75 focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-ring/20 transition-all ${
+                          errors.residenceBarangay ? 'border-destructive' : 'border-input'
+                        }`}
+                      />
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        aria-label="Toggle barangay list"
+                        onClick={() => setBarangayDropdownOpen((open) => !open)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        <ChevronDown className={`h-4 w-4 transition-transform ${barangayDropdownOpen ? 'rotate-180' : ''}`} />
+                      </button>
+                    </div>
+                    {barangayDropdownOpen && (
+                      <ul
+                        id="patient-barangay-listbox"
+                        role="listbox"
+                        className="absolute z-30 mt-1 max-h-52 w-full overflow-y-auto rounded-xl border border-border bg-white py-1 shadow-lg"
+                      >
+                        {filteredBarangays.length > 0 ? (
+                          filteredBarangays.map((barangayName) => {
+                            const isSelected = normalizePatientText(formData.residenceBarangay).toLowerCase() === barangayName.toLowerCase();
+                            return (
+                              <li key={barangayName} role="option" aria-selected={isSelected}>
+                                <button
+                                  type="button"
+                                  onMouseDown={(event) => {
+                                    event.preventDefault();
+                                    updateField('residenceBarangay', barangayName);
+                                    setBarangayDropdownOpen(false);
+                                  }}
+                                  className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors ${
+                                    isSelected
+                                      ? 'bg-emerald-50 font-semibold text-primary'
+                                      : 'text-foreground hover:bg-slate-50'
+                                  }`}
+                                >
+                                  <span>{barangayName}</span>
+                                </button>
+                              </li>
+                            );
+                          })
+                        ) : (
+                          <li className="px-3 py-2 text-xs text-muted-foreground">
+                            Using custom barangay "{normalizePatientText(formData.residenceBarangay)}"
+                          </li>
+                        )}
+                      </ul>
+                    )}
+                    {errors.residenceBarangay && (
+                      <p className="mt-1 text-xs text-destructive">{errors.residenceBarangay}</p>
+                    )}
+                  </div>
+
+                  <Select
+                    label="City / Municipality *"
+                    options={municipalityOptions}
+                    value={formData.cityMunicipality}
+                    onChange={(event) => updateField('cityMunicipality', event.target.value)}
+                    error={errors.cityMunicipality}
+                  />
                   <Input label="Province *" placeholder="Enter province" value={formData.province} onChange={(event) => updateField('province', event.target.value)} error={errors.province} />
                 </div>
               </section>
             </div>
+          </div>
 
+          <aside className="space-y-3 xl:self-start xl:sticky xl:top-24">
             <div className="rounded-2xl border border-border bg-card p-4 shadow-sm lg:p-5">
               <div className="mb-3 flex items-center gap-2">
                 <div className="rounded-xl bg-emerald-50 p-2 text-primary">
@@ -380,10 +509,8 @@ export function PatientRecordForm() {
                 </label>
               </div>
             </div>
-          </div>
 
-          <aside className="space-y-3 xl:self-start">
-            <div className="rounded-2xl border border-border bg-card p-4 shadow-sm xl:sticky xl:top-24">
+            <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
               <div className="mb-3 flex items-center gap-2">
                 <div className="rounded-xl bg-emerald-50 p-2 text-primary">
                   <UserRound className="h-4 w-4" />

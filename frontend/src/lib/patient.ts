@@ -21,6 +21,48 @@ export const PATIENT_SUFFIX_OPTIONS = [
   { value: 'V', label: 'V' },
 ];
 
+export const DIGOS_BARANGAY_NAMES = [
+  'Aplaya',
+  'Balabag',
+  'Binaton',
+  'Cogon',
+  'Colorado',
+  'Dawis',
+  'Dulangan',
+  'Goma',
+  'Igpit',
+  'Kapatagan',
+  'Kiagot',
+  'Lungag',
+  'Mahayahay',
+  'Matti',
+  'Ruparan',
+  'San Agustin',
+  'San Jose',
+  'San Miguel',
+  'San Roque',
+  'Sinawilan',
+  'Soong',
+  'Tiguman',
+  'Tres De Mayo',
+  'Zone 1',
+  'Zone 2',
+  'Zone 3',
+];
+
+export const DAVAO_DEL_SUR_MUNICIPALITIES = [
+  'Digos City',
+  'Bansalan',
+  'Hagonoy',
+  'Kiblawan',
+  'Magsaysay',
+  'Malalag',
+  'Matanao',
+  'Padada',
+  'Santa Cruz',
+  'Sulop',
+];
+
 export function normalizePatientText(value?: string | null) {
   return (value || '').trim().replace(/\s+/g, ' ');
 }
