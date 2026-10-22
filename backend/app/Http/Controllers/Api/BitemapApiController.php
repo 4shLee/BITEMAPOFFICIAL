@@ -19,6 +19,7 @@ use App\Services\Sms\VaccinationReminderService;
 use App\Services\WhoExposureClassificationService;
 use App\Support\DefaultAdminAccount;
 use App\Support\DigosBarangayCoordinates;
+use App\Support\PasswordPolicy;
 use App\Support\PhoneNumber;
 use App\Support\SmsCredentials;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -115,7 +116,7 @@ class BitemapApiController extends Controller
 
         $data = $request->validate([
             'email' => ['required', 'email', 'unique:users,email'],
-            'password' => ['required', 'string', 'min:8'],
+            'password' => PasswordPolicy::rules(true),
             'first_name' => [$hasStructuredName ? 'required' : 'nullable', 'string', 'max:80'],
             'middle_name' => ['nullable', 'string', 'max:80'],
             'last_name' => [$hasStructuredName ? 'required' : 'nullable', 'string', 'max:80'],
@@ -973,7 +974,7 @@ class BitemapApiController extends Controller
             'email' => ['required', 'email', 'unique:users,email'],
             'role' => ['required', Rule::in(self::USER_ROLE_OPTIONS)],
             'phone' => ['nullable', 'string', 'max:30'],
-            'password' => ['nullable', 'string', 'min:8'],
+            'password' => PasswordPolicy::rules(false),
             'status' => ['nullable', Rule::in(['Active', 'Inactive'])],
         ]);
 
@@ -1011,9 +1012,13 @@ class BitemapApiController extends Controller
             'email' => ['sometimes', 'email', Rule::unique('users', 'email')->ignore($user->id)],
             'role' => ['sometimes', Rule::in(self::USER_ROLE_OPTIONS)],
             'phone' => ['nullable', 'string', 'max:30'],
-            'password' => ['nullable', 'string', 'min:8'],
+            'password' => PasswordPolicy::rules(false),
             'status' => ['nullable', Rule::in(['Active', 'Inactive'])],
         ]);
+
+        if (array_key_exists('password', $data) && blank($data['password'])) {
+            unset($data['password']);
+        }
 
         if ($this->isClinicAdmin($request->user())) {
             if ($this->isSystemAdminUser($user) || (isset($data['role']) && $this->canonicalUserRole($data['role']) === 'system_admin')) {

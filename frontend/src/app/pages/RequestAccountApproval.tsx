@@ -1,8 +1,9 @@
 import { useEffect, useState, useRef } from "react";
 import { Link } from "react-router";
-import { ArrowLeft, Check, ChevronDown, Eye, EyeOff, Globe2, ShieldCheck } from "lucide-react";
-import { authAPI, getErrorMessage } from "../../lib/services/api";
+import { AlertCircle, ArrowLeft, Check, ChevronDown, Circle, Eye, EyeOff, Globe2, ShieldCheck } from "lucide-react";
+import { ApiError, authAPI, getErrorMessage } from "../../lib/services/api";
 import { ASSIGNABLE_ROLES } from "../../lib/auth/roleAccess";
+import { evaluatePasswordPolicy, MIN_PASSWORD_LENGTH } from "../../lib/auth/passwordPolicy";
 import { toast } from "sonner";
 import { AnimatedGISBackground } from "../components/Brand/AnimatedGISBackground";
 import { BITEMAP_FONT_FAMILY, BITEMAP_LOGO_SRC } from "../components/Brand/brand";
@@ -103,17 +104,36 @@ export function RequestAccountApproval() {
   const [showRequestPassword, setShowRequestPassword] = useState(false);
   const [isRequestSubmitting, setIsRequestSubmitting] = useState(false);
   const [requestSubmitted, setRequestSubmitted] = useState(false);
+  const [passwordTouched, setPasswordTouched] = useState(false);
+  const [confirmPasswordTouched, setConfirmPasswordTouched] = useState(false);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [serverPasswordError, setServerPasswordError] = useState<string | null>(null);
+
+  const passwordEvaluation = evaluatePasswordPolicy(requestForm.password);
+  const hasPasswordInput = requestForm.password.length > 0;
+  const showPasswordValidationFeedback =
+    Boolean(serverPasswordError) ||
+    (!passwordEvaluation.isValid && (submitAttempted || hasPasswordInput));
+  const passwordMismatch =
+    requestForm.confirmPassword.length > 0 && requestForm.password !== requestForm.confirmPassword;
+  const showConfirmMismatchFeedback =
+    (confirmPasswordTouched || submitAttempted || requestForm.confirmPassword.length > 0) &&
+    ((submitAttempted && !requestForm.confirmPassword) || passwordMismatch);
 
   const handleRequestSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    setSubmitAttempted(true);
+    setPasswordTouched(true);
+    setConfirmPasswordTouched(true);
+    setServerPasswordError(null);
 
     if (!requestForm.role) {
       toast.error("Please select a requested role.");
       return;
     }
 
-    if (requestForm.password.length < 8) {
-      toast.error("Password must be at least 8 characters.");
+    if (!passwordEvaluation.isValid) {
+      toast.error(passwordEvaluation.errorMessage || "Password does not meet security requirements.");
       return;
     }
 
@@ -140,10 +160,20 @@ export function RequestAccountApproval() {
       if (result.success) {
         setRequestSubmitted(true);
         setRequestForm(initialRequestForm);
+        setPasswordTouched(false);
+        setConfirmPasswordTouched(false);
+        setSubmitAttempted(false);
+        setServerPasswordError(null);
         toast.success(result.message || "Account request submitted for System Administrator approval.");
       }
     } catch (error: unknown) {
-      toast.error(getErrorMessage(error, "Failed to submit account request."));
+      if (error instanceof ApiError && error.errors?.password?.length) {
+        const backendPasswordMsg = error.errors.password[0];
+        setServerPasswordError(backendPasswordMsg);
+        toast.error(backendPasswordMsg);
+      } else {
+        toast.error(getErrorMessage(error, "Failed to submit account request."));
+      }
     } finally {
       setIsRequestSubmitting(false);
     }
@@ -311,11 +341,16 @@ export function RequestAccountApproval() {
                         <input
                           type={showRequestPassword ? "text" : "password"}
                           value={requestForm.password}
-                          onChange={(e) => setRequestForm({ ...requestForm, password: e.target.value })}
+                          onChange={(e) => {
+                            setRequestForm({ ...requestForm, password: e.target.value });
+                            if (serverPasswordError) setServerPasswordError(null);
+                          }}
+                          onBlur={() => setPasswordTouched(true)}
                           required
-                          minLength={8}
+                          minLength={MIN_PASSWORD_LENGTH}
+                          aria-invalid={showPasswordValidationFeedback}
                           placeholder="Password"
-                          className="h-8 w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1 pr-10 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                          className={'h-8 w-full rounded-lg border bg-white/90 px-3 py-1 pr-10 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:bg-white focus:outline-none focus:ring-2 ' + (showPasswordValidationFeedback ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-500/20' : 'border-slate-200 focus:border-teal-600 focus:ring-teal-500/20')}
                         />
                         <button
                           type="button"
@@ -326,7 +361,6 @@ export function RequestAccountApproval() {
                           {showRequestPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </button>
                       </div>
-                      <p className="mt-0.5 text-[11px] leading-tight text-slate-500">Must be at least 8 characters.</p>
                     </div>
                     <div>
                       <label className="mb-0.5 block text-[12px] font-semibold text-slate-800 leading-tight">Confirm Password</label>
@@ -334,12 +368,49 @@ export function RequestAccountApproval() {
                         type={showRequestPassword ? "text" : "password"}
                         value={requestForm.confirmPassword}
                         onChange={(e) => setRequestForm({ ...requestForm, confirmPassword: e.target.value })}
+                        onBlur={() => setConfirmPasswordTouched(true)}
                         required
-                        minLength={8}
+                        minLength={MIN_PASSWORD_LENGTH}
+                        aria-invalid={showConfirmMismatchFeedback}
                         placeholder="Repeat password"
-                        className="h-8 w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                        className={'h-8 w-full rounded-lg border bg-white/90 px-3 py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:bg-white focus:outline-none focus:ring-2 ' + (showConfirmMismatchFeedback ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-500/20' : 'border-slate-200 focus:border-teal-600 focus:ring-teal-500/20')}
                       />
+                      {showConfirmMismatchFeedback && passwordMismatch && (
+                        <p role="alert" className="mt-0.5 flex items-center gap-1 text-[11px] font-medium leading-tight text-rose-600">
+                          <AlertCircle className="h-3 w-3 shrink-0" />
+                          Passwords do not match.
+                        </p>
+                      )}
                     </div>
+                  </div>
+
+                  {/* Password Requirements & Validation Feedback */}
+                  <div className="rounded-lg border border-slate-200/80 bg-slate-50/90 px-2.5 py-1.5">
+                    <p className="text-[11px] font-semibold text-slate-700 leading-tight">Password Requirements:</p>
+                    <ul className="mt-1 grid grid-cols-1 gap-x-3 gap-y-0.5 sm:grid-cols-2" aria-label="Password requirements">
+                      {passwordEvaluation.checks.map((rule) => {
+                        const isUnmetHighlighted = !rule.met && showPasswordValidationFeedback;
+                        return (
+                          <li
+                            key={rule.key}
+                            className={'flex items-center gap-1.5 text-[11px] leading-tight ' + (rule.met ? 'font-medium text-teal-700' : isUnmetHighlighted ? 'font-medium text-rose-600' : 'text-slate-500')}
+                          >
+                            {rule.met ? (
+                              <Check className="h-3 w-3 shrink-0 text-teal-600" aria-hidden="true" />
+                            ) : (
+                              <Circle className={'h-2.5 w-2.5 shrink-0 ' + (isUnmetHighlighted ? 'text-rose-500' : 'text-slate-400')} aria-hidden="true" />
+                            )}
+                            <span>{rule.label}</span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    {showPasswordValidationFeedback && (
+                      <p role="alert" className="mt-1 flex items-start gap-1 text-[11px] font-medium leading-tight text-rose-600">
+                        <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
+                        <span>{serverPasswordError || passwordEvaluation.errorMessage}</span>
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -382,5 +453,3 @@ export function RequestAccountApproval() {
     </div>
   );
 }
-
-

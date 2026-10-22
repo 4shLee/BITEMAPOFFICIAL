@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Search, UserPlus, Edit, X, Users as UsersIcon, ShieldCheck, UserCheck, UserX, CheckCircle, XCircle, Stethoscope } from 'lucide-react';
+import { AlertCircle, Check, Circle, Search, UserPlus, Edit, X, Users as UsersIcon, ShieldCheck, UserCheck, UserX, CheckCircle, XCircle, Stethoscope } from 'lucide-react';
 import { Header } from '../components/Layout/Header';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { toast } from 'sonner';
 import { getErrorMessage, usersAPI, type ApiPayload } from '../../lib/services/api';
 import { ASSIGNABLE_ROLES, getRoleLabel, getStoredUser, isSystemAdminRole, normalizeRoleKey } from '../../lib/auth/roleAccess';
+import { evaluatePasswordPolicy, MIN_PASSWORD_LENGTH } from '../../lib/auth/passwordPolicy';
 import { composeUserName, getUserDisplayName } from '../../lib/userName';
 
 const ROLES = ASSIGNABLE_ROLES;
@@ -48,6 +49,11 @@ function UserModal({ user, roles, isCurrentUser, onClose, onSave }: { user: User
     status: user.status || 'Active',
     password: '',
   });
+  const [passwordTouched, setPasswordTouched] = useState(false);
+
+  const hasPasswordInput = form.password.length > 0;
+  const passwordEvaluation = evaluatePasswordPolicy(form.password);
+  const showPasswordValidationFeedback = hasPasswordInput && !passwordEvaluation.isValid;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,6 +64,11 @@ function UserModal({ user, roles, isCurrentUser, onClose, onSave }: { user: User
     }
     if (isCurrentUser && form.status === 'Inactive') {
       toast.error('You cannot deactivate your own account.');
+      return;
+    }
+    if (hasPasswordInput && !passwordEvaluation.isValid) {
+      setPasswordTouched(true);
+      toast.error(passwordEvaluation.errorMessage || 'Password does not meet security requirements.');
       return;
     }
     const { password, firstName, middleName, lastName, suffix, ...baseUserData } = form;
@@ -71,7 +82,7 @@ function UserModal({ user, roles, isCurrentUser, onClose, onSave }: { user: User
           suffix,
         }
       : baseUserData;
-    onSave(password.trim() ? { ...userData, password: password.trim() } : userData);
+    onSave(hasPasswordInput ? { ...userData, password } : userData);
   };
 
   return (
@@ -162,11 +173,39 @@ function UserModal({ user, roles, isCurrentUser, onClose, onSave }: { user: User
               type="password"
               value={form.password}
               onChange={e => setForm({ ...form, password: e.target.value })}
-              minLength={8}
+              onBlur={() => setPasswordTouched(true)}
+              minLength={MIN_PASSWORD_LENGTH}
+              aria-invalid={showPasswordValidationFeedback}
               placeholder="Leave blank to keep current password"
-              className="w-full px-3.5 py-2.5 bg-input-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+              className={'w-full px-3.5 py-2.5 bg-input-background border rounded-lg text-sm focus:outline-none focus:ring-2 transition-colors ' + (showPasswordValidationFeedback ? 'border-destructive focus:ring-destructive/30 focus:border-destructive' : 'border-input focus:ring-primary/30 focus:border-primary')}
             />
-            <p className="mt-1.5 text-xs text-muted-foreground">Enter at least 8 characters to reset this user's password.</p>
+            <div className="mt-2 rounded-lg border border-border bg-muted/30 p-2.5">
+              <p className="text-xs font-semibold text-foreground">Password Requirements:</p>
+              <ul className="mt-1.5 space-y-1">
+                {passwordEvaluation.checks.map((rule) => {
+                  const isUnmetHighlighted = hasPasswordInput && !rule.met && (passwordTouched || showPasswordValidationFeedback);
+                  return (
+                    <li
+                      key={rule.key}
+                      className={'flex items-center gap-1.5 text-xs ' + (hasPasswordInput && rule.met ? 'font-medium text-success' : isUnmetHighlighted ? 'font-medium text-destructive' : 'text-muted-foreground')}
+                    >
+                      {hasPasswordInput && rule.met ? (
+                        <Check className="w-3.5 h-3.5 shrink-0 text-success" />
+                      ) : (
+                        <Circle className={'w-3 h-3 shrink-0 ' + (isUnmetHighlighted ? 'text-destructive' : 'text-muted-foreground')} />
+                      )}
+                      <span>{rule.label}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+              {showPasswordValidationFeedback && (
+                <p role="alert" className="mt-2 flex items-start gap-1.5 text-xs font-medium text-destructive">
+                  <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>{passwordEvaluation.errorMessage}</span>
+                </p>
+              )}
+            </div>
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>

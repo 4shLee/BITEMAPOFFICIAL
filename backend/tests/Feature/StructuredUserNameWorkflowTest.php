@@ -17,7 +17,7 @@ class StructuredUserNameWorkflowTest extends TestCase
             'first_name' => '  Ana   Marie  ',
             'last_name' => '  Cruz  ',
             'email' => 'ana.cruz@example.test',
-            'password' => 'password123',
+            'password' => 'Password123!',
             'role' => 'doctor',
         ]);
 
@@ -46,7 +46,7 @@ class StructuredUserNameWorkflowTest extends TestCase
             'first_name' => 'Legacy',
             'last_name' => 'Doctor',
             'email' => 'legacy.doctor.role@example.test',
-            'password' => 'password123',
+            'password' => 'Password123!',
             'role' => 'Doctor',
         ])->assertCreated()
             ->assertJsonPath('user.role', 'doctor');
@@ -65,7 +65,7 @@ class StructuredUserNameWorkflowTest extends TestCase
             'last_name' => 'Santos',
             'suffix' => 'III',
             'email' => 'juan.santos@example.test',
-            'password' => 'password123',
+            'password' => 'Password123!',
             'role' => 'nurse_vaccinator',
         ])->assertCreated();
 
@@ -92,7 +92,7 @@ class StructuredUserNameWorkflowTest extends TestCase
         $legacyRequest = $this->postJson('/api/auth/signup', [
             'fullName' => '  Legacy   Requester  ',
             'email' => 'legacy.requester@example.test',
-            'password' => 'password123',
+            'password' => 'Password123!',
             'role' => 'doctor',
         ])->assertCreated();
 
