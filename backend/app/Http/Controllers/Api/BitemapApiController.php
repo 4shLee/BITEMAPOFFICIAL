@@ -588,18 +588,13 @@ class BitemapApiController extends Controller
             ])
             ->values();
 
-        // Vaccine products with positive aggregate stock but no usable lot/batch cannot be selected:
+        // Vaccine products without a usable lot/batch cannot be selected:
         // doses must be traceable to a specific unexpired batch with remaining quantity.
         $eligibleIds = $items->pluck('id')->all();
         $unavailable = Inventory::query()
             ->select(['id', 'item_name', 'item_type', 'current_stock'])
             ->where('item_type', 'Vaccine')
             ->whereNotIn('id', $eligibleIds)
-            ->where(fn ($query) => $query
-                ->where('current_stock', '>', 0)
-                ->orWhereHas('batches', fn ($batchQuery) => $batchQuery
-                    ->where('quantity_remaining', '>', 0)
-                    ->whereDate('expiry_date', '>=', today())))
             ->withCount([
                 'batches',
                 'batches as unexpired_batches_count' => fn ($query) => $query->whereDate('expiry_date', '>=', today()),
@@ -849,11 +844,68 @@ class BitemapApiController extends Controller
 
     public function storeInventory(Request $request): JsonResponse
     {
-        $item = Inventory::create($this->inventoryData($request));
+        if (! $request->has('current_stock') || $request->input('current_stock') === '' || $request->input('current_stock') === null) {
+            $request->merge(['current_stock' => 0]);
+        }
+
+        $data = $this->inventoryData($request);
+        $hasInitialBatch = $request->filled('batch_number');
+        $batchData = [];
+
+        if ($hasInitialBatch) {
+            $batchData = $request->validate([
+                'batch_number' => ['required', 'string', 'max:100'],
+                'expiry_date' => ['required', 'date'],
+                'received_date' => ['nullable', 'date', 'before_or_equal:today'],
+                'supplier' => ['nullable', 'string', 'max:150'],
+                'notes' => ['nullable', 'string'],
+            ]);
+
+            if ((int) $data['current_stock'] < 1) {
+                throw ValidationException::withMessages([
+                    'current_stock' => 'Initial stock must be at least 1 when recording an initial lot/batch.',
+                ]);
+            }
+        }
+
+        $item = DB::transaction(function () use ($request, $data, $hasInitialBatch, $batchData) {
+            $item = Inventory::create([
+                ...$data,
+                'updated_by' => $request->user()?->id,
+            ]);
+
+            if ($hasInitialBatch) {
+                $receivedDate = $batchData['received_date'] ?? now()->toDateString();
+                $batch = $item->batches()->create([
+                    'batch_number' => trim($batchData['batch_number']),
+                    'quantity_received' => (int) $data['current_stock'],
+                    'quantity_remaining' => (int) $data['current_stock'],
+                    'expiry_date' => $batchData['expiry_date'],
+                    'received_date' => $receivedDate,
+                    'supplier' => $batchData['supplier'] ?? null,
+                    'notes' => $batchData['notes'] ?? null,
+                    'created_by' => $request->user()?->id,
+                ]);
+
+                $this->syncInventoryNearestExpiry($item->fresh());
+
+                InventoryTransaction::create([
+                    'inventory_id' => $item->id,
+                    'inventory_batch_id' => $batch->id,
+                    'transaction_type' => 'Restocked',
+                    'quantity' => (int) $data['current_stock'],
+                    'transaction_date' => $receivedDate,
+                    'notes' => 'Initial Batch/Lot '.trim($batchData['batch_number']).' received.'.(! empty($batchData['notes']) ? ' '.$batchData['notes'] : ''),
+                    'created_by' => $request->user()?->id,
+                ]);
+            }
+
+            return $item;
+        });
 
         return response()->json([
             'success' => true,
-            'data' => $this->inventoryPayload($item),
+            'data' => $this->inventoryPayload($item->fresh(['batches', 'transactions'])),
         ], 201);
     }
 
@@ -959,13 +1011,27 @@ class BitemapApiController extends Controller
         ]);
 
         $batch = DB::transaction(function () use ($request, $inventory, $data) {
+            $hadExistingBatches = $inventory->batches()->exists();
+
             $batch = $inventory->batches()->create([
                 ...$data,
                 'quantity_remaining' => $data['quantity_received'],
                 'created_by' => $request->user()?->id,
             ]);
 
-            $inventory->increment('current_stock', $data['quantity_received']);
+            $usableBatchStock = (int) $inventory->batches()
+                ->where('quantity_remaining', '>', 0)
+                ->whereDate('expiry_date', '>=', today())
+                ->sum('quantity_remaining');
+
+            $nextStock = $hadExistingBatches
+                ? max((int) $inventory->current_stock + (int) $data['quantity_received'], $usableBatchStock)
+                : (int) $data['quantity_received'];
+
+            $inventory->update([
+                'current_stock' => $nextStock,
+                'updated_by' => $request->user()?->id,
+            ]);
             $this->syncInventoryNearestExpiry($inventory->fresh());
 
             InventoryTransaction::create([
@@ -974,7 +1040,7 @@ class BitemapApiController extends Controller
                 'transaction_type' => 'Restocked',
                 'quantity' => $data['quantity_received'],
                 'transaction_date' => $data['received_date'],
-                'notes' => 'Batch/Lot '.$data['batch_number'].' received.'.($data['notes'] ? ' '.$data['notes'] : ''),
+                'notes' => 'Batch/Lot '.$data['batch_number'].' received.'.(! empty($data['notes']) ? ' '.$data['notes'] : ''),
                 'created_by' => $request->user()?->id,
             ]);
 

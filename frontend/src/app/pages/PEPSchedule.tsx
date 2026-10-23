@@ -9,7 +9,7 @@ import { Input } from '../components/ui/Input';
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { getErrorMessage, notificationsAPI, pepScheduleAPI } from '../../lib/services/api';
-import { canPerformAction, getStoredUser } from '../../lib/auth/roleAccess';
+import { canAccessPath, canPerformAction, getStoredUser } from '../../lib/auth/roleAccess';
 import { getPatientDisplayName } from '../../lib/patient';
 
 type DoseStatus = 'completed' | 'completed_late' | 'due_today' | 'upcoming' | 'overdue' | 'pending' | 'missed' | 'rescheduled';
@@ -466,6 +466,9 @@ export function PEPSchedule() {
   const currentUser = getStoredUser();
   const canUpdatePep = canPerformAction(currentUser?.role, 'pep.update');
   const canSendNotifications = canPerformAction(currentUser?.role, 'notifications.send');
+  const canViewInventory = canAccessPath(currentUser?.role, '/inventory');
+  const canAddInventoryBatch = canPerformAction(currentUser?.role, 'inventory.adjust_stock');
+  const canCreateInventoryProduct = canPerformAction(currentUser?.role, 'inventory.create');
   const [groups, setGroups] = useState<ScheduleGroup[]>([]);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string>('');
   const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
@@ -1046,11 +1049,20 @@ export function PEPSchedule() {
                 <select
                   id="dose-vaccine"
                   value={recordForm.inventoryItemId}
-                  onChange={(event) => setRecordForm((current) => ({
-                    ...current,
-                    inventoryItemId: event.target.value,
-                    inventoryBatchId: '',
-                  }))}
+                  onChange={(event) => {
+                    const nextItemId = event.target.value;
+                    const nextProduct = eligibleVaccineProducts.find((item) => String(item.id) === nextItemId);
+                    const nextBatches = (nextProduct?.batches || []).filter((batch) => (
+                      Number(batch.quantity_remaining || 0) > 0
+                      && Boolean(batch.expiry_date)
+                      && String(batch.expiry_date) >= todayKey()
+                    ));
+                    setRecordForm((current) => ({
+                      ...current,
+                      inventoryItemId: nextItemId,
+                      inventoryBatchId: nextBatches.length === 1 ? String(nextBatches[0].id) : '',
+                    }));
+                  }}
                   disabled={savingDose || inventoryOptionsLoading || eligibleVaccineProducts.length === 0}
                   required
                   aria-invalid={doseSubmitAttempted && !recordForm.inventoryItemId ? true : undefined}
@@ -1074,7 +1086,7 @@ export function PEPSchedule() {
                   aria-invalid={doseSubmitAttempted && !recordForm.inventoryBatchId ? true : undefined}
                   className="h-10 w-full rounded-lg border border-input bg-input-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <option value="">Select lot / batch</option>
+                  <option value="">{!selectedVaccineProduct ? 'Select vaccine product first' : 'Select lot / batch'}</option>
                   {availableVaccineBatches.map((batch) => (
                     <option key={batch.id} value={batch.id}>
                       {getBatchLotNumber(batch)} — Exp {formatDate(batch.expiry_date)} — {batch.quantity_remaining} available
@@ -1093,17 +1105,71 @@ export function PEPSchedule() {
               )}
               {inventoryOptionsLoaded && eligibleVaccineProducts.length === 0 && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 sm:col-span-2" role="status">
-                  <p className="font-semibold">No vaccine with an unexpired lot/batch is available.</p>
-                  {unavailableVaccines.length > 0 ? (
-                    <ul className="mt-1 list-disc pl-4">
-                      {unavailableVaccines.map((item) => (
-                        <li key={item.id}>
-                          {item.item_name} — {item.current_stock} in stock, but {unavailableReasonLabel[item.reason || 'no_batch']}.{item.reason === 'product_stock_zero' ? '' : ' Add a batch in Inventory → Add Batch / Restock.'}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="mt-0.5">Add vaccine stock with a batch in Inventory first.</p>
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold">No vaccine with an unexpired lot/batch is available.</p>
+                      {unavailableVaccines.length > 0 ? (
+                        <ul className="mt-1 list-disc pl-4">
+                          {unavailableVaccines.map((item) => (
+                            <li key={item.id}>
+                              {item.item_name} — {item.current_stock} in stock, but {unavailableReasonLabel[item.reason || 'no_batch']}.{item.reason === 'product_stock_zero' ? '' : ' Add a batch in Inventory → Add Batch / Restock.'}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mt-0.5">Add vaccine stock with a batch in Inventory first (Add Product → Add Batch / Restock).</p>
+                      )}
+                    </div>
+                    {canViewInventory && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          closeRecordDose();
+                          navigate('/inventory', {
+                            state: canAddInventoryBatch && unavailableVaccines.length > 0
+                              ? { openAddBatchForId: unavailableVaccines[0].id }
+                              : canCreateInventoryProduct && unavailableVaccines.length === 0
+                                ? { openCreateVaccine: true }
+                                : null,
+                          });
+                        }}
+                      >
+                        {canAddInventoryBatch
+                          ? (unavailableVaccines.length > 0 ? 'Add Batch in Inventory' : 'Add Vaccine in Inventory')
+                          : 'Open Inventory'}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+              {inventoryOptionsLoaded && eligibleVaccineProducts.length > 0 && unavailableVaccines.length > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 sm:col-span-2" role="status">
+                  <div className="min-w-0 flex-1">
+                    <span className="font-semibold">Unavailable in product list: </span>
+                    {unavailableVaccines.map((item, idx) => (
+                      <span key={item.id}>
+                        {idx > 0 ? '; ' : ''}
+                        {item.item_name} ({item.current_stock} in stock, {unavailableReasonLabel[item.reason || 'no_batch']})
+                      </span>
+                    ))}
+                    . Add a batch in Inventory → Add Batch / Restock.
+                  </div>
+                  {canViewInventory && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        closeRecordDose();
+                        navigate('/inventory', {
+                          state: canAddInventoryBatch ? { openAddBatchForId: unavailableVaccines[0].id } : null,
+                        });
+                      }}
+                    >
+                      {canAddInventoryBatch ? 'Add Batch in Inventory' : 'Open Inventory'}
+                    </Button>
                   )}
                 </div>
               )}

@@ -459,8 +459,9 @@ class PepDoseInventoryWorkflowTest extends TestCase
         $drifted = Inventory::create(['item_name' => 'Drifted Stock Vaccine', 'item_type' => 'Vaccine', 'current_stock' => 0, 'unit' => 'vial', 'reorder_level' => 1]);
         InventoryBatch::create(['inventory_id' => $drifted->id, 'batch_number' => 'DR-1', 'quantity_received' => 4, 'quantity_remaining' => 4, 'expiry_date' => '2028-01-01', 'received_date' => '2026-01-01']);
 
-        // Zero stock and no batches, and RIG with batches: never reported.
-        Inventory::create(['item_name' => 'Empty Vaccine', 'item_type' => 'Vaccine', 'current_stock' => 0, 'unit' => 'vial', 'reorder_level' => 1]);
+        // Zero stock and no batches: reported as no_batch so newly created products with 0 stock are explained.
+        // RIG with batches: never reported.
+        $emptyNoBatch = Inventory::create(['item_name' => 'Empty Vaccine', 'item_type' => 'Vaccine', 'current_stock' => 0, 'unit' => 'vial', 'reorder_level' => 1]);
         $rig = Inventory::create(['item_name' => 'Rabies Immunoglobulin', 'item_type' => 'Vaccine', 'current_stock' => 5, 'unit' => 'vial', 'reorder_level' => 1]);
 
         $response = $this->getJson('/api/pep-schedule/dose-inventory-options')->assertOk();
@@ -471,7 +472,8 @@ class PepDoseInventoryWorkflowTest extends TestCase
         $reasons = collect($response->json('meta.unavailable'))->pluck('reason', 'id')->all();
         $this->assertSame('batches_depleted', $reasons[$expiredAndDepleted->id]);
         $this->assertSame('product_stock_zero', $reasons[$drifted->id]);
-        $this->assertCount(2, $reasons);
+        $this->assertSame('no_batch', $reasons[$emptyNoBatch->id]);
+        $this->assertCount(3, $reasons);
         $this->assertArrayNotHasKey($rig->id, $reasons);
 
         // A drifted product is still rejected by record-dose (aggregate stock is 0).
@@ -503,6 +505,127 @@ class PepDoseInventoryWorkflowTest extends TestCase
 
         $this->getJson('/api/pep-schedule')->assertOk()->assertJsonPath('success', true);
         $this->getJson('/api/inventory')->assertOk()->assertJsonPath('success', true);
+    }
+
+    public function test_end_to_end_add_vaccine_product_then_add_batch_then_record_dose_workflow(): void
+    {
+        $user = $this->actingAsRole('clinic_admin');
+        $patient = Patient::create([
+            'full_name' => 'Workflow Patient',
+            'age' => 24,
+            'sex' => 'Male',
+            'address' => 'Digos City',
+            'contact_number' => '09171234567',
+        ]);
+        $incident = Incident::create([
+            'patient_id' => $patient->id,
+            'incident_date' => '2026-07-20',
+            'animal_type' => 'Dog',
+            'bite_site' => 'Right hand',
+            'who_category' => 'II',
+            'status' => 'Active',
+        ]);
+        $schedule = PepSchedule::create([
+            'incident_id' => $incident->id,
+            'dose_day' => 0,
+            'scheduled_date' => '2026-07-20',
+            'status' => 'Pending',
+        ]);
+
+        // Step 1: Create Anti-rabies Vaccine product without a batch (0 opening stock).
+        $createProductResponse = $this->postJson('/api/inventory', [
+            'item_name' => 'Anti-rabies Vaccine',
+            'item_type' => 'Vaccine',
+            'current_stock' => 0,
+            'unit' => 'Vials',
+            'reorder_level' => 10,
+        ])->assertCreated();
+        $productId = $createProductResponse->json('data.id');
+
+        // Product without a batch is reported in meta.unavailable as no_batch.
+        $this->getJson('/api/pep-schedule/dose-inventory-options')
+            ->assertOk()
+            ->assertJsonCount(0, 'data')
+            ->assertJsonPath('meta.unavailable.0.id', $productId)
+            ->assertJsonPath('meta.unavailable.0.item_name', 'Anti-rabies Vaccine')
+            ->assertJsonPath('meta.unavailable.0.reason', 'no_batch');
+
+        // Step 2: Add an unexpired batch via Add Batch / Restock.
+        $addBatchResponse = $this->postJson('/api/inventory/'.$productId.'/batches', [
+            'batch_number' => 'ARV-2026-101',
+            'quantity_received' => 10,
+            'expiry_date' => '2028-07-08',
+            'received_date' => '2026-07-20',
+            'supplier' => 'DOH Regional Supply',
+        ])->assertCreated();
+        $batchId = $addBatchResponse->json('batch.id');
+        $this->assertSame(10, $addBatchResponse->json('data.current_stock'));
+
+        // Product and batch now appear as selectable in dose-inventory-options.
+        $this->getJson('/api/pep-schedule/dose-inventory-options')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $productId)
+            ->assertJsonPath('data.0.batches.0.id', $batchId)
+            ->assertJsonPath('data.0.batches.0.batch_number', 'ARV-2026-101')
+            ->assertJsonPath('meta.unavailable', []);
+
+        // Step 3: Record the dose using the newly added product and batch.
+        $this->postJson('/api/pep-schedule/'.$schedule->id.'/record-dose', [
+            'administered_date' => '2026-07-20',
+            'administration_route' => 'Intradermal',
+            'inventory_id' => $productId,
+            'inventory_batch_id' => $batchId,
+        ])->assertOk()
+            ->assertJsonPath('data.status', 'Done')
+            ->assertJsonPath('data.vaccine_type', 'Anti-rabies Vaccine')
+            ->assertJsonPath('data.vaccine_lot_number', 'ARV-2026-101')
+            ->assertJsonPath('data.inventory_batch_id', $batchId)
+            ->assertJsonPath('inventory_automatically_deducted', false);
+
+        // Stock remains unchanged after dose recording (manual usage workflow).
+        $this->assertSame(10, Inventory::findOrFail($productId)->current_stock);
+        $this->assertSame(10, InventoryBatch::findOrFail($batchId)->quantity_remaining);
+    }
+
+    public function test_creating_vaccine_product_with_initial_batch_or_adding_first_batch_to_unbatched_stock_keeps_quantities_consistent(): void
+    {
+        $this->actingAsRole('clinic_admin');
+
+        // Creating a product with initial stock and batch details creates both atomically.
+        $withBatch = $this->postJson('/api/inventory', [
+            'item_name' => 'Verorab',
+            'item_type' => 'Vaccine',
+            'current_stock' => 15,
+            'unit' => 'Vials',
+            'reorder_level' => 5,
+            'batch_number' => 'VER-INIT-01',
+            'expiry_date' => '2028-05-01',
+            'received_date' => '2026-07-20',
+        ])->assertCreated();
+
+        $this->assertSame(15, $withBatch->json('data.current_stock'));
+        $this->assertSame('VER-INIT-01', $withBatch->json('data.batches.0.batch_number'));
+        $this->assertSame(15, $withBatch->json('data.batches.0.quantity_remaining'));
+
+        // Legacy/unbatched product with placeholder current_stock = 120 and 0 batches:
+        // recording the first batch sets current_stock to the batch quantity instead of double-counting to 145.
+        $unbatched = Inventory::create([
+            'item_name' => 'Legacy Unbatched Vaccine',
+            'item_type' => 'Vaccine',
+            'current_stock' => 120,
+            'unit' => 'Vials',
+            'reorder_level' => 10,
+        ]);
+
+        $this->postJson('/api/inventory/'.$unbatched->id.'/batches', [
+            'batch_number' => 'LEG-2026-01',
+            'quantity_received' => 25,
+            'expiry_date' => '2028-09-01',
+            'received_date' => '2026-07-20',
+        ])->assertCreated()
+            ->assertJsonPath('data.current_stock', 25)
+            ->assertJsonPath('batch.quantity_remaining', 25);
     }
 
     public function test_audit_failure_rolls_back_the_dose_without_mutating_inventory(): void
