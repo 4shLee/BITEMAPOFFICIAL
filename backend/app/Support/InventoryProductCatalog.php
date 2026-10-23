@@ -33,6 +33,7 @@ final class InventoryProductCatalog
                 'anti-rabies vaccine (abhayrab)',
                 'anti-rabies vaccine',
                 'anti rabies vaccine',
+                'abhayrab',
             ],
         ],
         [
@@ -48,6 +49,9 @@ final class InventoryProductCatalog
                 'tetanus toxoid - abhaytox / bett',
                 'tetanus toxoid (abhaytox / bett)',
                 'tetanus toxoid',
+                'abhaytox / bett',
+                'abhaytox',
+                'bett',
             ],
         ],
         [
@@ -63,6 +67,7 @@ final class InventoryProductCatalog
                 'equine rig (erig) - equirab',
                 'equine rig (erig)',
                 'equine rig',
+                'equirab',
             ],
         ],
         [
@@ -78,6 +83,7 @@ final class InventoryProductCatalog
                 'human rig (hrig) - berirab',
                 'human rig (hrig)',
                 'human rig',
+                'berirab',
             ],
         ],
     ];

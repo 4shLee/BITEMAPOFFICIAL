@@ -554,7 +554,7 @@ class BitemapApiController extends Controller
     public function pepDoseInventoryOptions(): JsonResponse
     {
         $items = Inventory::query()
-            ->select(['id', 'item_name', 'brand', 'item_type', 'current_stock'])
+            ->select(['id', 'item_name', 'item_type', 'current_stock'])
             ->where('item_type', 'Vaccine')
             ->where('current_stock', '>', 0)
             ->whereHas('batches', fn ($query) => $query
@@ -593,7 +593,7 @@ class BitemapApiController extends Controller
         // doses must be traceable to a specific unexpired batch with remaining quantity.
         $eligibleIds = $items->pluck('id')->all();
         $unavailable = Inventory::query()
-            ->select(['id', 'item_name', 'brand', 'item_type', 'current_stock'])
+            ->select(['id', 'item_name', 'item_type', 'current_stock'])
             ->where('item_type', 'Vaccine')
             ->whereNotIn('id', $eligibleIds)
             ->withCount([
@@ -3461,6 +3461,14 @@ class BitemapApiController extends Controller
             $data['description'] = blank($data['description']) ? null : trim((string) $data['description']);
         }
 
+        if (array_key_exists('brand', $data) && ! Schema::hasColumn('inventory', 'brand')) {
+            unset($data['brand']);
+        }
+
+        if (array_key_exists('description', $data) && ! Schema::hasColumn('inventory', 'description')) {
+            unset($data['description']);
+        }
+
         if (isset($data['item_type'])) {
             $data['item_type'] = $this->normalizeInventoryType($data['item_type']);
         }
@@ -3477,7 +3485,7 @@ class BitemapApiController extends Controller
 
         return Inventory::query()
             ->when($ignoreId !== null, fn ($query) => $query->whereKeyNot($ignoreId))
-            ->get(['id', 'item_name', 'brand'])
+            ->get(['id', 'item_name'])
             ->first(fn (Inventory $existing) => in_array(
                 InventoryProductCatalog::normalize($existing->item_name),
                 $candidateNames,

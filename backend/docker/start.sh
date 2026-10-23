@@ -23,7 +23,11 @@ if [ "${APP_ENV:-production}" = "production" ] && [ "$debug_flag" = "true" ]; th
     exit 1
 fi
 
-# Build caches at runtime so they use Railway's real environment variables.
+# Clear any stale cached manifests first, then build fresh caches at runtime
+# so they always reflect the deployed routes/views and Railway's live environment variables.
+php artisan config:clear
+php artisan route:clear
+php artisan view:clear
 php artisan config:cache
 php artisan route:cache
 php artisan view:cache

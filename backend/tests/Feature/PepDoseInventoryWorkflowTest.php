@@ -878,6 +878,32 @@ class PepDoseInventoryWorkflowTest extends TestCase
         }
     }
 
+    public function test_delete_routes_are_registered_and_delete_legacy_dummy_product_by_id(): void
+    {
+        $user = $this->actingAsRole('clinic_admin');
+
+        $dummyProduct = Inventory::create([
+            'item_name' => 'Anti-Tetanus Serum',
+            'item_type' => 'Vaccine',
+            'current_stock' => 0,
+            'unit' => 'Vials',
+            'reorder_level' => 10,
+            'updated_by' => $user->id,
+        ]);
+
+        $this->deleteJson('/api/inventory/'.$dummyProduct->id)
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('message', 'Inventory product Anti-Tetanus Serum deleted permanently.');
+
+        $this->assertDatabaseMissing('inventory', ['id' => $dummyProduct->id]);
+        $this->assertDatabaseHas('audit_logs', [
+            'module' => 'Inventory',
+            'record_id' => (string) $dummyProduct->id,
+            'action_type' => 'Delete record',
+        ]);
+    }
+
     private function actingAsRole(string $role): User
     {
         $user = User::factory()->create([
