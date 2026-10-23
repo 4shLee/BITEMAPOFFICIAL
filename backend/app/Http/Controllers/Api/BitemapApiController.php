@@ -939,6 +939,14 @@ class BitemapApiController extends Controller
                 ]);
             }
 
+            $this->writeAudit(
+                $request,
+                'Create record',
+                'Inventory',
+                $item->id,
+                'Created inventory product '.$item->item_name.' (stock: '.$item->current_stock.' '.$item->unit.').'
+            );
+
             return $item;
         });
 
@@ -957,8 +965,14 @@ class BitemapApiController extends Controller
             ], 403);
         }
 
-        $oldStock = $inventory->current_stock;
+        $oldStock = (int) $inventory->current_stock;
         $data = $this->inventoryData($request, true);
+        $isStockTransaction = $request->filled('transaction_type');
+
+        // Editing product metadata (without a stock transaction) must never silently modify current_stock.
+        if (! $isStockTransaction) {
+            unset($data['current_stock']);
+        }
 
         if (isset($data['item_name']) && $this->findDuplicateInventoryItem($data['item_name'], $inventory->id)) {
             throw ValidationException::withMessages([
@@ -966,8 +980,8 @@ class BitemapApiController extends Controller
             ]);
         }
 
-        $newStock = array_key_exists('current_stock', $data) ? (int) $data['current_stock'] : (int) $oldStock;
-        $stockDelta = $newStock - (int) $oldStock;
+        $newStock = array_key_exists('current_stock', $data) ? (int) $data['current_stock'] : $oldStock;
+        $stockDelta = $newStock - $oldStock;
         $batch = null;
 
         if ($this->isNurseVaccinator($request->user())) {
@@ -1004,32 +1018,107 @@ class BitemapApiController extends Controller
             }
         }
 
-        DB::transaction(function () use ($request, $inventory, $data, $oldStock, $stockDelta, $batch) {
+        DB::transaction(function () use ($request, $inventory, $data, $oldStock, $stockDelta, $batch, $isStockTransaction) {
+            $data['updated_by'] = $request->user()?->id;
             $inventory->update($data);
 
             if ($batch && $stockDelta !== 0) {
+                $nextBatchRemaining = (int) $batch->quantity_remaining + $stockDelta;
                 $batch->update([
-                    'quantity_remaining' => max(0, (int) $batch->quantity_remaining + $stockDelta),
+                    'quantity_remaining' => max(0, $nextBatchRemaining),
+                    'quantity_received' => max((int) $batch->quantity_received, max(0, $nextBatchRemaining)),
                 ]);
+                $totalBatchStock = (int) $inventory->batches()->sum('quantity_remaining');
+                $inventory->update(['current_stock' => max(0, $totalBatchStock)]);
                 $this->syncInventoryNearestExpiry($inventory->fresh());
             }
 
-            if ($request->filled('transaction_type') || $oldStock !== $inventory->current_stock) {
+            if ($isStockTransaction || $oldStock !== (int) $inventory->current_stock) {
+                $txType = $this->normalizeTransactionType($request->input('transaction_type'));
+                $txQty = abs((int) $inventory->current_stock - $oldStock);
+
                 InventoryTransaction::create([
                     'inventory_id' => $inventory->id,
                     'inventory_batch_id' => $batch?->id,
-                    'transaction_type' => $this->normalizeTransactionType($request->input('transaction_type')),
-                    'quantity' => abs((int) $inventory->current_stock - (int) $oldStock),
+                    'transaction_type' => $txType,
+                    'quantity' => $txQty,
                     'transaction_date' => $request->input('transaction_date') ?: now()->toDateString(),
                     'notes' => $request->input('notes'),
                     'created_by' => $request->user()?->id,
                 ]);
+
+                $this->writeAudit(
+                    $request,
+                    'Adjust stock',
+                    'Inventory',
+                    $inventory->id,
+                    'Adjusted stock ('.$txType.') for '.$inventory->item_name.' from '.$oldStock.' to '.$inventory->current_stock.' '.$inventory->unit.'.'
+                );
+            } else {
+                $this->writeAudit(
+                    $request,
+                    'Edit record',
+                    'Inventory',
+                    $inventory->id,
+                    'Updated inventory product details for '.$inventory->item_name.'.'
+                );
             }
         });
 
         return response()->json([
             'success' => true,
             'data' => $this->inventoryPayload($inventory->fresh(['batches', 'transactions'])),
+        ]);
+    }
+
+    public function deleteInventory(Request $request, Inventory $inventory): JsonResponse
+    {
+        $hasPepDoseReferences = PepSchedule::query()
+            ->whereIn('inventory_batch_id', $inventory->batches()->select('id'))
+            ->exists()
+            || $inventory->transactions()->whereNotNull('pep_schedule_id')->exists();
+
+        if ($hasPepDoseReferences) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot delete '.$inventory->item_name.' because it is referenced by recorded PEP vaccination dose(s). Clinical records cannot be orphaned.',
+            ], 422);
+        }
+
+        $batchCount = $inventory->batches()->count();
+        if ($batchCount > 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot delete '.$inventory->item_name.' because it still has '.$batchCount.' recorded lot/batch(es). Open View Lots to delete unused test lots first; if a lot has clinical or transaction history, the product must be retained.',
+            ], 422);
+        }
+
+        if ($inventory->transactions()->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot delete '.$inventory->item_name.' because it has existing stock transaction history. Products with historical stock movements cannot be permanently deleted.',
+            ], 422);
+        }
+
+        $itemId = $inventory->id;
+        $itemName = $inventory->item_name;
+        $stock = (int) $inventory->current_stock;
+        $unit = $inventory->unit;
+
+        DB::transaction(function () use ($request, $inventory, $itemId, $itemName, $stock, $unit): void {
+            $inventory->delete();
+            $this->writeAudit(
+                $request,
+                'Delete record',
+                'Inventory',
+                $itemId,
+                'Deleted inventory product '.$itemName.' (stock: '.$stock.' '.$unit.').'
+            );
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Inventory product '.$itemName.' deleted permanently.',
         ]);
     }
 
@@ -1090,6 +1179,14 @@ class BitemapApiController extends Controller
                 'created_by' => $request->user()?->id,
             ]);
 
+            $this->writeAudit(
+                $request,
+                'Add batch',
+                'Inventory',
+                $batch->id,
+                'Added lot/batch '.$batch->batch_number.' ('.$batch->quantity_received.' '.$inventory->unit.') for '.$inventory->item_name.'.'
+            );
+
             return $batch;
         });
 
@@ -1098,6 +1195,101 @@ class BitemapApiController extends Controller
             'data' => $this->inventoryPayload($inventory->fresh(['batches', 'transactions'])),
             'batch' => $this->inventoryBatchPayload($batch->fresh()),
         ], 201);
+    }
+
+    public function deleteInventoryBatch(Request $request, Inventory $inventory, InventoryBatch $batch): JsonResponse
+    {
+        if ((int) $batch->inventory_id !== (int) $inventory->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'The selected lot/batch does not belong to this inventory product.',
+            ], 422);
+        }
+
+        $hasPepDoseReference = $batch->pepSchedules()->exists()
+            || $batch->transactions()->whereNotNull('pep_schedule_id')->exists();
+
+        if ($hasPepDoseReference) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot delete lot/batch '.$batch->batch_number.' because it is referenced by a recorded PEP vaccination dose. Clinical vaccination records cannot be altered. Use Adjust Stock if you need to correct remaining quantity.',
+            ], 422);
+        }
+
+        if ($this->batchHasDependentTransactions($batch)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot delete lot/batch '.$batch->batch_number.' because it has linked stock transactions or recorded usage. Use Adjust Stock to correct or zero out remaining stock without removing transaction history.',
+            ], 422);
+        }
+
+        $batchId = $batch->id;
+        $batchNumber = $batch->batch_number;
+        $removedQty = (int) $batch->quantity_remaining;
+
+        DB::transaction(function () use ($request, $inventory, $batch, $batchId, $batchNumber, $removedQty): void {
+            // Remove the auto-created initial receiving transaction for this unused batch so no orphan log remains.
+            $batch->transactions()->delete();
+            $batch->delete();
+
+            $remainingBatchCount = $inventory->batches()->count();
+            $nextStock = $remainingBatchCount > 0
+                ? (int) $inventory->batches()->sum('quantity_remaining')
+                : max(0, (int) $inventory->current_stock - $removedQty);
+
+            $inventory->update([
+                'current_stock' => $nextStock,
+                'updated_by' => $request->user()?->id,
+            ]);
+            $this->syncInventoryNearestExpiry($inventory->fresh());
+
+            $this->writeAudit(
+                $request,
+                'Delete record',
+                'Inventory',
+                $batchId,
+                'Deleted unused lot/batch '.$batchNumber.' ('.$removedQty.' '.$inventory->unit.') from '.$inventory->item_name.'.'
+            );
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Lot/batch '.$batchNumber.' deleted permanently and stock total updated.',
+            'data' => $this->inventoryPayload($inventory->fresh(['batches', 'transactions'])),
+        ]);
+    }
+
+    private function batchHasDependentTransactions(InventoryBatch $batch): bool
+    {
+        if ((int) $batch->quantity_remaining !== (int) $batch->quantity_received) {
+            return true;
+        }
+
+        $transactions = $batch->transactions()->get();
+        if ($transactions->isEmpty()) {
+            return false;
+        }
+
+        if ($transactions->count() > 1) {
+            return true;
+        }
+
+        /** @var InventoryTransaction $onlyTransaction */
+        $onlyTransaction = $transactions->first();
+        if ($onlyTransaction->pep_schedule_id !== null || $onlyTransaction->transaction_type !== 'Restocked') {
+            return true;
+        }
+
+        if ((int) $onlyTransaction->quantity !== (int) $batch->quantity_received) {
+            return true;
+        }
+
+        $notes = trim((string) $onlyTransaction->notes);
+        $expectedBatchPrefix = 'Batch/Lot '.$batch->batch_number.' received.';
+        $expectedInitialPrefix = 'Initial Batch/Lot '.$batch->batch_number.' received.';
+
+        return ! str_starts_with($notes, $expectedBatchPrefix)
+            && ! str_starts_with($notes, $expectedInitialPrefix);
     }
 
     public function users(): JsonResponse

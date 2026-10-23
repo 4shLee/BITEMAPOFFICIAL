@@ -370,6 +370,18 @@ export const inventoryAPI = {
     });
   },
 
+  async delete(id: string) {
+    return apiRequest('/inventory/' + id, {
+      method: 'DELETE',
+    });
+  },
+
+  async deleteBatch(inventoryId: string, batchId: string) {
+    return apiRequest('/inventory/' + inventoryId + '/batches/' + batchId, {
+      method: 'DELETE',
+    });
+  },
+
   async getBatches(id: string) {
     return apiRequest('/inventory/' + id + '/batches');
   },

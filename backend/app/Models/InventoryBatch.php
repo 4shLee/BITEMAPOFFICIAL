@@ -28,6 +28,11 @@ class InventoryBatch extends Model
         return $this->hasMany(InventoryTransaction::class);
     }
 
+    public function pepSchedules(): HasMany
+    {
+        return $this->hasMany(PepSchedule::class, 'inventory_batch_id');
+    }
+
     protected function casts(): array
     {
         return [

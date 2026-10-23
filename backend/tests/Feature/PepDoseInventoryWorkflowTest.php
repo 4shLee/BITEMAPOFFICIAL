@@ -739,6 +739,145 @@ class PepDoseInventoryWorkflowTest extends TestCase
         $this->assertInventoryWasNotMutated($inventory, $batch, 5, 5);
     }
 
+    public function test_deleting_unused_dummy_batch_and_dummy_product_updates_stock_expiry_and_audit_logs(): void
+    {
+        $this->actingAsRole('clinic_admin');
+
+        // Create product with 0 stock, then add two unused batches.
+        $productResponse = $this->postJson('/api/inventory', [
+            'item_name' => 'Anti-Rabies Vaccine — Abhayrab',
+            'item_type' => 'Vaccine',
+            'current_stock' => 0,
+            'unit' => 'Vials',
+            'reorder_level' => 5,
+        ])->assertCreated();
+        $productId = $productResponse->json('data.id');
+
+        $batch1 = $this->postJson('/api/inventory/'.$productId.'/batches', [
+            'batch_number' => 'DUMMY-LOT-01',
+            'quantity_received' => 10,
+            'expiry_date' => '2027-06-01',
+            'received_date' => '2026-07-20',
+        ])->assertCreated()->json('batch');
+
+        $batch2 = $this->postJson('/api/inventory/'.$productId.'/batches', [
+            'batch_number' => 'DUMMY-LOT-02',
+            'quantity_received' => 6,
+            'expiry_date' => '2028-09-15',
+            'received_date' => '2026-07-20',
+        ])->assertCreated()->json('batch');
+
+        $this->assertSame(16, Inventory::findOrFail($productId)->current_stock);
+        $this->assertSame('2027-06-01', Inventory::findOrFail($productId)->expiry_date?->toDateString());
+
+        // Attempt to delete product while it still has batches is blocked.
+        $this->deleteJson('/api/inventory/'.$productId)
+            ->assertUnprocessable()
+            ->assertJsonPath('success', false);
+        $this->assertDatabaseHas('inventory', ['id' => $productId]);
+
+        // Delete unused batch 1 -> stock drops from 16 to 6 and nearest expiry updates to batch 2's expiry.
+        $this->deleteJson('/api/inventory/'.$productId.'/batches/'.$batch1['id'])
+            ->assertOk()
+            ->assertJsonPath('data.current_stock', 6)
+            ->assertJsonPath('data.nearest_expiry_date', '2028-09-15');
+        $this->assertDatabaseMissing('inventory_batches', ['id' => $batch1['id']]);
+
+        // Delete unused batch 2 -> stock drops to 0 and nearest expiry becomes null.
+        $this->deleteJson('/api/inventory/'.$productId.'/batches/'.$batch2['id'])
+            ->assertOk()
+            ->assertJsonPath('data.current_stock', 0)
+            ->assertJsonPath('data.nearest_expiry_date', null);
+
+        // Now that all unused test batches are removed and no transactions remain, deleting the dummy product succeeds.
+        $this->deleteJson('/api/inventory/'.$productId)
+            ->assertOk()
+            ->assertJsonPath('success', true);
+        $this->assertDatabaseMissing('inventory', ['id' => $productId]);
+
+        $this->assertDatabaseHas('audit_logs', [
+            'module' => 'Inventory',
+            'record_id' => (string) $batch1['id'],
+            'action_type' => 'Delete record',
+        ]);
+        $this->assertDatabaseHas('audit_logs', [
+            'module' => 'Inventory',
+            'record_id' => (string) $productId,
+            'action_type' => 'Delete record',
+        ]);
+    }
+
+    public function test_deleting_batch_with_linked_transactions_or_pep_dose_is_blocked(): void
+    {
+        $user = $this->actingAsRole('clinic_admin');
+        [$schedule, $inventory, $batch] = $this->createDoseInventoryContext($user);
+
+        // Record a PEP dose using $batch -> batch now has both a PEP dose reference and a Used transaction.
+        $this->recordDose($schedule, $inventory, $batch)->assertOk();
+
+        $this->deleteJson('/api/inventory/'.$inventory->id.'/batches/'.$batch->id)
+            ->assertUnprocessable()
+            ->assertJsonPath('success', false);
+        $this->assertDatabaseHas('inventory_batches', ['id' => $batch->id]);
+        $this->assertSame($batch->id, $schedule->fresh()->inventory_batch_id);
+
+        // Create a second batch and record a manual stock adjustment/usage transaction on it.
+        $batchWithTx = $this->postJson('/api/inventory/'.$inventory->id.'/batches', [
+            'batch_number' => 'ARV-TX-LOT',
+            'quantity_received' => 8,
+            'expiry_date' => '2028-11-01',
+            'received_date' => '2026-07-20',
+        ])->assertCreated()->json('batch');
+
+        // Current stock is 4 + 8 = 12; deduct 2 units from $batchWithTx via manual stock adjustment.
+        $this->putJson('/api/inventory/'.$inventory->id, [
+            'current_stock' => 10,
+            'inventory_batch_id' => $batchWithTx['id'],
+            'transaction_type' => 'Used',
+            'transaction_date' => '2026-07-20',
+            'notes' => 'Wastage/usage test.',
+        ])->assertOk()
+            ->assertJsonPath('data.current_stock', 10);
+
+        // Attempting to delete a batch with linked usage/adjustment transactions is blocked.
+        $this->deleteJson('/api/inventory/'.$inventory->id.'/batches/'.$batchWithTx['id'])
+            ->assertUnprocessable()
+            ->assertJsonPath('success', false);
+        $this->assertDatabaseHas('inventory_batches', ['id' => $batchWithTx['id']]);
+    }
+
+    public function test_editing_product_details_does_not_modify_stock_and_unauthorized_roles_cannot_delete(): void
+    {
+        $user = $this->actingAsRole('clinic_admin');
+        [, $inventory, $batch] = $this->createDoseInventoryContext($user);
+
+        // Edit product metadata even if a stale current_stock is passed without transaction_type.
+        $this->putJson('/api/inventory/'.$inventory->id, [
+            'item_name' => 'Anti-Rabies Vaccine — Abhayrab',
+            'reorder_level' => 12,
+            'unit' => 'Vials',
+            'description' => 'Updated reorder threshold.',
+            'current_stock' => 999,
+        ])->assertOk()
+            ->assertJsonPath('data.current_stock', 5)
+            ->assertJsonPath('data.reorder_level', 12)
+            ->assertJsonPath('data.description', 'Updated reorder threshold.');
+
+        $this->assertSame(5, $inventory->fresh()->current_stock);
+        $this->assertDatabaseHas('audit_logs', [
+            'module' => 'Inventory',
+            'record_id' => (string) $inventory->id,
+            'action_type' => 'Edit record',
+        ]);
+
+        // Unauthorized roles cannot delete batches or products.
+        foreach (['doctor', 'nurse_vaccinator', 'system_admin'] as $role) {
+            $this->actingAsRole($role);
+            $this->deleteJson('/api/inventory/'.$inventory->id.'/batches/'.$batch->id)->assertForbidden();
+            $this->deleteJson('/api/inventory/'.$inventory->id)->assertForbidden();
+        }
+    }
+
     private function actingAsRole(string $role): User
     {
         $user = User::factory()->create([

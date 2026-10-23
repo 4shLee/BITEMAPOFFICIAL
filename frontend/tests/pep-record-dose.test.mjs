@@ -75,3 +75,18 @@ test('Add Inventory Product uses the four approved clinic products with brand, p
   assert.match(inventoryFormModal, /duplicateExistingItem/);
   assert.match(inventoryFormModal, /Open Add Batch \/ Restock/);
 });
+
+test('Inventory table simplifies row actions and supports confirmed product and batch deletion', async () => {
+  const stockAdjustmentModal = await readFile(new URL('../src/app/components/Inventory/StockAdjustmentModal.tsx', import.meta.url), 'utf8').then((s) => s.replace(/\r\n/g, '\n'));
+  assert.match(inventoryPage, /View Lots \(\{totalBatches\}\)/);
+  assert.match(inventoryPage, /Add Batch \/ Restock/);
+  assert.match(inventoryPage, /\+ Add Product/);
+  assert.match(inventoryPage, /data-inventory-more-menu/);
+  assert.match(inventoryPage, /Delete Product/);
+  assert.match(inventoryPage, /Delete Inventory Product Permanently\?/);
+  assert.match(inventoryBatchModal, /Delete Lot \/ Batch Permanently\?/);
+  assert.match(inventoryBatchModal, /Delete Lot Permanently/);
+  assert.match(inventoryFormModal, /Current Stock \(Read-Only\)/);
+  assert.doesNotMatch(stockAdjustmentModal, /value: 'Restock'/);
+  assert.doesNotMatch(stockAdjustmentModal, /value: 'Received'/);
+});

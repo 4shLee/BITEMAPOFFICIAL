@@ -107,12 +107,11 @@ export function InventoryFormModal({
           item_name: formData.item_name,
           brand: formData.brand || undefined,
           item_type: formData.item_type,
-          current_stock: Number(formData.current_stock || 0),
           reorder_level: Number(formData.reorder_level || 0),
           unit: formData.unit,
           description: formData.description,
         });
-        toast.success('Inventory item updated successfully');
+        toast.success('Product details updated successfully');
       } else {
         await inventoryAPI.create({
           item_name: formData.item_name,
@@ -272,16 +271,26 @@ export function InventoryFormModal({
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <Input
-                label={item ? 'Current Stock' : 'Initial Stock Quantity'}
-                type="number"
-                placeholder={item ? 'Enter current stock' : '0 (or enter opening quantity)'}
-                value={formData.current_stock}
-                onChange={(e) => setFormData({ ...formData, current_stock: e.target.value })}
-                helperText={!item ? 'Keep 0 to add lots later via Add Batch / Restock, or enter > 0 to record the first lot below.' : undefined}
-                required
-                min="0"
-              />
+              {item ? (
+                <Input
+                  label="Current Stock (Read-Only)"
+                  type="text"
+                  value={`${item.current_stock ?? 0} ${formData.unit}`}
+                  helperText="Use Add Batch / Restock or Adjust Stock to change quantities."
+                  readOnly
+                />
+              ) : (
+                <Input
+                  label="Initial Stock Quantity"
+                  type="number"
+                  placeholder="0 (or enter opening quantity)"
+                  value={formData.current_stock}
+                  onChange={(e) => setFormData({ ...formData, current_stock: e.target.value })}
+                  helperText="Keep 0 to add lots later via Add Batch / Restock, or enter > 0 to record the first lot below."
+                  required
+                  min="0"
+                />
+              )}
 
               <Input
                 label="Reorder Level"

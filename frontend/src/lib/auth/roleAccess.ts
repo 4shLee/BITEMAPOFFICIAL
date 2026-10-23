@@ -21,6 +21,7 @@ export type PermissionAction =
   | 'pep.update'
   | 'inventory.create'
   | 'inventory.update'
+  | 'inventory.delete'
   | 'inventory.adjust_stock'
   | 'inventory.record_usage'
   | 'notifications.send'
@@ -102,6 +103,7 @@ const ACTION_PERMISSIONS: Record<PermissionAction, string[]> = {
   'pep.update': ['clinic_admin', 'nurse_vaccinator'],
   'inventory.create': ['clinic_admin'],
   'inventory.update': ['clinic_admin'],
+  'inventory.delete': ['clinic_admin'],
   'inventory.adjust_stock': ['clinic_admin'],
   'inventory.record_usage': ['nurse_vaccinator'],
   'notifications.send': ['clinic_admin', 'nurse_vaccinator'],

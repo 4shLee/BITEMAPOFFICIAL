@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Plus, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { AlertTriangle, Plus, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -15,6 +15,7 @@ type InventoryBatch = {
   expiry_date?: string | null;
   received_date?: string | null;
   supplier?: string | null;
+  notes?: string | null;
   status?: string | null;
 };
 
@@ -32,7 +33,9 @@ type InventoryBatchModalProps = {
   item?: BatchInventoryItem;
   inventoryItems?: BatchInventoryItem[];
   canAddBatch?: boolean;
+  canDeleteBatch?: boolean;
   onSwitchToAdd?: () => void;
+  onBatchMutated?: () => void;
   onClose: (shouldReload?: boolean) => void;
 };
 
@@ -51,15 +54,25 @@ export function InventoryBatchModal({
   item,
   inventoryItems = [],
   canAddBatch = false,
+  canDeleteBatch = false,
   onSwitchToAdd,
+  onBatchMutated,
   onClose,
 }: InventoryBatchModalProps) {
   const [loading, setLoading] = useState(false);
+  const [deletingBatch, setDeletingBatch] = useState(false);
+  const [confirmingDeleteBatch, setConfirmingDeleteBatch] = useState<InventoryBatch | null>(null);
   const [selectedItemId, setSelectedItemId] = useState(item?.id ? String(item.id) : String(inventoryItems[0]?.id || ''));
   const selectedItem = item || inventoryItems.find((inventoryItem) => String(inventoryItem.id) === selectedItemId);
+  const [localBatches, setLocalBatches] = useState<InventoryBatch[]>(selectedItem?.batches || []);
+
+  useEffect(() => {
+    setLocalBatches(selectedItem?.batches || []);
+  }, [selectedItem]);
+
   const hasUnbatchedStock = Boolean(
     selectedItem
-    && (selectedItem.batches?.length || 0) === 0
+    && localBatches.length === 0
     && Number(selectedItem.current_stock || 0) > 0
   );
 
@@ -102,15 +115,37 @@ export function InventoryBatchModal({
     }
   };
 
+  const handleConfirmDeleteBatch = async () => {
+    if (!selectedItem || !confirmingDeleteBatch) return;
+
+    try {
+      setDeletingBatch(true);
+      const response = await inventoryAPI.deleteBatch(String(selectedItem.id), String(confirmingDeleteBatch.id));
+      toast.success(response.message || `Lot/batch ${confirmingDeleteBatch.batch_number} deleted.`);
+      const nextBatches = Array.isArray(response.data?.batches)
+        ? (response.data.batches as InventoryBatch[])
+        : localBatches.filter((batch) => String(batch.id) !== String(confirmingDeleteBatch.id));
+      setLocalBatches(nextBatches);
+      setConfirmingDeleteBatch(null);
+      if (onBatchMutated) {
+        onBatchMutated();
+      }
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to delete lot/batch.'));
+    } finally {
+      setDeletingBatch(false);
+    }
+  };
+
   const itemOptions = inventoryItems.map((inventoryItem) => ({
     value: String(inventoryItem.id),
     label: inventoryItem.item_name || 'Unnamed item',
   }));
-  const batches = selectedItem?.batches || [];
+  const batches = localBatches;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-2xl">
+      <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
           <div>
             <h2 className="text-lg font-extrabold text-foreground">
@@ -229,7 +264,63 @@ export function InventoryBatchModal({
             </div>
           </form>
         ) : (
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            {confirmingDeleteBatch && (
+              <div
+                className="rounded-2xl border border-destructive/30 bg-destructive-bg/50 p-4 text-xs text-foreground"
+                role="alertdialog"
+                aria-labelledby="delete-batch-dialog-title"
+              >
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <h3 id="delete-batch-dialog-title" className="text-sm font-extrabold text-destructive">
+                      Delete Lot / Batch Permanently?
+                    </h3>
+                    <div className="grid grid-cols-1 gap-1 rounded-xl border border-border bg-card px-3 py-2 sm:grid-cols-3">
+                      <div>
+                        <span className="font-semibold text-muted-foreground">Product:</span>{' '}
+                        <span className="font-bold text-foreground">{selectedItem?.item_name}</span>
+                      </div>
+                      <div>
+                        <span className="font-semibold text-muted-foreground">Batch / Lot:</span>{' '}
+                        <span className="font-bold text-foreground">{confirmingDeleteBatch.batch_number}</span>
+                      </div>
+                      <div>
+                        <span className="font-semibold text-muted-foreground">Remaining Quantity:</span>{' '}
+                        <span className="font-bold text-foreground">
+                          {confirmingDeleteBatch.quantity_remaining} {selectedItem?.unit}
+                        </span>
+                      </div>
+                    </div>
+                    <p className="text-muted-foreground">
+                      Permanent deletion cannot be undone and will subtract this lot&apos;s remaining quantity from the product stock total. Lots referenced by PEP vaccination doses or stock transactions cannot be deleted—use <span className="font-semibold text-foreground">Adjust Stock</span> to zero out remaining quantity when history must be preserved.
+                    </p>
+                    <div className="flex justify-end gap-2 pt-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setConfirmingDeleteBatch(null)}
+                        disabled={deletingBatch}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="danger"
+                        onClick={handleConfirmDeleteBatch}
+                        disabled={deletingBatch}
+                      >
+                        {deletingBatch ? 'Deleting...' : 'Delete Lot Permanently'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {batches.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-amber-300 bg-amber-50/70 p-8 text-center">
                 <p className="text-sm font-bold text-amber-950">No lot/batch recorded for this product yet.</p>
@@ -255,6 +346,7 @@ export function InventoryBatchModal({
                       <th className="px-4 py-3 text-left">Received Date</th>
                       <th className="px-4 py-3 text-left">Supplier</th>
                       <th className="px-4 py-3 text-left">Status</th>
+                      {canDeleteBatch && <th className="px-4 py-3 text-right">Actions</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -267,6 +359,20 @@ export function InventoryBatchModal({
                         <td className="px-4 py-3 text-muted-foreground">{batch.received_date || '-'}</td>
                         <td className="px-4 py-3 text-muted-foreground">{batch.supplier || '-'}</td>
                         <td className="px-4 py-3"><Badge variant={statusVariant(batch.status || '')}>{batch.status || 'Unknown'}</Badge></td>
+                        {canDeleteBatch && (
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() => setConfirmingDeleteBatch(batch)}
+                              className="inline-flex h-8 items-center gap-1 rounded-full border border-destructive/25 bg-destructive-bg px-2.5 text-xs font-semibold text-destructive transition-colors hover:border-destructive/50 hover:bg-destructive-bg/80"
+                              title={`Delete lot ${batch.batch_number}`}
+                              aria-label={`Delete batch ${batch.batch_number}`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              <span>Delete Lot</span>
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>

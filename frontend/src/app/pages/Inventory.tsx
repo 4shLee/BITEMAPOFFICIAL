@@ -1,12 +1,23 @@
 import { useCallback, useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router';
-import { AlertTriangle, CalendarClock, Edit, Layers, Package, Plus, Search } from 'lucide-react';
+import {
+  AlertTriangle,
+  CalendarClock,
+  Edit,
+  Layers,
+  MoreHorizontal,
+  Package,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  Trash2,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Header } from '../components/Layout/Header';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { StatCard } from '../components/ui/StatCard';
-import { inventoryAPI } from '../../lib/services/api';
+import { getErrorMessage, inventoryAPI } from '../../lib/services/api';
 import { canPerformAction, getStoredUser, normalizeRoleKey } from '../../lib/auth/roleAccess';
 import { InventoryFormModal } from '../components/Inventory/InventoryFormModal';
 import { StockAdjustmentModal } from '../components/Inventory/StockAdjustmentModal';
@@ -60,6 +71,7 @@ export function Inventory() {
   const currentUser = getStoredUser();
   const canCreateInventory = canPerformAction(currentUser?.role, 'inventory.create');
   const canUpdateInventory = canPerformAction(currentUser?.role, 'inventory.update');
+  const canDeleteInventory = canPerformAction(currentUser?.role, 'inventory.delete');
   const canAdjustStock = canPerformAction(currentUser?.role, 'inventory.adjust_stock');
   const canRecordUsage = canPerformAction(currentUser?.role, 'inventory.record_usage');
   const isNurseInventoryView = normalizeRoleKey(currentUser?.role) === 'nurse_vaccinator';
@@ -78,6 +90,9 @@ export function Inventory() {
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [adjustingItem, setAdjustingItem] = useState<InventoryItem | null>(null);
   const [selectedBatchItem, setSelectedBatchItem] = useState<InventoryItem | null>(null);
+  const [deletingItem, setDeletingItem] = useState<InventoryItem | null>(null);
+  const [deletingProductLoading, setDeletingProductLoading] = useState(false);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const handledNavigationRef = useRef(false);
 
   const loadInventory = useCallback(async () => {
@@ -103,6 +118,17 @@ export function Inventory() {
   }, [loadInventory]);
 
   useEffect(() => {
+    if (!openMenuId) return;
+    const handleOutsideClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-inventory-more-menu]')) return;
+      setOpenMenuId(null);
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [openMenuId]);
+
+  useEffect(() => {
     if (loading || handledNavigationRef.current) return;
     const navState = location.state as InventoryNavigationState;
     if (!navState) return;
@@ -122,30 +148,55 @@ export function Inventory() {
   }, [canAdjustStock, canCreateInventory, inventory, loading, location.pathname, location.state, navigate]);
 
   const handleEdit = (item: InventoryItem) => {
+    setOpenMenuId(null);
     setEditingItem(item);
     setShowFormModal(true);
   };
 
   const handleCreate = () => {
+    setOpenMenuId(null);
     setEditingItem(null);
     setShowFormModal(true);
   };
 
   const handleAdjustStock = (item: InventoryItem) => {
+    setOpenMenuId(null);
     setAdjustingItem(item);
     setShowAdjustModal(true);
   };
 
   const handleAddBatch = (item?: InventoryItem) => {
+    setOpenMenuId(null);
     setSelectedBatchItem(item || null);
     setBatchModalMode('add');
     setShowBatchModal(true);
   };
 
   const handleViewBatches = (item: InventoryItem) => {
+    setOpenMenuId(null);
     setSelectedBatchItem(item);
     setBatchModalMode('view');
     setShowBatchModal(true);
+  };
+
+  const handleRequestDeleteProduct = (item: InventoryItem) => {
+    setOpenMenuId(null);
+    setDeletingItem(item);
+  };
+
+  const handleConfirmDeleteProduct = async () => {
+    if (!deletingItem) return;
+    try {
+      setDeletingProductLoading(true);
+      const response = await inventoryAPI.delete(String(deletingItem.id));
+      toast.success(response.message || `Deleted ${deletingItem.item_name}.`);
+      setDeletingItem(null);
+      void loadInventory();
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to delete inventory product.'));
+    } finally {
+      setDeletingProductLoading(false);
+    }
   };
 
   const handleFormModalClose = (shouldReload?: boolean) => {
@@ -335,16 +386,10 @@ export function Inventory() {
                 <option value="Expiring Soon">Expiring Soon</option>
                 <option value="Expired">Expired</option>
               </select>
-              {canAdjustStock && inventory.length > 0 && (
-                <Button variant="outline" size="sm" onClick={() => handleAddBatch()}>
-                  <Layers className="h-4 w-4" />
-                  Add Batch / Restock
-                </Button>
-              )}
               {canCreateInventory && (
                 <Button variant="primary" size="sm" onClick={handleCreate}>
                   <Plus className="h-4 w-4" />
-                  Add Product
+                  + Add Product
                 </Button>
               )}
             </div>
@@ -387,6 +432,8 @@ export function Inventory() {
                     const { totalBatches, unexpiredBatches, usableBatches, activeLotNumber } = getBatchDiagnostics(item);
                     const matchedCatalog = findCatalogProduct(item.item_name, item.brand, productCatalog);
                     const displayBrand = item.brand || matchedCatalog?.brand || null;
+                    const hasMoreMenu = canAdjustStock || canRecordUsage || canUpdateInventory || canDeleteInventory;
+                    const isMenuOpen = openMenuId === String(item.id);
                     return (
                       <tr key={item.id} className="transition-colors hover:bg-muted/45">
                         <td className="px-5 py-4">
@@ -456,43 +503,79 @@ export function Inventory() {
                         <td className="px-5 py-4">
                           <div className="flex flex-nowrap items-center gap-2">
                             <button
+                              type="button"
                               onClick={() => handleViewBatches(item)}
                               className="inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-full border border-accent/20 bg-accent-bg px-2.5 text-xs font-semibold text-accent shadow-sm transition-colors hover:border-accent/40 hover:bg-accent-bg/80"
                               title="View Lots / Batches"
                               aria-label="View inventory batches"
                             >
                               <Layers className="h-3.5 w-3.5" />
-                              <span>Lots ({totalBatches})</span>
+                              <span>View Lots ({totalBatches})</span>
                             </button>
                             {canAdjustStock && (
                               <button
+                                type="button"
                                 onClick={() => handleAddBatch(item)}
                                 className="inline-flex h-9 shrink-0 items-center justify-center rounded-full border border-primary/20 bg-primary-bg px-3 text-xs font-semibold leading-none text-primary shadow-sm transition-colors hover:border-primary/40 hover:bg-primary-bg/80"
                                 title="Add Batch / Restock (record lot number, expiry date, and quantity)"
                                 aria-label="Add batch or restock this inventory item"
                               >
-                                {totalBatches === 0 ? '+ Add Batch' : 'Add Batch / Restock'}
+                                Add Batch / Restock
                               </button>
                             )}
-                            {(canAdjustStock || canRecordUsage) && (
-                              <button
-                                onClick={() => handleAdjustStock(item)}
-                                className="inline-flex h-9 shrink-0 items-center justify-center rounded-full bg-primary px-3 text-xs font-semibold leading-none text-white shadow-sm transition-colors hover:bg-primary-dark"
-                                title={isNurseInventoryView ? 'Record Usage' : 'Adjust Stock'}
-                                aria-label={isNurseInventoryView ? 'Record stock usage' : 'Adjust stock'}
-                              >
-                                {isNurseInventoryView ? 'Record Usage' : 'Adjust'}
-                              </button>
-                            )}
-                            {canUpdateInventory && (
-                              <button
-                                onClick={() => handleEdit(item)}
-                                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-primary/20 bg-primary-bg text-primary shadow-sm transition-colors hover:border-primary/40 hover:bg-primary-bg/80"
-                                title="Edit Product Details"
-                                aria-label="Edit item details"
-                              >
-                                <Edit className="h-4 w-4" />
-                              </button>
+                            {hasMoreMenu && (
+                              <div className="relative" data-inventory-more-menu>
+                                <button
+                                  type="button"
+                                  onClick={() => setOpenMenuId(isMenuOpen ? null : String(item.id))}
+                                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-sm transition-colors hover:bg-muted"
+                                  title="More product & stock actions"
+                                  aria-label={`More actions for ${item.item_name}`}
+                                  aria-expanded={isMenuOpen}
+                                >
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </button>
+                                {isMenuOpen && (
+                                  <div
+                                    className="absolute right-0 z-30 mt-1.5 w-48 overflow-hidden rounded-2xl border border-border bg-card py-1 shadow-xl"
+                                    role="menu"
+                                  >
+                                    {(canAdjustStock || canRecordUsage) && (
+                                      <button
+                                        type="button"
+                                        role="menuitem"
+                                        onClick={() => handleAdjustStock(item)}
+                                        className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-semibold text-foreground transition-colors hover:bg-muted"
+                                      >
+                                        <SlidersHorizontal className="h-3.5 w-3.5 text-primary" />
+                                        <span>{isNurseInventoryView ? 'Record Usage' : 'Adjust Stock'}</span>
+                                      </button>
+                                    )}
+                                    {canUpdateInventory && (
+                                      <button
+                                        type="button"
+                                        role="menuitem"
+                                        onClick={() => handleEdit(item)}
+                                        className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-semibold text-foreground transition-colors hover:bg-muted"
+                                      >
+                                        <Edit className="h-3.5 w-3.5 text-primary" />
+                                        <span>Edit Product</span>
+                                      </button>
+                                    )}
+                                    {canDeleteInventory && (
+                                      <button
+                                        type="button"
+                                        role="menuitem"
+                                        onClick={() => handleRequestDeleteProduct(item)}
+                                        className="flex w-full items-center gap-2.5 border-t border-border/60 px-3.5 py-2 text-left text-xs font-semibold text-destructive transition-colors hover:bg-destructive-bg/50"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                                        <span>Delete Product</span>
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </div>
                         </td>
@@ -558,10 +641,16 @@ export function Inventory() {
       {showBatchModal && (
         <InventoryBatchModal
           mode={batchModalMode}
-          item={selectedBatchItem || undefined}
+          item={
+            selectedBatchItem
+              ? inventory.find((inv) => String(inv.id) === String(selectedBatchItem.id)) || selectedBatchItem
+              : undefined
+          }
           inventoryItems={inventory}
           canAddBatch={canAdjustStock}
+          canDeleteBatch={canDeleteInventory}
           onSwitchToAdd={() => setBatchModalMode('add')}
+          onBatchMutated={() => void loadInventory()}
           onClose={handleBatchModalClose}
         />
       )}
@@ -572,6 +661,94 @@ export function Inventory() {
           mode={canRecordUsage && !canAdjustStock ? 'usage' : 'adjust'}
           onClose={handleAdjustModalClose}
         />
+      )}
+
+      {deletingItem && canDeleteInventory && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-product-modal-title"
+        >
+          <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-border bg-card shadow-2xl">
+            <div className="flex items-start gap-3 border-b border-border px-6 py-4">
+              <div className="rounded-2xl bg-destructive-bg p-2.5 text-destructive">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 id="delete-product-modal-title" className="text-base font-extrabold text-foreground">
+                  Delete Inventory Product Permanently?
+                </h2>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Permanent deletion cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3 px-6 py-4 text-xs">
+              <div className="grid grid-cols-1 gap-2 rounded-2xl border border-border bg-muted/40 p-3.5 sm:grid-cols-2">
+                <div>
+                  <span className="font-semibold text-muted-foreground">Product Name:</span>
+                  <p className="mt-0.5 text-sm font-bold text-foreground">{deletingItem.item_name}</p>
+                </div>
+                <div>
+                  <span className="font-semibold text-muted-foreground">Current Stock:</span>
+                  <p className="mt-0.5 text-sm font-bold text-foreground">
+                    {deletingItem.current_stock ?? 0} {deletingItem.unit} ({(deletingItem.batches?.length || 0)} lot{(deletingItem.batches?.length || 0) === 1 ? '' : 's'})
+                  </p>
+                </div>
+              </div>
+
+              {(deletingItem.batches?.length || 0) > 0 ? (
+                <div className="rounded-2xl border border-amber-300 bg-amber-50 p-3.5 text-amber-950">
+                  <p className="font-bold">
+                    This product still has {deletingItem.batches?.length} recorded lot/batch(es).
+                  </p>
+                  <p className="mt-1 text-amber-900">
+                    Products with recorded lots, stock transactions, or PEP vaccination dose references cannot be deleted directly. Open <span className="font-semibold">View Lots</span> to delete unused test lots first, or use <span className="font-semibold">Adjust Stock</span> if a lot has clinical history.
+                  </p>
+                  <div className="mt-2.5">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const target = deletingItem;
+                        setDeletingItem(null);
+                        handleViewBatches(target);
+                      }}
+                    >
+                      Open View Lots ({deletingItem.batches?.length})
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-muted-foreground">
+                  This will permanently remove <span className="font-semibold text-foreground">{deletingItem.item_name}</span> from Inventory. If the product has historical stock transactions or PEP dose references, deletion will be blocked to protect clinical and audit integrity.
+                </p>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-border px-6 py-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDeletingItem(null)}
+                disabled={deletingProductLoading}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                onClick={handleConfirmDeleteProduct}
+                disabled={deletingProductLoading}
+              >
+                {deletingProductLoading ? 'Deleting...' : 'Delete Product Permanently'}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
