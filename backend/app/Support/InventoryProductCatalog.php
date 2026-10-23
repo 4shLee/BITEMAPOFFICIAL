@@ -171,17 +171,31 @@ final class InventoryProductCatalog
             return false;
         }
 
-        return ! str_contains($haystack, 'immunoglobulin')
-            && preg_match('/(^|[^a-z])(?:e|h)?rig([^a-z]|$)/i', $haystack) !== 1
-            && ! str_contains($haystack, 'tetanus')
-            && ! str_contains($haystack, 'abhaytox')
-            && ! str_contains($haystack, 'equirab')
-            && ! str_contains($haystack, 'berirab');
+        $isExcludedNonPepProduct = str_contains($haystack, 'immunoglobulin')
+            || preg_match('/(^|[^a-z])(?:e|h)?rig([^a-z]|$)/i', $haystack) === 1
+            || str_contains($haystack, 'tetanus')
+            || str_contains($haystack, 'toxoid')
+            || str_contains($haystack, 'ats')
+            || str_contains($haystack, 'abhaytox')
+            || str_contains($haystack, 'bett')
+            || str_contains($haystack, 'equirab')
+            || str_contains($haystack, 'berirab');
+
+        if ($isExcludedNonPepProduct) {
+            return false;
+        }
+
+        return preg_match(
+            '/(^|[^a-z])(anti[\s-]?rabies|antirabies|rabies|vaccine|arv|pcecv|pvrv|abhayrab|verorab|speeda|rabipur|vaxirab|indarab|rabivax|chirorab)([^a-z]|$)/i',
+            $haystack
+        ) === 1;
     }
 
     public static function normalize(?string $value): string
     {
-        return (string) str($value ?? '')
+        $normalizedDashes = preg_replace('/[\x{2010}-\x{2015}\x{2212}]+/u', '-', (string) ($value ?? ''));
+
+        return (string) str($normalizedDashes ?? '')
             ->trim()
             ->squish()
             ->lower();

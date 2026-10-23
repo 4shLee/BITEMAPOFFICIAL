@@ -44,7 +44,7 @@ export function InventoryFormModal({
   const [formData, setFormData] = useState({
     item_name: item?.item_name || '',
     brand: item?.brand || initialCatalogProduct?.brand || '',
-    item_type: item?.item_type || initialCatalogProduct?.item_type || 'Vaccine',
+    item_type: initialCatalogProduct?.item_type || item?.item_type || 'Vaccine',
     current_stock: item ? String(item.current_stock ?? 0) : '0',
     reorder_level: item?.reorder_level != null ? String(item.reorder_level) : '',
     unit: item?.unit || 'Vials',
@@ -259,6 +259,8 @@ export function InventoryFormModal({
                 label="Item Type"
                 options={itemTypeOptions}
                 value={formData.item_type}
+                disabled={Boolean(selectedCatalogProduct)}
+                helperText={selectedCatalogProduct ? 'Determined by product catalog.' : undefined}
                 onChange={(e) => setFormData({ ...formData, item_type: e.target.value })}
               />
 

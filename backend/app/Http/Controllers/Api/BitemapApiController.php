@@ -555,8 +555,6 @@ class BitemapApiController extends Controller
     {
         $items = Inventory::query()
             ->select(['id', 'item_name', 'item_type', 'current_stock'])
-            ->where('item_type', 'Vaccine')
-            ->where('current_stock', '>', 0)
             ->whereHas('batches', fn ($query) => $query
                 ->where('quantity_remaining', '>', 0)
                 ->whereDate('expiry_date', '>=', today()))
@@ -574,19 +572,26 @@ class BitemapApiController extends Controller
                 ->orderBy('id')])
             ->orderBy('item_name')
             ->get()
-            ->filter(fn (Inventory $inventory) => $this->isEligiblePepVaccineInventory($inventory))
-            ->map(fn (Inventory $inventory) => [
-                'id' => $inventory->id,
-                'item_name' => $inventory->item_name,
-                'current_stock' => $inventory->current_stock,
-                'batches' => $inventory->batches->map(fn (InventoryBatch $batch) => [
-                    'id' => $batch->id,
-                    'inventory_id' => $batch->inventory_id,
-                    'batch_number' => $batch->batch_number,
-                    'quantity_remaining' => $batch->quantity_remaining,
-                    'expiry_date' => optional($batch->expiry_date)->toDateString(),
-                ])->values(),
-            ])
+            ->filter(fn (Inventory $inventory) => $this->isSelectablePepVaccineInventory($inventory))
+            ->map(function (Inventory $inventory) {
+                $usableBatchStock = (int) $inventory->batches->sum('quantity_remaining');
+                $effectiveStock = (int) $inventory->current_stock > 0
+                    ? (int) $inventory->current_stock
+                    : $usableBatchStock;
+
+                return [
+                    'id' => $inventory->id,
+                    'item_name' => $inventory->item_name,
+                    'current_stock' => $effectiveStock,
+                    'batches' => $inventory->batches->map(fn (InventoryBatch $batch) => [
+                        'id' => $batch->id,
+                        'inventory_id' => $batch->inventory_id,
+                        'batch_number' => $batch->batch_number,
+                        'quantity_remaining' => $batch->quantity_remaining,
+                        'expiry_date' => optional($batch->expiry_date)->toDateString(),
+                    ])->values(),
+                ];
+            })
             ->values();
 
         // Vaccine products without a usable lot/batch cannot be selected:
@@ -594,7 +599,6 @@ class BitemapApiController extends Controller
         $eligibleIds = $items->pluck('id')->all();
         $unavailable = Inventory::query()
             ->select(['id', 'item_name', 'item_type', 'current_stock'])
-            ->where('item_type', 'Vaccine')
             ->whereNotIn('id', $eligibleIds)
             ->withCount([
                 'batches',
@@ -717,13 +721,15 @@ class BitemapApiController extends Controller
                 ]);
             }
 
-            if ($inventory->item_type !== 'Vaccine') {
-                throw ValidationException::withMessages([
-                    'inventory_id' => 'The selected inventory item is not classified as a vaccine.',
-                ]);
-            }
+            $matchedCatalog = InventoryProductCatalog::match($inventory->item_name, $inventory->brand ?? null);
 
             if (! $this->isEligiblePepVaccineInventory($inventory)) {
+                if (strcasecmp(trim((string) $inventory->item_type), 'Vaccine') !== 0 && ($matchedCatalog['item_type'] ?? null) !== 'Vaccine') {
+                    throw ValidationException::withMessages([
+                        'inventory_id' => 'The selected inventory item is not classified as a vaccine.',
+                    ]);
+                }
+
                 throw ValidationException::withMessages([
                     'inventory_id' => 'The selected inventory item is not an eligible vaccine product for this PEP dose.',
                 ]);
@@ -743,7 +749,11 @@ class BitemapApiController extends Controller
                 ]);
             }
 
-            if ((int) $inventory->current_stock < $doseQuantity) {
+            $effectiveInventoryStock = (int) $inventory->current_stock > 0
+                ? (int) $inventory->current_stock
+                : ($matchedCatalog !== null ? (int) $inventory->batches()->where('quantity_remaining', '>', 0)->whereDate('expiry_date', '>=', today())->sum('quantity_remaining') : 0);
+
+            if ($effectiveInventoryStock < $doseQuantity) {
                 throw ValidationException::withMessages([
                     'inventory_id' => 'The selected vaccine inventory item is out of stock.',
                 ]);
@@ -753,10 +763,15 @@ class BitemapApiController extends Controller
                 'quantity_remaining' => (int) $batch->quantity_remaining - $doseQuantity,
             ]);
 
-            $inventory->update([
-                'current_stock' => max(0, (int) $inventory->current_stock - $doseQuantity),
+            $inventoryUpdates = [
+                'current_stock' => max(0, $effectiveInventoryStock - $doseQuantity),
                 'updated_by' => $request->user()->id,
-            ]);
+            ];
+            if ($matchedCatalog !== null && ! empty($matchedCatalog['item_type']) && $inventory->item_type !== $matchedCatalog['item_type']) {
+                $inventoryUpdates['item_type'] = $matchedCatalog['item_type'];
+            }
+
+            $inventory->update($inventoryUpdates);
             $this->syncInventoryNearestExpiry($inventory->fresh());
 
             InventoryTransaction::create([
@@ -1154,6 +1169,7 @@ class BitemapApiController extends Controller
                 'created_by' => $request->user()?->id,
             ]);
 
+            $catalogMatch = InventoryProductCatalog::match($inventory->item_name, $inventory->brand ?? null);
             $usableBatchStock = (int) $inventory->batches()
                 ->where('quantity_remaining', '>', 0)
                 ->whereDate('expiry_date', '>=', today())
@@ -1163,10 +1179,15 @@ class BitemapApiController extends Controller
                 ? max((int) $inventory->current_stock + (int) $data['quantity_received'], $usableBatchStock)
                 : (int) $data['quantity_received'];
 
-            $inventory->update([
+            $inventoryUpdates = [
                 'current_stock' => $nextStock,
                 'updated_by' => $request->user()?->id,
-            ]);
+            ];
+            if ($catalogMatch !== null && ! empty($catalogMatch['item_type']) && $inventory->item_type !== $catalogMatch['item_type']) {
+                $inventoryUpdates['item_type'] = $catalogMatch['item_type'];
+            }
+
+            $inventory->update($inventoryUpdates);
             $this->syncInventoryNearestExpiry($inventory->fresh());
 
             InventoryTransaction::create([
@@ -4291,7 +4312,7 @@ class BitemapApiController extends Controller
             'brand' => $item->brand ?: ($catalogMatch['brand'] ?? null),
             'purpose' => $catalogMatch['purpose'] ?? null,
             'catalog_key' => $catalogMatch['key'] ?? null,
-            'item_type' => $item->item_type,
+            'item_type' => $catalogMatch['item_type'] ?? $item->item_type,
             'current_stock' => $item->current_stock,
             'unit' => $item->unit,
             'reorder_level' => $item->reorder_level,
@@ -4603,11 +4624,26 @@ class BitemapApiController extends Controller
 
     private function isEligiblePepVaccineInventory(Inventory $inventory): bool
     {
-        if ($inventory->item_type !== 'Vaccine') {
+        $catalogMatch = InventoryProductCatalog::match($inventory->item_name, $inventory->brand ?? null);
+        if ($catalogMatch !== null) {
+            return (bool) ($catalogMatch['is_pep_vaccine'] ?? false);
+        }
+
+        if (strcasecmp(trim((string) $inventory->item_type), 'Vaccine') !== 0) {
             return false;
         }
 
         return InventoryProductCatalog::isEligiblePepAntiRabiesVaccine($inventory->item_name, $inventory->brand ?? null);
+    }
+
+    private function isSelectablePepVaccineInventory(Inventory $inventory): bool
+    {
+        if (! $this->isEligiblePepVaccineInventory($inventory)) {
+            return false;
+        }
+
+        return (int) $inventory->current_stock > 0
+            || InventoryProductCatalog::match($inventory->item_name, $inventory->brand ?? null) !== null;
     }
 
     private function normalizeTransactionType(?string $type): string

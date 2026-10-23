@@ -247,6 +247,14 @@ function getBatchLotNumber(item: InventoryBatch) {
   return item.batch_number || item.lot_number || '';
 }
 
+function isUsableVaccineBatch(batch: InventoryBatch) {
+  return (
+    Number(batch.quantity_remaining || 0) > 0
+    && Boolean(batch.expiry_date)
+    && dateKeyFrom(batch.expiry_date) >= todayKey()
+  );
+}
+
 function getScheduleGroupStatus(group: ScheduleGroup) {
   const completedDoses = group.doses.filter((dose) => dose.status === 'completed' || dose.status === 'completed_late').length;
   const completedLateDoses = group.doses.filter((dose) => dose.status === 'completed_late').length;
@@ -563,14 +571,13 @@ export function PEPSchedule() {
       setInventoryItems(response.data as InventoryItem[]);
       setUnavailableVaccines(Array.isArray(response.meta?.unavailable) ? response.meta.unavailable as UnavailableVaccine[] : []);
       setInventoryOptionsLoaded(true);
-      const eligible = (response.data as InventoryItem[]).filter((item) => Number(item.current_stock || 0) > 0);
+      const eligible = (response.data as InventoryItem[]).filter((item) => (
+        (Number(item.current_stock || 0) > 0 || (Array.isArray(item.batches) && item.batches.length > 0))
+        && (item.batches || []).some(isUsableVaccineBatch)
+      ));
       if (eligible.length === 1) {
         const singleProduct = eligible[0];
-        const singleBatches = (singleProduct.batches || []).filter((batch) => (
-          Number(batch.quantity_remaining || 0) > 0
-          && Boolean(batch.expiry_date)
-          && dateKeyFrom(batch.expiry_date) >= todayKey()
-        ));
+        const singleBatches = (singleProduct.batches || []).filter(isUsableVaccineBatch);
         setRecordForm((current) => (
           current.inventoryItemId
             ? current
@@ -660,15 +667,14 @@ export function PEPSchedule() {
         ? 'Due Today'
         : 'On Track';
   const eligibleVaccineProducts = useMemo(() => inventoryItems
-    .filter((item) => Number(item.current_stock || 0) > 0), [inventoryItems]);
+    .filter((item) => (
+      (Number(item.current_stock || 0) > 0 || (Array.isArray(item.batches) && item.batches.length > 0))
+      && (item.batches || []).some(isUsableVaccineBatch)
+    )), [inventoryItems]);
   const selectedVaccineProduct = eligibleVaccineProducts.find((item) => String(item.id) === recordForm.inventoryItemId);
   const availableVaccineBatches = useMemo<VaccineBatchOption[]>(() => selectedVaccineProduct
     ? (selectedVaccineProduct.batches || [])
-      .filter((batch) => (
-        Number(batch.quantity_remaining || 0) > 0
-        && Boolean(batch.expiry_date)
-        && String(batch.expiry_date) >= todayKey()
-      ))
+      .filter(isUsableVaccineBatch)
       .map((batch) => ({
         ...batch,
         inventoryItemId: String(selectedVaccineProduct.id),
@@ -681,6 +687,8 @@ export function PEPSchedule() {
 
   const openRecordDose = (dose: Dose) => {
     if (dose.status === 'completed' || dose.status === 'completed_late') return;
+    doseSubmittingRef.current = false;
+    setSavingDose(false);
     setRecordDose(dose);
     setRecordForm({
       administeredDate: dose.administeredDate || todayKey(),
@@ -695,6 +703,8 @@ export function PEPSchedule() {
 
   const closeRecordDose = () => {
     inventoryRequestRef.current?.abort();
+    doseSubmittingRef.current = false;
+    setSavingDose(false);
     setRecordDose(null);
   };
 
@@ -1070,11 +1080,7 @@ export function PEPSchedule() {
                   onChange={(event) => {
                     const nextItemId = event.target.value;
                     const nextProduct = eligibleVaccineProducts.find((item) => String(item.id) === nextItemId);
-                    const nextBatches = (nextProduct?.batches || []).filter((batch) => (
-                      Number(batch.quantity_remaining || 0) > 0
-                      && Boolean(batch.expiry_date)
-                      && String(batch.expiry_date) >= todayKey()
-                    ));
+                    const nextBatches = (nextProduct?.batches || []).filter(isUsableVaccineBatch);
                     setRecordForm((current) => ({
                       ...current,
                       inventoryItemId: nextItemId,

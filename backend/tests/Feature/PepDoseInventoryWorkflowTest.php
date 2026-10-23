@@ -904,6 +904,114 @@ class PepDoseInventoryWorkflowTest extends TestCase
         ]);
     }
 
+    public function test_pep_dose_options_and_recording_work_with_real_clinic_catalog_and_ignore_dummy_rbac_inventory(): void
+    {
+        $nurse = $this->actingAsRole('nurse_vaccinator');
+
+        // Create dummy non-vaccine record 'rbac' that had item_type 'Vaccine' and no batches
+        $dummyRbac = Inventory::create([
+            'item_name' => 'rbac',
+            'item_type' => 'Vaccine',
+            'current_stock' => 200,
+            'unit' => 'Vials',
+            'reorder_level' => 10,
+            'updated_by' => $nurse->id,
+        ]);
+
+        // Create Anti-Rabies Vaccine product with batch ARV-2026-TEST-001
+        $antiRabies = Inventory::create([
+            'item_name' => 'Anti-Rabies Vaccine',
+            'brand' => 'Abhayrab',
+            'item_type' => 'Supply', // Intentionally drifted type to test catalog normalization
+            'current_stock' => 0,    // Intentionally 0 to test effective stock resolution from usable batch
+            'unit' => 'Vials',
+            'reorder_level' => 10,
+            'updated_by' => $nurse->id,
+        ]);
+
+        $batch = InventoryBatch::create([
+            'inventory_id' => $antiRabies->id,
+            'batch_number' => 'ARV-2026-TEST-001',
+            'quantity_received' => 100,
+            'quantity_remaining' => 100,
+            'expiry_date' => '2028-12-31',
+            'received_date' => '2026-10-23',
+            'supplier' => 'Test Supplier ABC',
+            'created_by' => $nurse->id,
+        ]);
+
+        $patient = Patient::create([
+            'full_name' => 'Sofia Fortez',
+            'age' => 24,
+            'sex' => 'Female',
+            'address' => 'Digos City',
+            'contact_number' => '09171234567',
+        ]);
+
+        $incident = Incident::create([
+            'patient_id' => $patient->id,
+            'incident_date' => today()->toDateString(),
+            'animal_type' => 'Dog',
+            'bite_site' => 'Right leg',
+            'who_category' => 'II',
+            'status' => 'Active',
+        ]);
+
+        $schedule = PepSchedule::create([
+            'incident_id' => $incident->id,
+            'dose_day' => 0,
+            'scheduled_date' => today()->toDateString(),
+            'status' => 'Pending',
+        ]);
+
+        // 1. Verify dose inventory options
+        $response = $this->getJson('/api/pep-schedule/dose-inventory-options')
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $data = $response->json('data');
+        $unavailable = $response->json('meta.unavailable');
+
+        // 'Anti-Rabies Vaccine' must be selectable in data
+        $this->assertNotEmpty($data);
+        $arvItem = collect($data)->firstWhere('id', $antiRabies->id);
+        $this->assertNotNull($arvItem, 'Anti-Rabies Vaccine must be included in selectable options');
+        $this->assertSame('Anti-Rabies Vaccine', $arvItem['item_name']);
+        $this->assertNotEmpty($arvItem['batches']);
+        $this->assertSame('ARV-2026-TEST-001', $arvItem['batches'][0]['batch_number']);
+
+        // 'rbac' must NOT be in data and must NOT be in meta.unavailable
+        $this->assertNull(collect($data)->firstWhere('id', $dummyRbac->id), 'rbac must not be selectable');
+        $this->assertNull(collect($unavailable)->firstWhere('id', $dummyRbac->id), 'rbac must not appear in unavailable diagnostics');
+
+        // 2. Verify recording Day 0 dose
+        $this->postJson('/api/pep-schedule/'.$schedule->id.'/record-dose', [
+            'administered_date' => today()->toDateString(),
+            'administration_route' => 'Intradermal',
+            'inventory_id' => $antiRabies->id,
+            'inventory_batch_id' => $batch->id,
+            'remarks' => 'Day 0 administered smoothly',
+        ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.status', 'Done')
+            ->assertJsonPath('data.administration_route', 'Intradermal')
+            ->assertJsonPath('data.vaccine_lot_number', 'ARV-2026-TEST-001');
+
+        // Assert deductions
+        $this->assertSame(99, $batch->fresh()->quantity_remaining);
+        $this->assertSame(99, $antiRabies->fresh()->current_stock);
+        $this->assertSame('Vaccine', $antiRabies->fresh()->item_type);
+
+        $this->assertDatabaseHas('inventory_transactions', [
+            'inventory_id' => $antiRabies->id,
+            'inventory_batch_id' => $batch->id,
+            'pep_schedule_id' => $schedule->id,
+            'transaction_type' => 'Used',
+            'quantity' => 1,
+        ]);
+    }
+
     private function actingAsRole(string $role): User
     {
         $user = User::factory()->create([

@@ -90,3 +90,16 @@ test('Inventory table simplifies row actions and supports confirmed product and 
   assert.doesNotMatch(stockAdjustmentModal, /value: 'Restock'/);
   assert.doesNotMatch(stockAdjustmentModal, /value: 'Received'/);
 });
+
+test('Record Dose resets submitting state on modal open/close and standardizes usable batch expiry verification', () => {
+  assert.match(pep, /function isUsableVaccineBatch\(batch: InventoryBatch\)/);
+  assert.match(pep, /dateKeyFrom\(batch\.expiry_date\) >= todayKey\(\)/);
+  assert.match(pep, /openRecordDose = \(dose: Dose\) => \{\n\s+if \(dose\.status === 'completed' \|\| dose\.status === 'completed_late'\) return;\n\s+doseSubmittingRef\.current = false;\n\s+setSavingDose\(false\);/);
+  assert.match(pep, /closeRecordDose = \(\) => \{\n\s+inventoryRequestRef\.current\?\.abort\(\);\n\s+doseSubmittingRef\.current = false;\n\s+setSavingDose\(false\);/);
+});
+
+test('InventoryFormModal sets catalog item type and disables manual override when product matches catalog', () => {
+  assert.match(inventoryFormModal, /item_type: initialCatalogProduct\?\.item_type \|\| item\?\.item_type \|\| 'Vaccine'/);
+  assert.match(inventoryFormModal, /disabled=\{Boolean\(selectedCatalogProduct\)\}/);
+  assert.match(inventoryFormModal, /helperText=\{selectedCatalogProduct \? 'Determined by product catalog\.' : undefined\}/);
+});
