@@ -93,7 +93,7 @@ test('Inventory table simplifies row actions and supports confirmed product and 
 
 test('Record Dose resets submitting state on modal open/close and standardizes usable batch expiry verification', () => {
   assert.match(pep, /function isUsableVaccineBatch\(batch: InventoryBatch\)/);
-  assert.match(pep, /dateKeyFrom\(batch\.expiry_date\) >= todayKey\(\)/);
+  assert.match(pep, /expiryTimestamp >= todayTimestamp/);
   assert.match(pep, /openRecordDose = \(dose: Dose\) => \{\n\s+if \(dose\.status === 'completed' \|\| dose\.status === 'completed_late'\) return;\n\s+doseSubmittingRef\.current = false;\n\s+setSavingDose\(false\);/);
   assert.match(pep, /closeRecordDose = \(\) => \{\n\s+inventoryRequestRef\.current\?\.abort\(\);\n\s+doseSubmittingRef\.current = false;\n\s+setSavingDose\(false\);/);
 });

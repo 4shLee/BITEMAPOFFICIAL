@@ -128,8 +128,41 @@ function todayKey() {
   return year + '-' + month + '-' + day;
 }
 
+function parseDateTimestamp(value?: string | null): number | null {
+  if (!value) return null;
+  const str = String(value).trim();
+  if (!str) return null;
+  const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    return new Date(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3])).getTime();
+  }
+  const usMatch = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (usMatch) {
+    return new Date(Number(usMatch[3]), Number(usMatch[1]) - 1, Number(usMatch[2])).getTime();
+  }
+  const parsed = new Date(str);
+  return isNaN(parsed.getTime()) ? null : new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate()).getTime();
+}
+
 function dateKeyFrom(value?: string) {
-  return value ? String(value).split('T')[0] : '';
+  if (!value) return '';
+  const str = String(value).trim();
+  const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+  }
+  const usMatch = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (usMatch) {
+    return `${usMatch[3]}-${usMatch[1].padStart(2, '0')}-${usMatch[2].padStart(2, '0')}`;
+  }
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+  return str.split('T')[0];
 }
 
 function evaluateDoseStatus(item: ScheduleApiRow): DoseStatus {
@@ -248,11 +281,14 @@ function getBatchLotNumber(item: InventoryBatch) {
 }
 
 function isUsableVaccineBatch(batch: InventoryBatch) {
-  return (
-    Number(batch.quantity_remaining || 0) > 0
-    && Boolean(batch.expiry_date)
-    && dateKeyFrom(batch.expiry_date) >= todayKey()
-  );
+  if (Number(batch.quantity_remaining || 0) <= 0) return false;
+  if (!batch.expiry_date) return false;
+  const expiryTimestamp = parseDateTimestamp(batch.expiry_date);
+  if (expiryTimestamp === null) return true;
+
+  const now = new Date();
+  const todayTimestamp = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  return expiryTimestamp >= todayTimestamp;
 }
 
 function getScheduleGroupStatus(group: ScheduleGroup) {

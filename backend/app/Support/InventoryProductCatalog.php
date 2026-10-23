@@ -33,6 +33,11 @@ final class InventoryProductCatalog
                 'anti-rabies vaccine (abhayrab)',
                 'anti-rabies vaccine',
                 'anti rabies vaccine',
+                'anti-rabies',
+                'anti rabies',
+                'rabies vaccine',
+                'anti - rabies vaccine',
+                'anti - rabies',
                 'abhayrab',
             ],
         ],
@@ -194,8 +199,9 @@ final class InventoryProductCatalog
     public static function normalize(?string $value): string
     {
         $normalizedDashes = preg_replace('/[\x{2010}-\x{2015}\x{2212}]+/u', '-', (string) ($value ?? ''));
+        $collapsedHyphens = preg_replace('/\s*-\s*/', '-', $normalizedDashes ?? '');
 
-        return (string) str($normalizedDashes ?? '')
+        return (string) str($collapsedHyphens ?? '')
             ->trim()
             ->squish()
             ->lower();

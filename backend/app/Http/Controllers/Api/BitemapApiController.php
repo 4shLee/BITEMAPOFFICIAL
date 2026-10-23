@@ -554,7 +554,7 @@ class BitemapApiController extends Controller
     public function pepDoseInventoryOptions(): JsonResponse
     {
         $items = Inventory::query()
-            ->select(['id', 'item_name', 'item_type', 'current_stock'])
+            ->select(['id', 'item_name', 'brand', 'item_type', 'current_stock'])
             ->whereHas('batches', fn ($query) => $query
                 ->where('quantity_remaining', '>', 0)
                 ->whereDate('expiry_date', '>=', today()))
@@ -598,7 +598,7 @@ class BitemapApiController extends Controller
         // doses must be traceable to a specific unexpired batch with remaining quantity.
         $eligibleIds = $items->pluck('id')->all();
         $unavailable = Inventory::query()
-            ->select(['id', 'item_name', 'item_type', 'current_stock'])
+            ->select(['id', 'item_name', 'brand', 'item_type', 'current_stock'])
             ->whereNotIn('id', $eligibleIds)
             ->withCount([
                 'batches',
@@ -4627,10 +4627,6 @@ class BitemapApiController extends Controller
         $catalogMatch = InventoryProductCatalog::match($inventory->item_name, $inventory->brand ?? null);
         if ($catalogMatch !== null) {
             return (bool) ($catalogMatch['is_pep_vaccine'] ?? false);
-        }
-
-        if (strcasecmp(trim((string) $inventory->item_type), 'Vaccine') !== 0) {
-            return false;
         }
 
         return InventoryProductCatalog::isEligiblePepAntiRabiesVaccine($inventory->item_name, $inventory->brand ?? null);
