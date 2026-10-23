@@ -588,7 +588,46 @@ class BitemapApiController extends Controller
             ])
             ->values();
 
-        return response()->json(['success' => true, 'data' => $items]);
+        // Vaccine products with positive aggregate stock but no usable lot/batch cannot be selected:
+        // doses must be traceable to a specific unexpired batch with remaining quantity.
+        $eligibleIds = $items->pluck('id')->all();
+        $unavailable = Inventory::query()
+            ->select(['id', 'item_name', 'item_type', 'current_stock'])
+            ->where('item_type', 'Vaccine')
+            ->whereNotIn('id', $eligibleIds)
+            ->where(fn ($query) => $query
+                ->where('current_stock', '>', 0)
+                ->orWhereHas('batches', fn ($batchQuery) => $batchQuery
+                    ->where('quantity_remaining', '>', 0)
+                    ->whereDate('expiry_date', '>=', today())))
+            ->withCount([
+                'batches',
+                'batches as unexpired_batches_count' => fn ($query) => $query->whereDate('expiry_date', '>=', today()),
+                'batches as usable_batches_count' => fn ($query) => $query
+                    ->where('quantity_remaining', '>', 0)
+                    ->whereDate('expiry_date', '>=', today()),
+            ])
+            ->orderBy('item_name')
+            ->get()
+            ->filter(fn (Inventory $inventory) => $this->isEligiblePepVaccineInventory($inventory))
+            ->map(fn (Inventory $inventory) => [
+                'id' => $inventory->id,
+                'item_name' => $inventory->item_name,
+                'current_stock' => $inventory->current_stock,
+                'reason' => match (true) {
+                    (int) $inventory->batches_count === 0 => 'no_batch',
+                    (int) $inventory->unexpired_batches_count === 0 => 'batches_expired',
+                    (int) $inventory->usable_batches_count > 0 => 'product_stock_zero',
+                    default => 'batches_depleted',
+                },
+            ])
+            ->values();
+
+        return response()->json([
+            'success' => true,
+            'data' => $items,
+            'meta' => ['unavailable' => $unavailable],
+        ]);
     }
 
     public function updatePepSchedule(Request $request, PepSchedule $schedule): JsonResponse

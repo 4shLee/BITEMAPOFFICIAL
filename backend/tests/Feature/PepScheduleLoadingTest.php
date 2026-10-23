@@ -126,7 +126,7 @@ class PepScheduleLoadingTest extends TestCase
         $queryCount = count(DB::getQueryLog());
         $item = $response->json('data.0');
 
-        $this->assertLessThanOrEqual(2, $queryCount);
+        $this->assertLessThanOrEqual(3, $queryCount);
         $this->assertSame(['id', 'item_name', 'current_stock', 'batches'], array_keys($item));
         $this->assertSame($eligible->id, $item['id']);
         $this->assertSame(['id', 'inventory_id', 'batch_number', 'quantity_remaining', 'expiry_date'], array_keys($item['batches'][0]));

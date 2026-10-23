@@ -331,6 +331,171 @@ class PepDoseInventoryWorkflowTest extends TestCase
         ]);
     }
 
+    public function test_dose_inventory_options_list_eligible_products_with_matching_product_and_batch_ids(): void
+    {
+        $user = $this->actingAsRole('nurse_vaccinator');
+        [, $inventory, $batch] = $this->createDoseInventoryContext($user);
+        $secondBatch = InventoryBatch::create([
+            'inventory_id' => $inventory->id,
+            'batch_number' => 'ARV-2026-002',
+            'quantity_received' => 3,
+            'quantity_remaining' => 3,
+            'expiry_date' => '2029-01-01',
+            'received_date' => '2026-07-02',
+            'created_by' => $user->id,
+        ]);
+
+        $response = $this->getJson('/api/pep-schedule/dose-inventory-options')
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $inventory->id)
+            ->assertJsonPath('data.0.item_name', 'Anti-rabies Vaccine')
+            ->assertJsonCount(2, 'data.0.batches')
+            ->assertJsonPath('data.0.batches.0.id', $batch->id)
+            ->assertJsonPath('data.0.batches.0.inventory_id', $inventory->id)
+            ->assertJsonPath('data.0.batches.1.id', $secondBatch->id)
+            ->assertJsonPath('meta.unavailable', []);
+
+        $this->assertSame([$batch->id, $secondBatch->id], collect($response->json('data.0.batches'))->pluck('id')->all());
+    }
+
+    public function test_product_with_aggregate_stock_but_no_eligible_batch_is_unavailable_with_a_reason(): void
+    {
+        $user = $this->actingAsRole('clinic_admin');
+        [, $eligible] = $this->createDoseInventoryContext($user);
+
+        $noBatch = Inventory::create([
+            'item_name' => 'Unbatched Rabies Vaccine',
+            'item_type' => 'Vaccine',
+            'current_stock' => 120,
+            'unit' => 'vial',
+            'reorder_level' => 10,
+        ]);
+        $expired = Inventory::create([
+            'item_name' => 'Expired Rabies Vaccine',
+            'item_type' => 'Vaccine',
+            'current_stock' => 4,
+            'unit' => 'vial',
+            'reorder_level' => 1,
+        ]);
+        InventoryBatch::create([
+            'inventory_id' => $expired->id,
+            'batch_number' => 'EXP-1',
+            'quantity_received' => 4,
+            'quantity_remaining' => 4,
+            'expiry_date' => '2026-07-19',
+            'received_date' => '2026-01-01',
+        ]);
+        $depleted = Inventory::create([
+            'item_name' => 'Depleted Rabies Vaccine',
+            'item_type' => 'Vaccine',
+            'current_stock' => 2,
+            'unit' => 'vial',
+            'reorder_level' => 1,
+        ]);
+        InventoryBatch::create([
+            'inventory_id' => $depleted->id,
+            'batch_number' => 'DEP-1',
+            'quantity_received' => 5,
+            'quantity_remaining' => 0,
+            'expiry_date' => '2028-01-01',
+            'received_date' => '2026-01-01',
+        ]);
+
+        $response = $this->getJson('/api/pep-schedule/dose-inventory-options')->assertOk();
+
+        $this->assertSame([$eligible->id], collect($response->json('data'))->pluck('id')->all());
+        $reasons = collect($response->json('meta.unavailable'))->pluck('reason', 'id')->all();
+        $this->assertSame('no_batch', $reasons[$noBatch->id]);
+        $this->assertSame('batches_expired', $reasons[$expired->id]);
+        $this->assertSame('batches_depleted', $reasons[$depleted->id]);
+    }
+
+    public function test_dose_inventory_options_exclude_rig_tetanus_and_supplies_and_respect_roles(): void
+    {
+        $user = $this->actingAsRole('doctor');
+        $this->createDoseInventoryContext($user, ['item_name' => 'Rabies Immunoglobulin', 'item_type' => 'Immunoglobulin']);
+
+        $this->getJson('/api/pep-schedule/dose-inventory-options')
+            ->assertOk()
+            ->assertJsonCount(0, 'data')
+            ->assertJsonPath('meta.unavailable', []);
+
+        $this->actingAsRole('system_admin');
+        $this->getJson('/api/pep-schedule/dose-inventory-options')->assertForbidden();
+    }
+
+    public function test_failed_dose_submission_creates_no_duplicate_dose_or_stock_change(): void
+    {
+        $user = $this->actingAsRole('nurse_vaccinator');
+        [$schedule, $inventory, $batch] = $this->createDoseInventoryContext($user, [], ['quantity_remaining' => 0]);
+
+        $this->recordDose($schedule, $inventory, $batch)
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'The selected vaccine batch is out of stock.');
+        $this->recordDose($schedule, $inventory, $batch)->assertUnprocessable();
+
+        $this->assertDoseWasNotRecorded($schedule);
+        $this->assertSame(0, AuditLog::where('module', 'PEP Schedule')->count());
+        $this->assertInventoryWasNotMutated($inventory, $batch, 5, 0);
+    }
+
+    public function test_unavailable_diagnostics_classify_mixed_batches_and_stock_mismatches_correctly(): void
+    {
+        $user = $this->actingAsRole('clinic_admin');
+
+        // Eligible batch alongside expired and depleted ones: product is selectable and exposes ONLY the usable batch.
+        [, $mixed, $usable] = $this->createDoseInventoryContext($user, ['item_name' => 'Mixed Batch Vaccine'], ['batch_number' => 'MIX-OK']);
+        InventoryBatch::create(['inventory_id' => $mixed->id, 'batch_number' => 'MIX-EXP', 'quantity_received' => 5, 'quantity_remaining' => 5, 'expiry_date' => '2026-07-19', 'received_date' => '2026-01-01']);
+        InventoryBatch::create(['inventory_id' => $mixed->id, 'batch_number' => 'MIX-EMPTY', 'quantity_received' => 5, 'quantity_remaining' => 0, 'expiry_date' => '2028-01-01', 'received_date' => '2026-01-01']);
+
+        // Expired batch plus depleted unexpired batch: reported as depleted (an unexpired lot exists but is empty).
+        $expiredAndDepleted = Inventory::create(['item_name' => 'Expired And Depleted Vaccine', 'item_type' => 'Vaccine', 'current_stock' => 3, 'unit' => 'vial', 'reorder_level' => 1]);
+        InventoryBatch::create(['inventory_id' => $expiredAndDepleted->id, 'batch_number' => 'ED-EXP', 'quantity_received' => 3, 'quantity_remaining' => 3, 'expiry_date' => '2026-07-01', 'received_date' => '2026-01-01']);
+        InventoryBatch::create(['inventory_id' => $expiredAndDepleted->id, 'batch_number' => 'ED-EMPTY', 'quantity_received' => 3, 'quantity_remaining' => 0, 'expiry_date' => '2028-01-01', 'received_date' => '2026-01-01']);
+
+        // Product-level stock 0 while a lot still has stock: not selectable, flagged as a data mismatch.
+        $drifted = Inventory::create(['item_name' => 'Drifted Stock Vaccine', 'item_type' => 'Vaccine', 'current_stock' => 0, 'unit' => 'vial', 'reorder_level' => 1]);
+        InventoryBatch::create(['inventory_id' => $drifted->id, 'batch_number' => 'DR-1', 'quantity_received' => 4, 'quantity_remaining' => 4, 'expiry_date' => '2028-01-01', 'received_date' => '2026-01-01']);
+
+        // Zero stock and no batches, and RIG with batches: never reported.
+        Inventory::create(['item_name' => 'Empty Vaccine', 'item_type' => 'Vaccine', 'current_stock' => 0, 'unit' => 'vial', 'reorder_level' => 1]);
+        $rig = Inventory::create(['item_name' => 'Rabies Immunoglobulin', 'item_type' => 'Vaccine', 'current_stock' => 5, 'unit' => 'vial', 'reorder_level' => 1]);
+
+        $response = $this->getJson('/api/pep-schedule/dose-inventory-options')->assertOk();
+
+        $this->assertSame([$mixed->id], collect($response->json('data'))->pluck('id')->all());
+        $this->assertSame([$usable->id], collect($response->json('data.0.batches'))->pluck('id')->all());
+
+        $reasons = collect($response->json('meta.unavailable'))->pluck('reason', 'id')->all();
+        $this->assertSame('batches_depleted', $reasons[$expiredAndDepleted->id]);
+        $this->assertSame('product_stock_zero', $reasons[$drifted->id]);
+        $this->assertCount(2, $reasons);
+        $this->assertArrayNotHasKey($rig->id, $reasons);
+
+        // A drifted product is still rejected by record-dose (aggregate stock is 0).
+        [$schedule] = $this->createDoseInventoryContext($user, ['item_name' => 'Another Vaccine']);
+        $driftedBatch = $drifted->batches()->first();
+        $this->recordDose($schedule, $drifted, $driftedBatch)
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'The selected vaccine inventory item is out of stock.');
+        $this->assertDoseWasNotRecorded($schedule);
+    }
+
+    public function test_options_endpoint_never_exposes_inventory_to_unauthenticated_or_unauthorized_roles(): void
+    {
+        $this->getJson('/api/pep-schedule/dose-inventory-options')->assertUnauthorized();
+
+        foreach (['system_admin'] as $role) {
+            $this->actingAsRole($role);
+            $this->getJson('/api/pep-schedule/dose-inventory-options')
+                ->assertForbidden()
+                ->assertJsonMissingPath('data')
+                ->assertJsonMissingPath('meta');
+        }
+    }
+
     public function test_pep_schedule_and_inventory_endpoints_still_load(): void
     {
         $user = $this->actingAsRole('doctor');
