@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['item_name', 'item_type', 'current_stock', 'unit', 'reorder_level', 'expiry_date', 'updated_by'])]
+#[Fillable(['item_name', 'brand', 'item_type', 'current_stock', 'unit', 'reorder_level', 'expiry_date', 'description', 'updated_by'])]
 class Inventory extends Model
 {
     use HasFactory;

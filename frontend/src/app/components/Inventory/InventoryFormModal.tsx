@@ -5,26 +5,46 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { getErrorMessage, inventoryAPI } from '../../../lib/services/api';
+import {
+  findCatalogProduct,
+  findDuplicateInventoryProduct,
+  INVENTORY_PRODUCT_CATALOG,
+  type InventoryCatalogProduct,
+} from '../../../lib/inventoryCatalog';
+
+type ExistingInventorySummary = {
+  id: number | string;
+  item_name?: string | null;
+  brand?: string | null;
+  item_type?: string | null;
+  current_stock?: number | string | null;
+  reorder_level?: number | string | null;
+  unit?: string | null;
+  description?: string | null;
+};
 
 interface InventoryFormModalProps {
-  item?: {
-    id: number | string;
-    item_name?: string | null;
-    item_type?: string | null;
-    current_stock?: number | string | null;
-    reorder_level?: number | string | null;
-    unit?: string | null;
-    description?: string | null;
-  };
+  item?: ExistingInventorySummary;
+  existingItems?: ExistingInventorySummary[];
+  catalog?: InventoryCatalogProduct[];
+  onSwitchToAddBatch?: (existingItem: ExistingInventorySummary) => void;
   onClose: (shouldReload?: boolean) => void;
 }
 
-export function InventoryFormModal({ item, onClose }: InventoryFormModalProps) {
+export function InventoryFormModal({
+  item,
+  existingItems = [],
+  catalog = INVENTORY_PRODUCT_CATALOG,
+  onSwitchToAddBatch,
+  onClose,
+}: InventoryFormModalProps) {
   const today = new Date().toISOString().split('T')[0];
+  const initialCatalogProduct = findCatalogProduct(item?.item_name, item?.brand, catalog);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     item_name: item?.item_name || '',
-    item_type: item?.item_type || 'Vaccine',
+    brand: item?.brand || initialCatalogProduct?.brand || '',
+    item_type: item?.item_type || initialCatalogProduct?.item_type || 'Vaccine',
     current_stock: item ? String(item.current_stock ?? 0) : '0',
     reorder_level: item?.reorder_level != null ? String(item.reorder_level) : '',
     unit: item?.unit || 'Vials',
@@ -35,11 +55,38 @@ export function InventoryFormModal({ item, onClose }: InventoryFormModalProps) {
     supplier: '',
   });
 
+  const selectedCatalogProduct = findCatalogProduct(formData.item_name, formData.brand, catalog);
+  const duplicateExistingItem = findDuplicateInventoryProduct(
+    formData.item_name,
+    existingItems,
+    item?.id,
+    catalog
+  );
   const initialStockQty = Number(formData.current_stock || 0);
   const requiresInitialBatch = !item && initialStockQty > 0;
 
+  const handleProductSelect = (nextItemName: string) => {
+    const matched = findCatalogProduct(nextItemName, null, catalog);
+    setFormData((current) => ({
+      ...current,
+      item_name: nextItemName,
+      brand: matched?.brand || '',
+      item_type: matched?.item_type || current.item_type,
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!formData.item_name.trim()) {
+      toast.error('Please select a product from the dropdown.');
+      return;
+    }
+
+    if (duplicateExistingItem) {
+      toast.error('This product is already registered in Inventory. Use Add Batch / Restock to add a new lot and stock quantity.');
+      return;
+    }
 
     if (requiresInitialBatch) {
       if (!formData.batch_number.trim()) {
@@ -58,6 +105,7 @@ export function InventoryFormModal({ item, onClose }: InventoryFormModalProps) {
       if (item) {
         await inventoryAPI.update(String(item.id), {
           item_name: formData.item_name,
+          brand: formData.brand || undefined,
           item_type: formData.item_type,
           current_stock: Number(formData.current_stock || 0),
           reorder_level: Number(formData.reorder_level || 0),
@@ -68,6 +116,7 @@ export function InventoryFormModal({ item, onClose }: InventoryFormModalProps) {
       } else {
         await inventoryAPI.create({
           item_name: formData.item_name,
+          brand: formData.brand || undefined,
           item_type: formData.item_type,
           current_stock: initialStockQty,
           reorder_level: Number(formData.reorder_level || 0),
@@ -94,6 +143,22 @@ export function InventoryFormModal({ item, onClose }: InventoryFormModalProps) {
       setLoading(false);
     }
   };
+
+  const productOptions = [
+    { value: '', label: 'Select clinic vaccine or immunoglobulin product' },
+    ...catalog.map((product) => {
+      const existing = findDuplicateInventoryProduct(product.item_name, existingItems, item?.id, catalog);
+      return {
+        value: product.item_name,
+        label: existing
+          ? `${product.item_name} (Already registered — use Add Batch / Restock)`
+          : product.item_name,
+      };
+    }),
+    ...(item?.item_name && !catalog.some((product) => product.item_name === item.item_name)
+      ? [{ value: item.item_name, label: item.item_name }]
+      : []),
+  ];
 
   const itemTypeOptions = [
     { value: 'Vaccine', label: 'Vaccine' },
@@ -123,7 +188,7 @@ export function InventoryFormModal({ item, onClose }: InventoryFormModalProps) {
             <p className="mt-0.5 text-xs font-medium text-muted-foreground">
               {item
                 ? 'Update the master product details and reorder level.'
-                : 'Step 1: Register the product catalog item. Step 2: Record a Lot/Batch (lot number, expiry date, and quantity) for PEP dose recording.'}
+                : 'Step 1: Select the clinic product. Step 2: Record a Lot/Batch (lot number, expiry date, and quantity) for dose administration.'}
             </p>
           </div>
           <button
@@ -138,16 +203,59 @@ export function InventoryFormModal({ item, onClose }: InventoryFormModalProps) {
 
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
           <div className="p-6 space-y-4">
-            <Input
+            <Select
               label="Product / Item Name"
-              placeholder="Enter product name"
+              options={productOptions}
               value={formData.item_name}
-              onChange={(e) => setFormData({ ...formData, item_name: e.target.value })}
-              helperText="Example: Anti-rabies Vaccine, Verorab, Rabies Immunoglobulin, Sterile Syringe"
+              onChange={(e) => handleProductSelect(e.target.value)}
               required
             />
 
-            <div className="grid grid-cols-2 gap-4">
+            {selectedCatalogProduct && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 px-3.5 py-2.5 text-xs text-emerald-950">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    <span className="font-semibold">Product:</span> {selectedCatalogProduct.product_name}
+                  </span>
+                  <span>
+                    <span className="font-semibold">Brand:</span> {selectedCatalogProduct.brand}
+                  </span>
+                </div>
+                <p className="mt-1 text-emerald-900">
+                  <span className="font-semibold">Purpose:</span> {selectedCatalogProduct.purpose}
+                </p>
+              </div>
+            )}
+
+            {duplicateExistingItem && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-950" role="alert">
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold">This product is already registered in Inventory ({duplicateExistingItem.item_name}).</p>
+                  <p className="mt-0.5 text-amber-900">
+                    Do not register duplicate products. Use <span className="font-semibold">Add Batch / Restock</span> to record a new lot number, expiry date, and quantity.
+                  </p>
+                </div>
+                {onSwitchToAddBatch && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onSwitchToAddBatch(duplicateExistingItem)}
+                  >
+                    Open Add Batch / Restock
+                  </Button>
+                )}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <Input
+                label="Brand"
+                placeholder="Auto-filled from product"
+                value={formData.brand}
+                readOnly
+              />
+
               <Select
                 label="Item Type"
                 options={itemTypeOptions}
@@ -258,8 +366,12 @@ export function InventoryFormModal({ item, onClose }: InventoryFormModalProps) {
             >
               Cancel
             </Button>
-            <Button type="submit" variant="primary" disabled={loading}>
-              {loading ? 'Saving...' : item ? 'Update Product' : requiresInitialBatch ? 'Add Product & Batch' : 'Add Product'}
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={loading || Boolean(duplicateExistingItem)}
+            >
+              {loading ? 'Saving...' : (item ? 'Update Product' : (requiresInitialBatch ? 'Add Product & Batch' : 'Add Product'))}
             </Button>
           </div>
         </form>

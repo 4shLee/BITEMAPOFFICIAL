@@ -32,15 +32,15 @@ class PepDoseInventoryWorkflowTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_recording_a_valid_dose_preserves_batch_traceability_without_mutating_inventory(): void
+    public function test_recording_a_valid_dose_preserves_batch_traceability_and_deducts_inventory(): void
     {
         $user = $this->actingAsRole('clinic_admin');
         [$schedule, $inventory, $batch] = $this->createDoseInventoryContext($user);
 
         $this->recordDose($schedule, $inventory, $batch, ['remarks' => 'Dose administered normally.'])
             ->assertOk()
-            ->assertJsonPath('message', 'Dose recorded successfully. Record the actual vaccine stock consumed in the Inventory module.')
-            ->assertJsonPath('inventory_automatically_deducted', false)
+            ->assertJsonPath('message', 'Dose recorded and vaccine inventory updated.')
+            ->assertJsonPath('inventory_automatically_deducted', true)
             ->assertJsonPath('data.status', 'Done')
             ->assertJsonPath('data.administration_route', 'Intradermal')
             ->assertJsonPath('data.vaccine_type', 'Anti-rabies Vaccine')
@@ -57,7 +57,7 @@ class PepDoseInventoryWorkflowTest extends TestCase
         $this->assertSame('ARV-2026-001', $recorded->vaccine_lot_number);
         $this->assertSame($batch->id, $recorded->inventory_batch_id);
         $this->assertSame('Dose administered normally.', $recorded->notes);
-        $this->assertInventoryWasNotMutated($inventory, $batch, 5, 5);
+        $this->assertInventoryWasDeducted($schedule, $inventory, $batch, 4, 4);
         $this->assertDatabaseHas('audit_logs', [
             'module' => 'PEP Schedule',
             'record_id' => (string) $schedule->id,
@@ -73,7 +73,7 @@ class PepDoseInventoryWorkflowTest extends TestCase
 
         $this->recordDose($schedule, $inventory, $batch)->assertOk();
         $this->assertSame($user->id, $schedule->fresh()->administered_by);
-        $this->assertInventoryWasNotMutated($inventory, $batch, 5, 5);
+        $this->assertInventoryWasDeducted($schedule, $inventory, $batch, 4, 4);
     }
 
     public static function allowedRoleProvider(): array
@@ -108,7 +108,7 @@ class PepDoseInventoryWorkflowTest extends TestCase
             ->assertJsonPath('data.administration_route', $route);
 
         $this->assertSame($route, $schedule->fresh()->administration_route);
-        $this->assertInventoryWasNotMutated($inventory, $batch, 5, 5);
+        $this->assertInventoryWasDeducted($schedule, $inventory, $batch, 4, 4);
     }
 
     public static function routeProvider(): array
@@ -178,7 +178,7 @@ class PepDoseInventoryWorkflowTest extends TestCase
 
         $this->assertSame('Verorab', $schedule->fresh()->vaccine_type);
         $this->assertSame('VERORAB-2028-01', $schedule->fresh()->vaccine_lot_number);
-        $this->assertInventoryWasNotMutated($inventory, $batch, 5, 5);
+        $this->assertInventoryWasDeducted($schedule, $inventory, $batch, 4, 4);
     }
 
     public function test_an_expired_batch_is_rejected_without_changes(): void
@@ -234,7 +234,10 @@ class PepDoseInventoryWorkflowTest extends TestCase
     {
         return [
             'RIG' => ['Rabies Immunoglobulin', 'Immunoglobulin'],
+            'Equine RIG catalog product' => ['Equine RIG (eRIG) — Equirab', 'Immunoglobulin'],
+            'Human RIG catalog product' => ['Human RIG (hRIG) — Berirab', 'Immunoglobulin'],
             'tetanus classified as vaccine' => ['Tetanus Toxoid', 'Vaccine'],
+            'tetanus catalog product' => ['Tetanus Toxoid — Abhaytox / Bett', 'Vaccine'],
             'medicine' => ['Amoxicillin', 'Medicine'],
             'supply' => ['Syringes', 'Supply'],
         ];
@@ -254,7 +257,7 @@ class PepDoseInventoryWorkflowTest extends TestCase
             ->where('record_id', (string) $schedule->id)
             ->where('action_type', 'Mark vaccination as completed')
             ->count());
-        $this->assertInventoryWasNotMutated($inventory, $batch, 5, 5);
+        $this->assertInventoryWasDeducted($schedule, $inventory, $batch, 4, 4);
     }
 
     public function test_legacy_completed_dose_without_route_or_batch_link_still_loads(): void
@@ -532,14 +535,18 @@ class PepDoseInventoryWorkflowTest extends TestCase
             'status' => 'Pending',
         ]);
 
-        // Step 1: Create Anti-rabies Vaccine product without a batch (0 opening stock).
+        // Step 1: Create Anti-Rabies Vaccine — Abhayrab product without a batch (0 opening stock).
         $createProductResponse = $this->postJson('/api/inventory', [
-            'item_name' => 'Anti-rabies Vaccine',
+            'item_name' => 'Anti-Rabies Vaccine — Abhayrab',
             'item_type' => 'Vaccine',
             'current_stock' => 0,
             'unit' => 'Vials',
             'reorder_level' => 10,
-        ])->assertCreated();
+            'description' => 'PEP for all bite categories.',
+        ])->assertCreated()
+            ->assertJsonPath('data.brand', 'Abhayrab')
+            ->assertJsonPath('data.item_type', 'Vaccine')
+            ->assertJsonPath('data.description', 'PEP for all bite categories.');
         $productId = $createProductResponse->json('data.id');
 
         // Product without a batch is reported in meta.unavailable as no_batch.
@@ -547,7 +554,7 @@ class PepDoseInventoryWorkflowTest extends TestCase
             ->assertOk()
             ->assertJsonCount(0, 'data')
             ->assertJsonPath('meta.unavailable.0.id', $productId)
-            ->assertJsonPath('meta.unavailable.0.item_name', 'Anti-rabies Vaccine')
+            ->assertJsonPath('meta.unavailable.0.item_name', 'Anti-Rabies Vaccine — Abhayrab')
             ->assertJsonPath('meta.unavailable.0.reason', 'no_batch');
 
         // Step 2: Add an unexpired batch via Add Batch / Restock.
@@ -578,14 +585,100 @@ class PepDoseInventoryWorkflowTest extends TestCase
             'inventory_batch_id' => $batchId,
         ])->assertOk()
             ->assertJsonPath('data.status', 'Done')
-            ->assertJsonPath('data.vaccine_type', 'Anti-rabies Vaccine')
+            ->assertJsonPath('data.vaccine_type', 'Anti-Rabies Vaccine — Abhayrab')
             ->assertJsonPath('data.vaccine_lot_number', 'ARV-2026-101')
             ->assertJsonPath('data.inventory_batch_id', $batchId)
-            ->assertJsonPath('inventory_automatically_deducted', false);
+            ->assertJsonPath('inventory_automatically_deducted', true);
 
-        // Stock remains unchanged after dose recording (manual usage workflow).
-        $this->assertSame(10, Inventory::findOrFail($productId)->current_stock);
-        $this->assertSame(10, InventoryBatch::findOrFail($batchId)->quantity_remaining);
+        // Stock is decremented by 1 on both product and batch and logged in inventory_transactions.
+        $this->assertSame(9, Inventory::findOrFail($productId)->current_stock);
+        $this->assertSame(9, InventoryBatch::findOrFail($batchId)->quantity_remaining);
+        $this->assertDatabaseHas('inventory_transactions', [
+            'inventory_id' => $productId,
+            'inventory_batch_id' => $batchId,
+            'pep_schedule_id' => $schedule->id,
+            'transaction_type' => 'Used',
+            'quantity' => 1,
+        ]);
+    }
+
+    public function test_inventory_catalog_metadata_and_duplicate_product_prevention_and_initial_batch_validation(): void
+    {
+        $this->actingAsRole('clinic_admin');
+
+        $catalogResponse = $this->getJson('/api/inventory')
+            ->assertOk()
+            ->assertJsonCount(4, 'meta.catalog');
+
+        $catalogNames = collect($catalogResponse->json('meta.catalog'))->pluck('item_name')->all();
+        $this->assertSame([
+            'Anti-Rabies Vaccine — Abhayrab',
+            'Tetanus Toxoid — Abhaytox / Bett',
+            'Equine RIG (eRIG) — Equirab',
+            'Human RIG (hRIG) — Berirab',
+        ], $catalogNames);
+
+        // Initial stock > 0 requires batch_number and expiry_date.
+        $this->postJson('/api/inventory', [
+            'item_name' => 'Anti-Rabies Vaccine — Abhayrab',
+            'item_type' => 'Vaccine',
+            'current_stock' => 5,
+            'unit' => 'Vials',
+            'reorder_level' => 2,
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['batch_number', 'expiry_date']);
+
+        // Registering each catalog product auto-populates brand and item_type.
+        $this->postJson('/api/inventory', [
+            'item_name' => 'Equine RIG (eRIG) — Equirab',
+            'item_type' => 'Vaccine',
+            'current_stock' => 0,
+            'unit' => 'Vials',
+            'reorder_level' => 5,
+        ])->assertCreated()
+            ->assertJsonPath('data.brand', 'Equirab')
+            ->assertJsonPath('data.item_type', 'Immunoglobulin');
+
+        // Duplicate registration of the same catalog product is rejected with guidance to Add Batch / Restock.
+        $this->postJson('/api/inventory', [
+            'item_name' => 'Equine RIG (eRIG) — Equirab',
+            'item_type' => 'Immunoglobulin',
+            'current_stock' => 0,
+            'unit' => 'Vials',
+            'reorder_level' => 5,
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('item_name');
+    }
+
+    public function test_recording_doses_depletes_batch_stock_and_blocks_subsequent_doses_when_exhausted(): void
+    {
+        $user = $this->actingAsRole('nurse_vaccinator');
+        [$scheduleDay0, $inventory, $batch, $incident] = $this->createDoseInventoryContext(
+            $user,
+            ['item_name' => 'Anti-Rabies Vaccine — Abhayrab', 'current_stock' => 1],
+            ['batch_number' => 'ABH-SINGLE-01', 'quantity_received' => 1, 'quantity_remaining' => 1]
+        );
+        $scheduleDay3 = PepSchedule::create([
+            'incident_id' => $incident->id,
+            'dose_day' => 3,
+            'scheduled_date' => '2026-07-20',
+            'status' => 'Pending',
+        ]);
+
+        // First dose consumes the single available unit.
+        $this->recordDose($scheduleDay0, $inventory, $batch)->assertOk();
+        $this->assertInventoryWasDeducted($scheduleDay0, $inventory, $batch, 0, 0);
+
+        // Depleted product is now listed in meta.unavailable and excluded from selectable options.
+        $this->getJson('/api/pep-schedule/dose-inventory-options')
+            ->assertOk()
+            ->assertJsonCount(0, 'data')
+            ->assertJsonPath('meta.unavailable.0.id', $inventory->id)
+            ->assertJsonPath('meta.unavailable.0.reason', 'batches_depleted');
+
+        // Second dose attempt against the exhausted batch is rejected.
+        $this->recordDose($scheduleDay3, $inventory, $batch)->assertUnprocessable();
+        $this->assertDoseWasNotRecorded($scheduleDay3);
     }
 
     public function test_creating_vaccine_product_with_initial_batch_or_adding_first_batch_to_unbatched_stock_keeps_quantities_consistent(): void
@@ -738,5 +831,23 @@ class PepDoseInventoryWorkflowTest extends TestCase
         $this->assertSame($expectedInventoryStock, $inventory->fresh()->current_stock);
         $this->assertSame($expectedBatchStock, $batch->fresh()->quantity_remaining);
         $this->assertDatabaseCount('inventory_transactions', 0);
+    }
+
+    private function assertInventoryWasDeducted(
+        PepSchedule $schedule,
+        Inventory $inventory,
+        InventoryBatch $batch,
+        int $expectedInventoryStock,
+        int $expectedBatchStock
+    ): void {
+        $this->assertSame($expectedInventoryStock, $inventory->fresh()->current_stock);
+        $this->assertSame($expectedBatchStock, $batch->fresh()->quantity_remaining);
+        $this->assertDatabaseHas('inventory_transactions', [
+            'inventory_id' => $inventory->id,
+            'inventory_batch_id' => $batch->id,
+            'pep_schedule_id' => $schedule->id,
+            'transaction_type' => 'Used',
+            'quantity' => 1,
+        ]);
     }
 }

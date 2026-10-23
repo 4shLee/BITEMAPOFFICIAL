@@ -19,6 +19,7 @@ use App\Services\Sms\VaccinationReminderService;
 use App\Services\WhoExposureClassificationService;
 use App\Support\DefaultAdminAccount;
 use App\Support\DigosBarangayCoordinates;
+use App\Support\InventoryProductCatalog;
 use App\Support\PasswordPolicy;
 use App\Support\PhoneNumber;
 use App\Support\SmsCredentials;
@@ -553,7 +554,7 @@ class BitemapApiController extends Controller
     public function pepDoseInventoryOptions(): JsonResponse
     {
         $items = Inventory::query()
-            ->select(['id', 'item_name', 'item_type', 'current_stock'])
+            ->select(['id', 'item_name', 'brand', 'item_type', 'current_stock'])
             ->where('item_type', 'Vaccine')
             ->where('current_stock', '>', 0)
             ->whereHas('batches', fn ($query) => $query
@@ -592,7 +593,7 @@ class BitemapApiController extends Controller
         // doses must be traceable to a specific unexpired batch with remaining quantity.
         $eligibleIds = $items->pluck('id')->all();
         $unavailable = Inventory::query()
-            ->select(['id', 'item_name', 'item_type', 'current_stock'])
+            ->select(['id', 'item_name', 'brand', 'item_type', 'current_stock'])
             ->where('item_type', 'Vaccine')
             ->whereNotIn('id', $eligibleIds)
             ->withCount([
@@ -729,23 +730,45 @@ class BitemapApiController extends Controller
             }
 
             $administeredDate = Carbon::parse($data['administered_date'])->startOfDay();
-            if (! $batch->expiry_date || $batch->expiry_date->startOfDay()->lt($administeredDate)) {
+            if (! $batch->expiry_date || $batch->expiry_date->startOfDay()->lt($administeredDate) || $batch->expiry_date->startOfDay()->lt(today())) {
                 throw ValidationException::withMessages([
                     'inventory_batch_id' => 'The selected vaccine batch has expired.',
                 ]);
             }
 
-            if ((int) $batch->quantity_remaining <= 0) {
+            $doseQuantity = 1;
+            if ((int) $batch->quantity_remaining < $doseQuantity) {
                 throw ValidationException::withMessages([
                     'inventory_batch_id' => 'The selected vaccine batch is out of stock.',
                 ]);
             }
 
-            if ((int) $inventory->current_stock <= 0) {
+            if ((int) $inventory->current_stock < $doseQuantity) {
                 throw ValidationException::withMessages([
                     'inventory_id' => 'The selected vaccine inventory item is out of stock.',
                 ]);
             }
+
+            $batch->update([
+                'quantity_remaining' => (int) $batch->quantity_remaining - $doseQuantity,
+            ]);
+
+            $inventory->update([
+                'current_stock' => max(0, (int) $inventory->current_stock - $doseQuantity),
+                'updated_by' => $request->user()->id,
+            ]);
+            $this->syncInventoryNearestExpiry($inventory->fresh());
+
+            InventoryTransaction::create([
+                'inventory_id' => $inventory->id,
+                'inventory_batch_id' => $batch->id,
+                'pep_schedule_id' => $lockedSchedule->id,
+                'transaction_type' => 'Used',
+                'quantity' => $doseQuantity,
+                'transaction_date' => $administeredDate->toDateString(),
+                'notes' => 'PEP Dose Day '.$lockedSchedule->dose_day.' ('.$data['administration_route'].') administered.'.(blank($data['remarks'] ?? null) ? '' : ' '.trim($data['remarks'])),
+                'created_by' => $request->user()->id,
+            ]);
 
             $lockedSchedule->update([
                 'status' => 'Done',
@@ -763,7 +786,7 @@ class BitemapApiController extends Controller
                 'Mark vaccination as completed',
                 'PEP Schedule',
                 $lockedSchedule->id,
-                'Recorded PEP dose day '.$lockedSchedule->dose_day.' via '.$data['administration_route'].' using vaccine batch '.$batch->batch_number.'. Inventory consumption must be recorded manually.'
+                'Recorded PEP dose day '.$lockedSchedule->dose_day.' via '.$data['administration_route'].' using vaccine batch '.$batch->batch_number.' and deducted 1 '.$inventory->unit.' from inventory.'
             );
 
             return [
@@ -773,9 +796,9 @@ class BitemapApiController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Dose recorded successfully. Record the actual vaccine stock consumed in the Inventory module.',
+            'message' => 'Dose recorded and vaccine inventory updated.',
             'already_recorded' => false,
-            'inventory_automatically_deducted' => false,
+            'inventory_automatically_deducted' => true,
             'data' => $this->pepSchedulePayload($result['schedule']),
         ]);
     }
@@ -839,7 +862,13 @@ class BitemapApiController extends Controller
             ->map(fn (Inventory $item) => $this->inventoryPayload($item))
             ->values();
 
-        return response()->json(['success' => true, 'data' => $items]);
+        return response()->json([
+            'success' => true,
+            'data' => $items,
+            'meta' => [
+                'catalog' => InventoryProductCatalog::all(),
+            ],
+        ]);
     }
 
     public function storeInventory(Request $request): JsonResponse
@@ -849,16 +878,26 @@ class BitemapApiController extends Controller
         }
 
         $data = $this->inventoryData($request);
-        $hasInitialBatch = $request->filled('batch_number');
+
+        if ($this->findDuplicateInventoryItem($data['item_name'])) {
+            throw ValidationException::withMessages([
+                'item_name' => 'This product is already registered in Inventory. Use Add Batch / Restock to add a new lot and stock quantity.',
+            ]);
+        }
+
+        $requiresInitialBatch = (int) $data['current_stock'] > 0 || $request->filled('batch_number');
         $batchData = [];
 
-        if ($hasInitialBatch) {
+        if ($requiresInitialBatch) {
             $batchData = $request->validate([
                 'batch_number' => ['required', 'string', 'max:100'],
                 'expiry_date' => ['required', 'date'],
                 'received_date' => ['nullable', 'date', 'before_or_equal:today'],
                 'supplier' => ['nullable', 'string', 'max:150'],
                 'notes' => ['nullable', 'string'],
+            ], [
+                'batch_number.required' => 'Batch / lot number is required when registering initial stock greater than 0.',
+                'expiry_date.required' => 'Expiry date is required when registering initial stock greater than 0.',
             ]);
 
             if ((int) $data['current_stock'] < 1) {
@@ -868,13 +907,13 @@ class BitemapApiController extends Controller
             }
         }
 
-        $item = DB::transaction(function () use ($request, $data, $hasInitialBatch, $batchData) {
+        $item = DB::transaction(function () use ($request, $data, $requiresInitialBatch, $batchData) {
             $item = Inventory::create([
                 ...$data,
                 'updated_by' => $request->user()?->id,
             ]);
 
-            if ($hasInitialBatch) {
+            if ($requiresInitialBatch) {
                 $receivedDate = $batchData['received_date'] ?? now()->toDateString();
                 $batch = $item->batches()->create([
                     'batch_number' => trim($batchData['batch_number']),
@@ -920,6 +959,13 @@ class BitemapApiController extends Controller
 
         $oldStock = $inventory->current_stock;
         $data = $this->inventoryData($request, true);
+
+        if (isset($data['item_name']) && $this->findDuplicateInventoryItem($data['item_name'], $inventory->id)) {
+            throw ValidationException::withMessages([
+                'item_name' => 'This product is already registered in Inventory. Use Add Batch / Restock to add a new lot and stock quantity.',
+            ]);
+        }
+
         $newStock = array_key_exists('current_stock', $data) ? (int) $data['current_stock'] : (int) $oldStock;
         $stockDelta = $newStock - (int) $oldStock;
         $batch = null;
@@ -3187,22 +3233,64 @@ class BitemapApiController extends Controller
 
     private function inventoryData(Request $request, bool $partial = false): array
     {
+        $matchedCatalog = InventoryProductCatalog::match(
+            is_string($request->input('item_name')) ? $request->input('item_name') : null,
+            is_string($request->input('brand')) ? $request->input('brand') : null
+        );
+
+        if ($matchedCatalog && (! $partial || $request->filled('item_name'))) {
+            $request->merge(['item_type' => $matchedCatalog['item_type']]);
+        }
+
         $rules = [
             'item_name' => [$partial ? 'sometimes' : 'required', 'string', 'max:150'],
+            'brand' => ['nullable', 'string', 'max:100'],
             'item_type' => [$partial ? 'sometimes' : 'required', 'string'],
             'current_stock' => [$partial ? 'sometimes' : 'required', 'integer', 'min:0'],
             'unit' => [$partial ? 'sometimes' : 'required', 'string', 'max:50'],
             'reorder_level' => [$partial ? 'sometimes' : 'required', 'integer', 'min:0'],
             'expiry_date' => ['nullable', 'date'],
+            'description' => ['nullable', 'string', 'max:2000'],
         ];
 
         $data = $request->validate($rules);
+
+        if (isset($data['item_name'])) {
+            $data['item_name'] = trim($data['item_name']);
+        }
+
+        if ($matchedCatalog && blank($data['brand'] ?? null)) {
+            $data['brand'] = $matchedCatalog['brand'];
+        } elseif (array_key_exists('brand', $data)) {
+            $data['brand'] = blank($data['brand']) ? null : trim((string) $data['brand']);
+        }
+
+        if (array_key_exists('description', $data)) {
+            $data['description'] = blank($data['description']) ? null : trim((string) $data['description']);
+        }
 
         if (isset($data['item_type'])) {
             $data['item_type'] = $this->normalizeInventoryType($data['item_type']);
         }
 
         return $data;
+    }
+
+    private function findDuplicateInventoryItem(string $itemName, ?int $ignoreId = null): ?Inventory
+    {
+        $candidateNames = InventoryProductCatalog::duplicateNamesFor($itemName);
+        if ($candidateNames === []) {
+            return null;
+        }
+
+        return Inventory::query()
+            ->when($ignoreId !== null, fn ($query) => $query->whereKeyNot($ignoreId))
+            ->get(['id', 'item_name', 'brand'])
+            ->first(fn (Inventory $existing) => in_array(
+                InventoryProductCatalog::normalize($existing->item_name),
+                $candidateNames,
+                true
+            ));
     }
 
     private function syncInventoryNearestExpiry(Inventory $inventory): void
@@ -3995,14 +4083,19 @@ class BitemapApiController extends Controller
             ->map(fn (InventoryBatch $batch) => $this->inventoryBatchPayload($batch))
             ->values();
         $activeBatch = $batches->first(fn (array $batch) => $batch['quantity_remaining'] > 0 && $batch['status'] !== 'Expired');
+        $catalogMatch = InventoryProductCatalog::match($item->item_name, $item->brand);
 
         return [
             'id' => $item->id,
             'item_name' => $item->item_name,
+            'brand' => $item->brand ?: ($catalogMatch['brand'] ?? null),
+            'purpose' => $catalogMatch['purpose'] ?? null,
+            'catalog_key' => $catalogMatch['key'] ?? null,
             'item_type' => $item->item_type,
             'current_stock' => $item->current_stock,
             'unit' => $item->unit,
             'reorder_level' => $item->reorder_level,
+            'description' => $item->description,
             'expiry_date' => optional($item->expiry_date)->toDateString(),
             'nearest_expiry_date' => optional($item->expiry_date)->toDateString(),
             'batch_number' => $activeBatch['batch_number'] ?? null,
@@ -4314,11 +4407,7 @@ class BitemapApiController extends Controller
             return false;
         }
 
-        $itemName = strtolower(trim($inventory->item_name));
-
-        return ! str_contains($itemName, 'immunoglobulin')
-            && preg_match('/(^|[^a-z])(?:e|h)?rig([^a-z]|$)/i', $itemName) !== 1
-            && ! str_contains($itemName, 'tetanus');
+        return InventoryProductCatalog::isEligiblePepAntiRabiesVaccine($inventory->item_name, $inventory->brand ?? null);
     }
 
     private function normalizeTransactionType(?string $type): string

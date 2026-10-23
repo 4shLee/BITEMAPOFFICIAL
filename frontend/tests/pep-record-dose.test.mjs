@@ -6,6 +6,7 @@ const pep = await readFile(new URL('../src/app/pages/PEPSchedule.tsx', import.me
 const inventoryPage = await readFile(new URL('../src/app/pages/Inventory.tsx', import.meta.url), 'utf8').then((s) => s.replace(/\r\n/g, '\n'));
 const inventoryFormModal = await readFile(new URL('../src/app/components/Inventory/InventoryFormModal.tsx', import.meta.url), 'utf8').then((s) => s.replace(/\r\n/g, '\n'));
 const inventoryBatchModal = await readFile(new URL('../src/app/components/Inventory/InventoryBatchModal.tsx', import.meta.url), 'utf8').then((s) => s.replace(/\r\n/g, '\n'));
+const inventoryCatalog = await readFile(new URL('../src/lib/inventoryCatalog.ts', import.meta.url), 'utf8').then((s) => s.replace(/\r\n/g, '\n'));
 const modal = pep.slice(pep.indexOf('{recordDose && ('), pep.indexOf('{rescheduleDose && ('));
 
 test('Record Dose submits the selected product and batch identifiers and auto-selects a single eligible batch', () => {
@@ -61,5 +62,16 @@ test('Record Dose form is compact: two-column grid, no long explanatory paragrap
   assert.match(modal, /max-w-2xl/);
   assert.doesNotMatch(modal, /Encode administered vaccine details for this dose\./);
   assert.doesNotMatch(modal, /intradermal and intramuscular vial-consumption rules are still under validation/);
-  assert.match(modal, /stock is not deducted automatically/);
+  assert.match(modal, /deducts 1 unit from available stock/);
+});
+
+test('Add Inventory Product uses the four approved clinic products with brand, purpose, and duplicate protection', () => {
+  assert.match(inventoryCatalog, /Anti-Rabies Vaccine — Abhayrab/);
+  assert.match(inventoryCatalog, /Tetanus Toxoid — Abhaytox \/ Bett/);
+  assert.match(inventoryCatalog, /Equine RIG \(eRIG\) — Equirab/);
+  assert.match(inventoryCatalog, /Human RIG \(hRIG\) — Berirab/);
+  assert.match(inventoryFormModal, /Select clinic vaccine or immunoglobulin product/);
+  assert.match(inventoryFormModal, /handleProductSelect\(e\.target\.value\)/);
+  assert.match(inventoryFormModal, /duplicateExistingItem/);
+  assert.match(inventoryFormModal, /Open Add Batch \/ Restock/);
 });

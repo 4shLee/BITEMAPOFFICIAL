@@ -563,6 +563,24 @@ export function PEPSchedule() {
       setInventoryItems(response.data as InventoryItem[]);
       setUnavailableVaccines(Array.isArray(response.meta?.unavailable) ? response.meta.unavailable as UnavailableVaccine[] : []);
       setInventoryOptionsLoaded(true);
+      const eligible = (response.data as InventoryItem[]).filter((item) => Number(item.current_stock || 0) > 0);
+      if (eligible.length === 1) {
+        const singleProduct = eligible[0];
+        const singleBatches = (singleProduct.batches || []).filter((batch) => (
+          Number(batch.quantity_remaining || 0) > 0
+          && Boolean(batch.expiry_date)
+          && dateKeyFrom(batch.expiry_date) >= todayKey()
+        ));
+        setRecordForm((current) => (
+          current.inventoryItemId
+            ? current
+            : {
+              ...current,
+              inventoryItemId: String(singleProduct.id),
+              inventoryBatchId: singleBatches.length === 1 ? String(singleBatches[0].id) : '',
+            }
+        ));
+      }
     } catch (error: unknown) {
       if (controller.signal.aborted || requestVersion !== inventoryRequestVersion.current) return;
       setInventoryItems([]);
@@ -725,7 +743,7 @@ export function PEPSchedule() {
       });
 
       // TODO: Add a manual Adjust Schedule workflow later. Late dose recording must not automatically regenerate remaining dose dates.
-      toast.success('Dose recorded successfully. Record the actual vaccine stock consumed in the Inventory module.');
+      toast.success('Dose recorded and vaccine inventory updated.');
       setRecordDose(null);
       invalidateDoseInventoryOptions();
       await loadSchedule();
@@ -1190,7 +1208,7 @@ export function PEPSchedule() {
                 />
               </div>
               <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 sm:col-span-2">
-                <span className="font-semibold">Inventory:</span> stock is not deducted automatically. Record actual vial usage in the Inventory module.
+                <span className="font-semibold">Inventory:</span> saving this dose links the selected lot/batch and deducts 1 unit from available stock.
               </p>
               <div className="flex justify-end gap-2 pt-1 sm:col-span-2">
                 <Button type="button" variant="outline" onClick={closeRecordDose} disabled={savingDose}>Cancel</Button>

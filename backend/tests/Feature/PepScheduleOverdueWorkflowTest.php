@@ -96,9 +96,15 @@ class PepScheduleOverdueWorkflowTest extends TestCase
         $this->assertSame($user->id, $recorded->administered_by);
         $this->assertSame('LATE-LOT-7', $recorded->vaccine_lot_number);
         $this->assertSame($batch->id, $recorded->inventory_batch_id);
-        $this->assertSame(5, $inventory->fresh()->current_stock);
-        $this->assertSame(5, $batch->fresh()->quantity_remaining);
-        $this->assertDatabaseCount('inventory_transactions', 0);
+        $this->assertSame(4, $inventory->fresh()->current_stock);
+        $this->assertSame(4, $batch->fresh()->quantity_remaining);
+        $this->assertDatabaseHas('inventory_transactions', [
+            'inventory_id' => $inventory->id,
+            'inventory_batch_id' => $batch->id,
+            'pep_schedule_id' => $doses[7]->id,
+            'transaction_type' => 'Used',
+            'quantity' => 1,
+        ]);
     }
 
     public function test_completed_and_non_overdue_doses_cannot_be_rescheduled(): void

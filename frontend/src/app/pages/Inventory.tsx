@@ -11,6 +11,11 @@ import { canPerformAction, getStoredUser, normalizeRoleKey } from '../../lib/aut
 import { InventoryFormModal } from '../components/Inventory/InventoryFormModal';
 import { StockAdjustmentModal } from '../components/Inventory/StockAdjustmentModal';
 import { InventoryBatchModal } from '../components/Inventory/InventoryBatchModal';
+import {
+  findCatalogProduct,
+  INVENTORY_PRODUCT_CATALOG,
+  type InventoryCatalogProduct,
+} from '../../lib/inventoryCatalog';
 
 const INVENTORY_ITEMS_PER_PAGE = 10;
 
@@ -28,6 +33,9 @@ type InventoryBatchSummary = {
 type InventoryItem = {
   id: number | string;
   item_name?: string | null;
+  brand?: string | null;
+  purpose?: string | null;
+  description?: string | null;
   item_type?: string | null;
   current_stock?: number | string | null;
   reorder_level?: number | string | null;
@@ -57,6 +65,7 @@ export function Inventory() {
   const isNurseInventoryView = normalizeRoleKey(currentUser?.role) === 'nurse_vaccinator';
   const inventoryColumnCount = 10;
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [productCatalog, setProductCatalog] = useState<InventoryCatalogProduct[]>(INVENTORY_PRODUCT_CATALOG);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -77,6 +86,9 @@ export function Inventory() {
       const response = await inventoryAPI.getAll();
       if (response.success) {
         setInventory(response.data);
+        if (Array.isArray(response.meta?.catalog) && response.meta.catalog.length > 0) {
+          setProductCatalog(response.meta.catalog as InventoryCatalogProduct[]);
+        }
       }
     } catch {
       toast.error('Failed to load inventory');
@@ -373,9 +385,16 @@ export function Inventory() {
                     const nearestExpiry = item.nearest_expiry_date || item.expiry_date;
                     const daysUntilExpiry = getDaysUntilExpiry(nearestExpiry);
                     const { totalBatches, unexpiredBatches, usableBatches, activeLotNumber } = getBatchDiagnostics(item);
+                    const matchedCatalog = findCatalogProduct(item.item_name, item.brand, productCatalog);
+                    const displayBrand = item.brand || matchedCatalog?.brand || null;
                     return (
                       <tr key={item.id} className="transition-colors hover:bg-muted/45">
-                        <td className="px-5 py-4 text-sm font-semibold text-foreground">{item.item_name}</td>
+                        <td className="px-5 py-4">
+                          <p className="text-sm font-semibold text-foreground">{item.item_name}</p>
+                          {displayBrand && (
+                            <p className="mt-0.5 text-xs font-medium text-muted-foreground">Brand: {displayBrand}</p>
+                          )}
+                        </td>
                         <td className="px-5 py-4 text-sm text-muted-foreground">{item.item_type}</td>
                         <td className="px-5 py-4 text-sm font-semibold text-foreground">{item.current_stock} {item.unit}</td>
                         <td className="px-5 py-4 text-sm text-muted-foreground">{item.unit}</td>
@@ -525,6 +544,13 @@ export function Inventory() {
       {showFormModal && (canCreateInventory || canUpdateInventory) && (
         <InventoryFormModal
           item={editingItem || undefined}
+          existingItems={inventory}
+          catalog={productCatalog}
+          onSwitchToAddBatch={(existingItem) => {
+            setShowFormModal(false);
+            setEditingItem(null);
+            handleAddBatch(existingItem as InventoryItem);
+          }}
           onClose={handleFormModalClose}
         />
       )}
