@@ -10,7 +10,6 @@ import {
   CheckCircle2,
   ChevronDown,
   Info,
-  LockKeyhole,
   MapPin,
   PawPrint,
   RefreshCw,
@@ -230,7 +229,7 @@ export function PublicHeatmap() {
           </Link>
           <div className="flex shrink-0 items-center gap-2">
             <Link to="/public" className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-xs font-extrabold text-slate-700 hover:bg-slate-50 sm:px-4"><ArrowLeft className="h-4 w-4" /><span className="hidden sm:inline">Public Portal</span></Link>
-            <Link to="/login" className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-teal-700/40 bg-white px-3 text-xs font-extrabold text-teal-800 hover:bg-teal-50 sm:px-4"><LockKeyhole className="h-4 w-4" /><span className="hidden md:inline">Authorized Staff Login</span><span className="md:hidden">Staff</span></Link>
+            
           </div>
         </div>
       </header>

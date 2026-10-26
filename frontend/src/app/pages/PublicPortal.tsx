@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import {
   Activity,
   ArrowRight,
@@ -12,7 +12,6 @@ import {
   HeartPulse,
   Info,
   LocateFixed,
-  LockKeyhole,
   Map,
   MapPin,
   Navigation,
@@ -135,6 +134,19 @@ function StatSkeleton() {
 }
 
 export function PublicPortal() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Discreet hotkey for authorized staff: Ctrl+Shift+L or Alt+L
+      if ((e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'l') || (e.altKey && e.key.toLowerCase() === 'l')) {
+        e.preventDefault();
+        navigate('/login');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [navigate]);
   const [stats, setStats] = useState<PublicPortalStats>(defaultStats);
   const [barangaysWithIncidents, setBarangaysWithIncidents] = useState(0);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
@@ -200,11 +212,29 @@ export function PublicPortal() {
               <p className="hidden truncate text-xs font-medium text-slate-500 md:block">Animal Bite Incident Tracking and Vaccination Monitoring</p>
             </div>
           </Link>
-          <Link to="/login" className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-full border border-teal-700/40 bg-white px-3.5 text-xs font-extrabold text-teal-800 shadow-sm transition-colors hover:border-teal-700 hover:bg-teal-50 sm:px-5 sm:text-sm">
-            <LockKeyhole className="mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">Authorized Staff Login</span>
-            <span className="sm:hidden">Staff Login</span>
-          </Link>
+          <nav className="flex items-center gap-1.5 sm:gap-3" aria-label="Public portal navigation">
+            <Link
+              to="/public/heatmap"
+              className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-bold text-slate-700 hover:bg-teal-50 hover:text-teal-900 transition-colors"
+            >
+              <Map className="h-4 w-4 text-teal-700" />
+              <span className="hidden sm:inline">Incident Map</span>
+            </Link>
+            <Link
+              to="/public/statistics"
+              className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-bold text-slate-700 hover:bg-teal-50 hover:text-teal-900 transition-colors"
+            >
+              <BarChart3 className="h-4 w-4 text-teal-700" />
+              <span className="hidden sm:inline">Statistics</span>
+            </Link>
+            <Link
+              to="/public/clinics"
+              className="inline-flex h-9 items-center gap-1.5 rounded-full bg-teal-700 px-3.5 text-xs font-extrabold text-white shadow-sm hover:bg-teal-800 transition-colors sm:h-10 sm:px-4"
+            >
+              <MapPin className="h-4 w-4" />
+              <span>Find a Clinic</span>
+            </Link>
+          </nav>
         </div>
       </header>
 
@@ -315,11 +345,23 @@ export function PublicPortal() {
       <footer className="bg-slate-950 text-slate-300">
         <div className="mx-auto grid max-w-7xl gap-10 px-4 py-12 sm:px-6 md:grid-cols-2 lg:grid-cols-4 lg:px-8">
           <div className="md:col-span-2 lg:col-span-1"><div className="flex items-center gap-3"><div className="rounded-xl bg-white p-1"><img src={BITEMAP_LOGO_SRC} alt="BITEMAP logo" className="h-10 w-10 object-contain" /></div><p className="font-extrabold text-white">BITEMAP Public Portal</p></div><p className="mt-4 text-sm leading-relaxed text-slate-400">Privacy-conscious public information for animal bite trends, vaccination awareness, and clinic discovery.</p></div>
-          <div><h2 className="text-sm font-extrabold text-white">Public Portal</h2><nav className="mt-4 flex flex-col gap-3 text-sm"><Link to="/public/heatmap" className="hover:text-emerald-300">Incident Heatmap</Link><Link to="/public/statistics" className="hover:text-emerald-300">Statistics and Trends</Link><Link to="/public/clinics" className="hover:text-emerald-300">Vaccination Clinics</Link><Link to="/login" className="hover:text-emerald-300">Authorized Staff Login</Link></nav></div>
+          <div><h2 className="text-sm font-extrabold text-white">Public Portal</h2><nav className="mt-4 flex flex-col gap-3 text-sm"><Link to="/public/heatmap" className="hover:text-emerald-300">Incident Heatmap</Link><Link to="/public/statistics" className="hover:text-emerald-300">Statistics and Trends</Link><Link to="/public/clinics" className="hover:text-emerald-300">Vaccination Clinics</Link></nav></div>
           <div><h2 className="text-sm font-extrabold text-white">Privacy Notice</h2><p className="mt-4 text-sm leading-relaxed text-slate-400">Public views use barangay-level totals, generalized markers, clusters, or heatmap intensity. Identifiable patient records and exact incident coordinates are not displayed.</p></div>
           <div><h2 className="text-sm font-extrabold text-white">Medical Disclaimer</h2><p className="mt-4 text-sm leading-relaxed text-slate-400">Portal information is for general awareness and does not replace diagnosis, treatment, or professional medical assessment.</p></div>
         </div>
-        <div className="border-t border-white/10"><div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-5 text-xs text-slate-500 sm:px-6 md:flex-row md:items-center md:justify-between lg:px-8"><p>© 2026 BITEMAP. Public information portal.</p><p>Capstone project developed at Cor Jesu College.</p></div></div>
+        <div className="border-t border-white/10"><div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-5 text-xs text-slate-500 sm:px-6 md:flex-row md:items-center md:justify-between lg:px-8"><p>© 2026 BITEMAP. Public information portal.</p><div className="flex items-center gap-3">
+              <span>Capstone project developed at Cor Jesu College.</span>
+              <span className="text-slate-700">•</span>
+              <Link
+                to="/login"
+                className="text-slate-600 transition-colors hover:text-slate-400 focus:outline-none"
+                title="Authorized Staff Portal"
+              >
+                Staff Access
+              </Link>
+            </div>
+          </div>
+        </div>
       </footer>
     </div>
   );

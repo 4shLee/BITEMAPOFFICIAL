@@ -33,7 +33,7 @@ function DefaultEntry() {
     return <Navigate to={getDefaultPathForRole(user.role)} replace />;
   }
 
-  return <Navigate to="/login" replace />;
+  return <Navigate to="/public" replace />;
 }
 
 function RequireAuth() {
@@ -120,7 +120,7 @@ export default function App() {
             <Route path="/settings" element={<RoleRoute><Settings /></RoleRoute>} />
           </Route>
 
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          <Route path="*" element={<Navigate to="/public" replace />} />
         </Routes>
       </BrowserRouter>
     </>
