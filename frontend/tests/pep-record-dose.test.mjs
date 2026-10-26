@@ -103,3 +103,16 @@ test('InventoryFormModal sets catalog item type and disables manual override whe
   assert.match(inventoryFormModal, /disabled=\{Boolean\(selectedCatalogProduct\)\}/);
   assert.match(inventoryFormModal, /helperText=\{selectedCatalogProduct \? 'Determined by product catalog\.' : undefined\}/);
 });
+
+test('Add Inventory Product allows manual brand entry, removes brand from product dropdown, and omits the product info banner', () => {
+  assert.match(inventoryFormModal, /brand: item\?\.brand \|\| ''/);
+  assert.doesNotMatch(inventoryFormModal, /brand: item\?\.brand \|\| initialCatalogProduct\?\.brand/);
+  assert.doesNotMatch(inventoryFormModal, /placeholder="Auto-filled from product"/);
+  assert.match(inventoryFormModal, /placeholder="Enter brand name"/);
+  assert.match(inventoryFormModal, /onChange=\{\(e\) => setFormData\(\{ \.\.\.formData, brand: e\.target\.value \}\)\}/);
+  assert.doesNotMatch(inventoryFormModal, /<Input[^>]*label="Brand"[^>]*readOnly/);
+  assert.doesNotMatch(inventoryFormModal, /<span className="font-semibold">Purpose:<\/span>/);
+  assert.doesNotMatch(inventoryFormModal, /selectedCatalogProduct\.purpose/);
+  assert.match(inventoryFormModal, /displayName = product\.product_name \|\| product\.item_name\.replace/);
+});
+

@@ -553,81 +553,99 @@ class BitemapApiController extends Controller
 
     public function pepDoseInventoryOptions(): JsonResponse
     {
-        $items = Inventory::query()
-            ->select(['id', 'item_name', 'brand', 'item_type', 'current_stock'])
-            ->whereHas('batches', fn ($query) => $query
-                ->where('quantity_remaining', '>', 0)
-                ->whereDate('expiry_date', '>=', today()))
-            ->with(['batches' => fn ($query) => $query
-                ->select([
-                    'id',
-                    'inventory_id',
-                    'batch_number',
-                    'quantity_remaining',
-                    'expiry_date',
-                ])
-                ->where('quantity_remaining', '>', 0)
-                ->whereDate('expiry_date', '>=', today())
-                ->orderBy('expiry_date')
-                ->orderBy('id')])
-            ->orderBy('item_name')
-            ->get()
-            ->filter(fn (Inventory $inventory) => $this->isSelectablePepVaccineInventory($inventory))
-            ->map(function (Inventory $inventory) {
-                $usableBatchStock = (int) $inventory->batches->sum('quantity_remaining');
-                $effectiveStock = (int) $inventory->current_stock > 0
-                    ? (int) $inventory->current_stock
-                    : $usableBatchStock;
+        try {
+            $hasBrand = Schema::hasColumn('inventory', 'brand');
+            $columns = ['id', 'item_name', 'item_type', 'current_stock'];
+            if ($hasBrand) {
+                $columns[] = 'brand';
+            }
 
-                return [
+            $items = Inventory::query()
+                ->select($columns)
+                ->whereHas('batches', fn ($query) => $query
+                    ->where('quantity_remaining', '>', 0)
+                    ->whereDate('expiry_date', '>=', today()))
+                ->with(['batches' => fn ($query) => $query
+                    ->select([
+                        'id',
+                        'inventory_id',
+                        'batch_number',
+                        'quantity_remaining',
+                        'expiry_date',
+                    ])
+                    ->where('quantity_remaining', '>', 0)
+                    ->whereDate('expiry_date', '>=', today())
+                    ->orderBy('expiry_date')
+                    ->orderBy('id')])
+                ->orderBy('item_name')
+                ->get()
+                ->filter(fn (Inventory $inventory) => $this->isSelectablePepVaccineInventory($inventory))
+                ->map(function (Inventory $inventory) {
+                    $usableBatchStock = (int) $inventory->batches->sum('quantity_remaining');
+                    $effectiveStock = (int) $inventory->current_stock > 0
+                        ? (int) $inventory->current_stock
+                        : $usableBatchStock;
+
+                    return [
+                        'id' => $inventory->id,
+                        'item_name' => $inventory->item_name,
+                        'current_stock' => $effectiveStock,
+                        'batches' => $inventory->batches->map(fn (InventoryBatch $batch) => [
+                            'id' => $batch->id,
+                            'inventory_id' => $batch->inventory_id,
+                            'batch_number' => $batch->batch_number,
+                            'quantity_remaining' => $batch->quantity_remaining,
+                            'expiry_date' => optional($batch->expiry_date)->toDateString(),
+                        ])->values(),
+                    ];
+                })
+                ->values();
+
+            // Vaccine products without a usable lot/batch cannot be selected:
+            // doses must be traceable to a specific unexpired batch with remaining quantity.
+            $eligibleIds = $items->pluck('id')->all();
+            $unavailable = Inventory::query()
+                ->select($columns)
+                ->whereNotIn('id', $eligibleIds)
+                ->withCount([
+                    'batches',
+                    'batches as unexpired_batches_count' => fn ($query) => $query->whereDate('expiry_date', '>=', today()),
+                    'batches as usable_batches_count' => fn ($query) => $query
+                        ->where('quantity_remaining', '>', 0)
+                        ->whereDate('expiry_date', '>=', today()),
+                ])
+                ->orderBy('item_name')
+                ->get()
+                ->filter(fn (Inventory $inventory) => $this->isEligiblePepVaccineInventory($inventory))
+                ->map(fn (Inventory $inventory) => [
                     'id' => $inventory->id,
                     'item_name' => $inventory->item_name,
-                    'current_stock' => $effectiveStock,
-                    'batches' => $inventory->batches->map(fn (InventoryBatch $batch) => [
-                        'id' => $batch->id,
-                        'inventory_id' => $batch->inventory_id,
-                        'batch_number' => $batch->batch_number,
-                        'quantity_remaining' => $batch->quantity_remaining,
-                        'expiry_date' => optional($batch->expiry_date)->toDateString(),
-                    ])->values(),
-                ];
-            })
-            ->values();
+                    'current_stock' => $inventory->current_stock,
+                    'reason' => match (true) {
+                        (int) $inventory->batches_count === 0 => 'no_batch',
+                        (int) $inventory->unexpired_batches_count === 0 => 'batches_expired',
+                        (int) $inventory->usable_batches_count > 0 => 'product_stock_zero',
+                        default => 'batches_depleted',
+                    },
+                ])
+                ->values();
 
-        // Vaccine products without a usable lot/batch cannot be selected:
-        // doses must be traceable to a specific unexpired batch with remaining quantity.
-        $eligibleIds = $items->pluck('id')->all();
-        $unavailable = Inventory::query()
-            ->select(['id', 'item_name', 'brand', 'item_type', 'current_stock'])
-            ->whereNotIn('id', $eligibleIds)
-            ->withCount([
-                'batches',
-                'batches as unexpired_batches_count' => fn ($query) => $query->whereDate('expiry_date', '>=', today()),
-                'batches as usable_batches_count' => fn ($query) => $query
-                    ->where('quantity_remaining', '>', 0)
-                    ->whereDate('expiry_date', '>=', today()),
-            ])
-            ->orderBy('item_name')
-            ->get()
-            ->filter(fn (Inventory $inventory) => $this->isEligiblePepVaccineInventory($inventory))
-            ->map(fn (Inventory $inventory) => [
-                'id' => $inventory->id,
-                'item_name' => $inventory->item_name,
-                'current_stock' => $inventory->current_stock,
-                'reason' => match (true) {
-                    (int) $inventory->batches_count === 0 => 'no_batch',
-                    (int) $inventory->unexpired_batches_count === 0 => 'batches_expired',
-                    (int) $inventory->usable_batches_count > 0 => 'product_stock_zero',
-                    default => 'batches_depleted',
-                },
-            ])
-            ->values();
+            return response()->json([
+                'success' => true,
+                'data' => $items,
+                'meta' => ['unavailable' => $unavailable],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to load PEP dose inventory options', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
 
-        return response()->json([
-            'success' => true,
-            'data' => $items,
-            'meta' => ['unavailable' => $unavailable],
-        ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Unable to load vaccine inventory options: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     public function updatePepSchedule(Request $request, PepSchedule $schedule): JsonResponse
@@ -3472,10 +3490,10 @@ class BitemapApiController extends Controller
             $data['item_name'] = trim($data['item_name']);
         }
 
-        if ($matchedCatalog && blank($data['brand'] ?? null)) {
+        if (array_key_exists('brand', $request->all())) {
+            $data['brand'] = blank($request->input('brand')) ? null : trim((string) $request->input('brand'));
+        } elseif ($matchedCatalog) {
             $data['brand'] = $matchedCatalog['brand'];
-        } elseif (array_key_exists('brand', $data)) {
-            $data['brand'] = blank($data['brand']) ? null : trim((string) $data['brand']);
         }
 
         if (array_key_exists('description', $data)) {
@@ -4309,7 +4327,7 @@ class BitemapApiController extends Controller
         return [
             'id' => $item->id,
             'item_name' => $item->item_name,
-            'brand' => $item->brand ?: ($catalogMatch['brand'] ?? null),
+            'brand' => $item->brand,
             'purpose' => $catalogMatch['purpose'] ?? null,
             'catalog_key' => $catalogMatch['key'] ?? null,
             'item_type' => $catalogMatch['item_type'] ?? $item->item_type,

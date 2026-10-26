@@ -431,7 +431,7 @@ export function Inventory() {
                     const daysUntilExpiry = getDaysUntilExpiry(nearestExpiry);
                     const { totalBatches, unexpiredBatches, usableBatches, activeLotNumber } = getBatchDiagnostics(item);
                     const matchedCatalog = findCatalogProduct(item.item_name, item.brand, productCatalog);
-                    const displayBrand = item.brand || matchedCatalog?.brand || null;
+                    const displayBrand = item.brand || null;
                     const hasMoreMenu = canAdjustStock || canRecordUsage || canUpdateInventory || canDeleteInventory;
                     const isMenuOpen = openMenuId === String(item.id);
                     return (

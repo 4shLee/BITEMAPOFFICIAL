@@ -40,10 +40,13 @@ export function InventoryFormModal({
 }: InventoryFormModalProps) {
   const today = new Date().toISOString().split('T')[0];
   const initialCatalogProduct = findCatalogProduct(item?.item_name, item?.brand, catalog);
+  const initialProductName = item?.item_name
+    ? (initialCatalogProduct?.product_name || item.item_name.replace(/\s*—\s*.*$/, '').trim())
+    : '';
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
-    item_name: item?.item_name || '',
-    brand: item?.brand || initialCatalogProduct?.brand || '',
+    item_name: initialProductName,
+    brand: item?.brand || '',
     item_type: initialCatalogProduct?.item_type || item?.item_type || 'Vaccine',
     current_stock: item ? String(item.current_stock ?? 0) : '0',
     reorder_level: item?.reorder_level != null ? String(item.reorder_level) : '',
@@ -70,7 +73,6 @@ export function InventoryFormModal({
     setFormData((current) => ({
       ...current,
       item_name: nextItemName,
-      brand: matched?.brand || '',
       item_type: matched?.item_type || current.item_type,
     }));
   };
@@ -105,7 +107,7 @@ export function InventoryFormModal({
       if (item) {
         await inventoryAPI.update(String(item.id), {
           item_name: formData.item_name,
-          brand: formData.brand || undefined,
+          brand: formData.brand.trim() ? formData.brand.trim() : null,
           item_type: formData.item_type,
           reorder_level: Number(formData.reorder_level || 0),
           unit: formData.unit,
@@ -115,7 +117,7 @@ export function InventoryFormModal({
       } else {
         await inventoryAPI.create({
           item_name: formData.item_name,
-          brand: formData.brand || undefined,
+          brand: formData.brand.trim() ? formData.brand.trim() : null,
           item_type: formData.item_type,
           current_stock: initialStockQty,
           reorder_level: Number(formData.reorder_level || 0),
@@ -146,16 +148,18 @@ export function InventoryFormModal({
   const productOptions = [
     { value: '', label: 'Select clinic vaccine or immunoglobulin product' },
     ...catalog.map((product) => {
-      const existing = findDuplicateInventoryProduct(product.item_name, existingItems, item?.id, catalog);
+      const displayName = product.product_name || product.item_name.replace(/\s*—\s*.*$/, '').trim();
+      const existing = findDuplicateInventoryProduct(displayName, existingItems, item?.id, catalog)
+        || findDuplicateInventoryProduct(product.item_name, existingItems, item?.id, catalog);
       return {
-        value: product.item_name,
+        value: displayName,
         label: existing
-          ? `${product.item_name} (Already registered — use Add Batch / Restock)`
-          : product.item_name,
+          ? `${displayName} (Already registered — use Add Batch / Restock)`
+          : displayName,
       };
     }),
-    ...(item?.item_name && !catalog.some((product) => product.item_name === item.item_name)
-      ? [{ value: item.item_name, label: item.item_name }]
+    ...(formData.item_name && !catalog.some((product) => (product.product_name || product.item_name.replace(/\s*—\s*.*$/, '').trim()) === formData.item_name)
+      ? [{ value: formData.item_name, label: formData.item_name }]
       : []),
   ];
 
@@ -210,22 +214,6 @@ export function InventoryFormModal({
               required
             />
 
-            {selectedCatalogProduct && (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 px-3.5 py-2.5 text-xs text-emerald-950">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span>
-                    <span className="font-semibold">Product:</span> {selectedCatalogProduct.product_name}
-                  </span>
-                  <span>
-                    <span className="font-semibold">Brand:</span> {selectedCatalogProduct.brand}
-                  </span>
-                </div>
-                <p className="mt-1 text-emerald-900">
-                  <span className="font-semibold">Purpose:</span> {selectedCatalogProduct.purpose}
-                </p>
-              </div>
-            )}
-
             {duplicateExistingItem && (
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-950" role="alert">
                 <div className="min-w-0 flex-1">
@@ -250,9 +238,9 @@ export function InventoryFormModal({
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <Input
                 label="Brand"
-                placeholder="Auto-filled from product"
+                placeholder="Enter brand name"
                 value={formData.brand}
-                readOnly
+                onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
               />
 
               <Select
