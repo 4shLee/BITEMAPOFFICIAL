@@ -424,31 +424,33 @@ export function IncidentListPage() {
         </div>
       </div>
 
-      <ConfirmDialog
-        isOpen={Boolean(incidentToDelete)}
-        onClose={() => {
-          if (!isDeleting) setIncidentToDelete(null);
-        }}
-        onConfirm={handleConfirmDelete}
-        isLoading={isDeleting}
-        variant="danger"
-        title="Delete Incident Record?"
-        description={
-          <div className="space-y-2">
-            <p>
-              Are you sure you want to delete the incident record for{' '}
-              <span className="font-semibold text-foreground">
-                {getPatientDisplayName(incidentToDelete?.patient) || incidentToDelete?.patient_name || 'this patient'}
-              </span>?
-            </p>
-            <p className="rounded-lg bg-destructive/10 p-2.5 text-xs font-medium text-destructive">
-              The patient record will also be removed if this is their only incident. This action cannot be undone.
-            </p>
-          </div>
-        }
-        confirmText={isDeleting ? 'Deleting...' : 'Delete Incident'}
-        cancelText="Cancel"
-      />
+      {incidentToDelete && (
+        <ConfirmDialog
+          isOpen={Boolean(incidentToDelete)}
+          onClose={() => {
+            if (!isDeleting) setIncidentToDelete(null);
+          }}
+          onConfirm={handleConfirmDelete}
+          isLoading={isDeleting}
+          variant="danger"
+          title="Delete Incident Record?"
+          description={
+            <div className="space-y-2">
+              <p>
+                Are you sure you want to delete the incident record for{' '}
+                <span className="font-semibold text-foreground">
+                  {getPatientDisplayName(incidentToDelete.patient) || incidentToDelete.patient_name || 'this patient'}
+                </span>?
+              </p>
+              <p className="rounded-lg bg-destructive/10 p-2.5 text-xs font-medium text-destructive">
+                The patient record will also be removed if this is their only incident. This action cannot be undone.
+              </p>
+            </div>
+          }
+          confirmText={isDeleting ? 'Deleting...' : 'Delete Incident'}
+          cancelText="Cancel"
+        />
+      )}
 
       {reviewIncident && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4">

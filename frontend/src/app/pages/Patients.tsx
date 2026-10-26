@@ -302,31 +302,33 @@ export function Patients() {
           </div>
         </div>
       </div>
-      <ConfirmDialog
-        isOpen={Boolean(patientToDelete)}
-        onClose={() => {
-          if (!isDeleting) setPatientToDelete(null);
-        }}
-        onConfirm={handleConfirmDelete}
-        isLoading={isDeleting}
-        variant="danger"
-        title="Delete Patient Record?"
-        description={
-          <div className="space-y-2">
-            <p>
-              Are you sure you want to delete the patient record for{' '}
-              <span className="font-semibold text-foreground">
-                {getPatientDisplayName(patientToDelete) || 'this patient'}
-              </span>?
-            </p>
-            <p className="rounded-lg bg-destructive/10 p-2.5 text-xs font-medium text-destructive">
-              Related incidents, PEP schedules, and notifications will also be permanently removed. This action cannot be undone.
-            </p>
-          </div>
-        }
-        confirmText={isDeleting ? 'Deleting...' : 'Delete Patient'}
-        cancelText="Cancel"
-      />
+      {patientToDelete && (
+        <ConfirmDialog
+          isOpen={Boolean(patientToDelete)}
+          onClose={() => {
+            if (!isDeleting) setPatientToDelete(null);
+          }}
+          onConfirm={handleConfirmDelete}
+          isLoading={isDeleting}
+          variant="danger"
+          title="Delete Patient Record?"
+          description={
+            <div className="space-y-2">
+              <p>
+                Are you sure you want to delete the patient record for{' '}
+                <span className="font-semibold text-foreground">
+                  {getPatientDisplayName(patientToDelete) || 'this patient'}
+                </span>?
+              </p>
+              <p className="rounded-lg bg-destructive/10 p-2.5 text-xs font-medium text-destructive">
+                Related incidents, PEP schedules, and notifications will also be permanently removed. This action cannot be undone.
+              </p>
+            </div>
+          }
+          confirmText={isDeleting ? 'Deleting...' : 'Delete Patient'}
+          cancelText="Cancel"
+        />
+      )}
 
     </div>
   );

@@ -67,7 +67,8 @@ export function normalizePatientText(value?: string | null) {
   return (value || '').trim().replace(/\s+/g, ' ');
 }
 
-export function composePatientFullName(patient: PatientLike) {
+export function composePatientFullName(patient?: PatientLike | null) {
+  if (!patient) return '';
   const structured = [
     patient.first_name,
     patient.middle_name,
@@ -78,7 +79,8 @@ export function composePatientFullName(patient: PatientLike) {
   return structured || normalizePatientText(patient.full_name);
 }
 
-export function getPatientDisplayName(patient: PatientLike) {
+export function getPatientDisplayName(patient?: PatientLike | null) {
+  if (!patient) return '';
   const firstName = normalizePatientText(patient.first_name);
   const middleName = normalizePatientText(patient.middle_name);
   const lastName = normalizePatientText(patient.last_name);
