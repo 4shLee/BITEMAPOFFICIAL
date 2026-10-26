@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { Header } from '../Layout/Header';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 import {
   barangaysAPI,
   incidentsAPI,
@@ -39,6 +40,8 @@ export function IncidentListPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [reviewIncident, setReviewIncident] = useState<RegistryIncident | null>(null);
+  const [incidentToDelete, setIncidentToDelete] = useState<RegistryIncident | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [perPage, setPerPage] = useState<10 | 20 | 25 | 50>(20);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -100,12 +103,14 @@ export function IncidentListPage() {
       .catch(() => setBarangays([]));
   }, []);
 
-  const handleDelete = async (id: number | string) => {
-    if (!confirm('Delete this incident? The patient record will also be removed if this is their only incident.')) return;
+  const handleConfirmDelete = async () => {
+    if (!incidentToDelete) return;
 
     try {
-      await incidentsAPI.delete(String(id));
+      setIsDeleting(true);
+      await incidentsAPI.delete(String(incidentToDelete.id));
       toast.success('Incident deleted successfully');
+      setIncidentToDelete(null);
       if (incidents.length === 1 && currentPage > 1) {
         setCurrentPage((page) => page - 1);
       } else {
@@ -113,6 +118,8 @@ export function IncidentListPage() {
       }
     } catch {
       toast.error('Failed to delete incident');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -357,7 +364,7 @@ export function IncidentListPage() {
                           )}
                           {canDeleteIncident && (
                             <button
-                              onClick={() => handleDelete(incident.id)}
+                              onClick={() => setIncidentToDelete(incident)}
                               className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-destructive/20 bg-destructive/10 text-destructive shadow-sm transition-colors hover:border-destructive/40 hover:bg-destructive/15"
                               title="Delete"
                               aria-label="Delete incident"
@@ -416,6 +423,32 @@ export function IncidentListPage() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={Boolean(incidentToDelete)}
+        onClose={() => {
+          if (!isDeleting) setIncidentToDelete(null);
+        }}
+        onConfirm={handleConfirmDelete}
+        isLoading={isDeleting}
+        variant="danger"
+        title="Delete Incident Record?"
+        description={
+          <div className="space-y-2">
+            <p>
+              Are you sure you want to delete the incident record for{' '}
+              <span className="font-semibold text-foreground">
+                {getPatientDisplayName(incidentToDelete?.patient) || incidentToDelete?.patient_name || 'this patient'}
+              </span>?
+            </p>
+            <p className="rounded-lg bg-destructive/10 p-2.5 text-xs font-medium text-destructive">
+              The patient record will also be removed if this is their only incident. This action cannot be undone.
+            </p>
+          </div>
+        }
+        confirmText={isDeleting ? 'Deleting...' : 'Delete Incident'}
+        cancelText="Cancel"
+      />
 
       {reviewIncident && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4">

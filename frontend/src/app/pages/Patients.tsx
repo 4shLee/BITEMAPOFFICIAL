@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { Header } from '../components/Layout/Header';
 import { Button } from '../components/ui/Button';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import {
   barangaysAPI,
   getErrorMessage,
@@ -28,6 +29,8 @@ export function Patients() {
   const [patients, setPatients] = useState<RegistryPatient[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [patientToDelete, setPatientToDelete] = useState<RegistryPatient | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [perPage, setPerPage] = useState<10 | 20 | 25 | 50>(20);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -92,12 +95,14 @@ export function Patients() {
     navigate('/patients/' + patient.id + '/edit');
   };
 
-  const handleDelete = async (patient: RegistryPatient) => {
-    if (!confirm('Delete this patient record? Related incidents, PEP schedules, and notifications will also be removed.')) return;
+  const handleConfirmDelete = async () => {
+    if (!patientToDelete) return;
 
     try {
-      await patientsAPI.delete(String(patient.id));
+      setIsDeleting(true);
+      await patientsAPI.delete(String(patientToDelete.id));
       toast.success('Patient deleted successfully');
+      setPatientToDelete(null);
       if (patients.length === 1 && currentPage > 1) {
         setCurrentPage((page) => page - 1);
       } else {
@@ -105,6 +110,8 @@ export function Patients() {
       }
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, 'Failed to delete patient'));
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -237,7 +244,7 @@ export function Patients() {
                           )}
                           {canDeletePatient && (
                             <button
-                              onClick={() => handleDelete(patient)}
+                              onClick={() => setPatientToDelete(patient)}
                               className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-destructive/20 bg-destructive-bg text-destructive shadow-sm transition-colors hover:border-destructive/40 hover:bg-destructive-bg/80"
                               title="Delete"
                               aria-label="Delete patient"
@@ -295,6 +302,32 @@ export function Patients() {
           </div>
         </div>
       </div>
+      <ConfirmDialog
+        isOpen={Boolean(patientToDelete)}
+        onClose={() => {
+          if (!isDeleting) setPatientToDelete(null);
+        }}
+        onConfirm={handleConfirmDelete}
+        isLoading={isDeleting}
+        variant="danger"
+        title="Delete Patient Record?"
+        description={
+          <div className="space-y-2">
+            <p>
+              Are you sure you want to delete the patient record for{' '}
+              <span className="font-semibold text-foreground">
+                {getPatientDisplayName(patientToDelete) || 'this patient'}
+              </span>?
+            </p>
+            <p className="rounded-lg bg-destructive/10 p-2.5 text-xs font-medium text-destructive">
+              Related incidents, PEP schedules, and notifications will also be permanently removed. This action cannot be undone.
+            </p>
+          </div>
+        }
+        confirmText={isDeleting ? 'Deleting...' : 'Delete Patient'}
+        cancelText="Cancel"
+      />
+
     </div>
   );
 }

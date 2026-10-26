@@ -7,6 +7,7 @@ import { IncidentLocationPicker } from '../components/Incidents/IncidentLocation
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Button } from '../components/ui/Button';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { ApiError, barangaysAPI, getErrorMessage, incidentsAPI, patientsAPI } from '../../lib/services/api';
 import { getStoredUser, normalizeRoleKey } from '../../lib/auth/roleAccess';
 import {
@@ -353,6 +354,7 @@ export function IncidentReport() {
   const [persistedPepStartDate, setPersistedPepStartDate] = useState('');
   const [initialPepStartDate, setInitialPepStartDate] = useState('');
   const [hasCompletedPepDose, setHasCompletedPepDose] = useState(false);
+  const [showRecalculateModal, setShowRecalculateModal] = useState(false);
 
   useEffect(() => {
     async function loadOptions() {
@@ -904,11 +906,15 @@ export function IncidentReport() {
     }
 
     const pepStartDateChanged = isEditMode && formData.pepStartDate !== initialPepStartDate;
-    const confirmPepScheduleRecalculation = pepStartDateChanged
-      ? window.confirm('Recalculate all pending PEP dose dates from the new Day 0 date?')
-      : false;
-    if (pepStartDateChanged && !confirmPepScheduleRecalculation) return;
+    if (pepStartDateChanged) {
+      setShowRecalculateModal(true);
+      return;
+    }
 
+    await executeSave(false);
+  };
+
+  const executeSave = async (confirmPepScheduleRecalculation: boolean) => {
     const fullName = composePatientName(formData);
     const structuredAssessmentPayload = hasStructuredAssessment ? {
       exposure_contact_types: formData.exposureContactTypes,
@@ -1786,6 +1792,22 @@ export function IncidentReport() {
           </div>
         </div>
       )}
+      <ConfirmDialog
+        isOpen={showRecalculateModal}
+        onClose={() => setShowRecalculateModal(false)}
+        onConfirm={async () => {
+          setShowRecalculateModal(false);
+          await executeSave(true);
+        }}
+        isLoading={saving}
+        variant="warning"
+        icon="warning"
+        title="Recalculate PEP Schedule?"
+        description="The Day 0 date has been changed. Would you like to recalculate all pending PEP dose dates from the new Day 0 date?"
+        confirmText="Recalculate & Save"
+        cancelText="Cancel"
+      />
+
     </div>
   );
 }
