@@ -389,7 +389,7 @@ export function Inventory() {
               {canCreateInventory && (
                 <Button variant="primary" size="sm" onClick={handleCreate}>
                   <Plus className="h-4 w-4" />
-                  + Add Product
+                  Add Product
                 </Button>
               )}
             </div>
@@ -399,16 +399,16 @@ export function Inventory() {
             <table className="w-full">
               <thead>
                 <tr className="bg-muted/60 text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                  <th className="px-5 py-3 text-left">Vaccine/Supply Name</th>
-                  <th className="px-5 py-3 text-left">Type</th>
-                  <th className="px-5 py-3 text-left">Current Stock</th>
-                  <th className="px-5 py-3 text-left">Unit</th>
-                  <th className="px-5 py-3 text-left">Reorder Level</th>
-                  <th className="px-5 py-3 text-left">Lot / Batch & Stock Details</th>
-                  <th className="px-5 py-3 text-left">Nearest Expiry</th>
-                  <th className="px-5 py-3 text-left">Status</th>
-                  <th className="px-5 py-3 text-left">Last Updated</th>
-                  <th className="px-5 py-3 text-left">Actions</th>
+                  <th className="px-4 py-3 text-left whitespace-nowrap">Vaccine/Supply Name</th>
+                  <th className="px-4 py-3 text-left whitespace-nowrap">Type</th>
+                  <th className="px-4 py-3 text-left whitespace-nowrap">Current Stock</th>
+                  <th className="px-4 py-3 text-left whitespace-nowrap">Unit</th>
+                  <th className="px-4 py-3 text-left whitespace-nowrap">Reorder Level</th>
+                  <th className="px-4 py-3 text-left whitespace-nowrap">Lot / Batch & Stock Details</th>
+                  <th className="px-4 py-3 text-left whitespace-nowrap">Nearest Expiry</th>
+                  <th className="px-4 py-3 text-left whitespace-nowrap">Status</th>
+                  <th className="px-4 py-3 text-left whitespace-nowrap">Last Updated</th>
+                  <th className="px-4 py-3 text-left whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -436,17 +436,17 @@ export function Inventory() {
                     const isMenuOpen = openMenuId === String(item.id);
                     return (
                       <tr key={item.id} className="transition-colors hover:bg-muted/45">
-                        <td className="px-5 py-4">
+                        <td className="px-4 py-3.5">
                           <p className="text-sm font-semibold text-foreground">{item.item_name}</p>
                           {displayBrand && (
                             <p className="mt-0.5 text-xs font-medium text-muted-foreground">Brand: {displayBrand}</p>
                           )}
                         </td>
-                        <td className="px-5 py-4 text-sm text-muted-foreground">{item.item_type}</td>
-                        <td className="px-5 py-4 text-sm font-semibold text-foreground">{item.current_stock} {item.unit}</td>
-                        <td className="px-5 py-4 text-sm text-muted-foreground">{item.unit}</td>
-                        <td className="px-5 py-4 text-sm text-muted-foreground">{item.reorder_level}</td>
-                        <td className="px-5 py-4">
+                        <td className="px-4 py-3.5 text-sm text-muted-foreground">{item.item_type}</td>
+                        <td className="px-4 py-3.5 text-sm font-semibold text-foreground whitespace-nowrap">{item.current_stock} {item.unit}</td>
+                        <td className="px-4 py-3.5 text-sm text-muted-foreground">{item.unit}</td>
+                        <td className="px-4 py-3.5 text-sm text-muted-foreground">{item.reorder_level}</td>
+                        <td className="px-4 py-3.5">
                           <div className="w-52 space-y-1.5">
                             <div className="h-2 bg-muted rounded-full overflow-hidden">
                               <div
@@ -462,7 +462,7 @@ export function Inventory() {
                             </p>
                             {totalBatches === 0 ? (
                               <p className="text-[11px] font-semibold text-amber-700">
-                                No lot/batch recorded — click Add Batch / Restock to enter lot no. &amp; expiry.
+                                No lot/batch recorded — click View Lots to enter lot no. &amp; expiry.
                               </p>
                             ) : usableBatches.length > 0 ? (
                               <p className="text-[11px] font-semibold text-emerald-700">
@@ -479,7 +479,7 @@ export function Inventory() {
                             )}
                           </div>
                         </td>
-                        <td className="px-5 py-4 text-sm text-muted-foreground">
+                        <td className="px-4 py-3.5 text-sm text-muted-foreground whitespace-nowrap">
                           {nearestExpiry ? (
                             <div className="flex items-center gap-2">
                               <CalendarClock className="h-4 w-4 text-muted-foreground" />
@@ -492,43 +492,32 @@ export function Inventory() {
                             <span className="text-xs font-medium text-amber-700">No batch expiry</span>
                           ) : '-'}
                         </td>
-                        <td className="px-5 py-4">
+                        <td className="px-4 py-3.5">
                           <Badge variant={getStatusVariant(status)}>
                             {status}
                           </Badge>
                         </td>
-                        <td className="px-5 py-4 text-xs text-muted-foreground">
+                        <td className="px-4 py-3.5 text-xs text-muted-foreground whitespace-nowrap">
                           {item.last_updated ? new Date(item.last_updated).toLocaleString() : '-'}
                         </td>
-                        <td className="px-5 py-4">
-                          <div className="flex flex-nowrap items-center gap-2">
+                        <td className="px-4 py-3.5">
+                          <div className="flex flex-nowrap items-center gap-1.5">
                             <button
                               type="button"
                               onClick={() => handleViewBatches(item)}
-                              className="inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-full border border-accent/20 bg-accent-bg px-2.5 text-xs font-semibold text-accent shadow-sm transition-colors hover:border-accent/40 hover:bg-accent-bg/80"
+                              className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full border border-accent/20 bg-accent-bg px-3 text-xs font-semibold text-accent shadow-sm transition-colors hover:border-accent/40 hover:bg-accent-bg/80"
                               title="View Lots / Batches"
                               aria-label="View inventory batches"
                             >
                               <Layers className="h-3.5 w-3.5" />
-                              <span>View Lots ({totalBatches})</span>
+                              <span>View Lots</span>
                             </button>
-                            {canAdjustStock && (
-                              <button
-                                type="button"
-                                onClick={() => handleAddBatch(item)}
-                                className="inline-flex h-9 shrink-0 items-center justify-center rounded-full border border-primary/20 bg-primary-bg px-3 text-xs font-semibold leading-none text-primary shadow-sm transition-colors hover:border-primary/40 hover:bg-primary-bg/80"
-                                title="Add Batch / Restock (record lot number, expiry date, and quantity)"
-                                aria-label="Add batch or restock this inventory item"
-                              >
-                                Add Batch / Restock
-                              </button>
-                            )}
                             {hasMoreMenu && (
                               <div className="relative" data-inventory-more-menu>
                                 <button
                                   type="button"
                                   onClick={() => setOpenMenuId(isMenuOpen ? null : String(item.id))}
-                                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-sm transition-colors hover:bg-muted"
+                                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-sm transition-colors hover:bg-muted"
                                   title="More product & stock actions"
                                   aria-label={`More actions for ${item.item_name}`}
                                   aria-expanded={isMenuOpen}
@@ -540,6 +529,17 @@ export function Inventory() {
                                     className="absolute right-0 z-30 mt-1.5 w-48 overflow-hidden rounded-2xl border border-border bg-card py-1 shadow-xl"
                                     role="menu"
                                   >
+                                    {canAdjustStock && (
+                                      <button
+                                        type="button"
+                                        role="menuitem"
+                                        onClick={() => handleAddBatch(item)}
+                                        className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-semibold text-foreground transition-colors hover:bg-muted"
+                                      >
+                                        <Plus className="h-3.5 w-3.5 text-primary" />
+                                        <span>Add Batch / Restock</span>
+                                      </button>
+                                    )}
                                     {(canAdjustStock || canRecordUsage) && (
                                       <button
                                         type="button"
@@ -718,7 +718,7 @@ export function Inventory() {
                         handleViewBatches(target);
                       }}
                     >
-                      Open View Lots ({deletingItem.batches?.length})
+                      Open View Lots
                     </Button>
                   </div>
                 </div>
