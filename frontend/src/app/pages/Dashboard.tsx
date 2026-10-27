@@ -30,35 +30,35 @@ const monthlyTrendData = [
 ];
 
 const barangayCasesData = [
-  { name: 'Aplaya',      cases: 23, fill: '#C0392B' },
-  { name: 'San Jose',   cases: 18, fill: '#D85A30' },
-  { name: 'Poblacion',  cases: 15, fill: '#BA7517' },
-  { name: 'Cogon',      cases: 12, fill: '#BA7517' },
-  { name: 'Dulangan',   cases: 10, fill: '#0EA5E9' },
-  { name: 'San Agustin',cases: 8,  fill: '#0EA5E9' },
-  { name: 'Tiguman',    cases: 6,  fill: '#16A34A' },
-  { name: 'Ruparan',    cases: 4,  fill: '#16A34A' },
+  { name: 'Aplaya',      cases: 23, fill: '#E11D48' },
+  { name: 'San Jose',   cases: 18, fill: '#F43F5E' },
+  { name: 'Poblacion',  cases: 15, fill: '#F59E0B' },
+  { name: 'Cogon',      cases: 12, fill: '#F59E0B' },
+  { name: 'Dulangan',   cases: 10, fill: '#06B6D4' },
+  { name: 'San Agustin',cases: 8,  fill: '#06B6D4' },
+  { name: 'Tiguman',    cases: 6,  fill: '#0D9488' },
+  { name: 'Ruparan',    cases: 4,  fill: '#0D9488' },
 ];
 
 const vaccinationComplianceData = [
-  { name: 'Completed',   value: 128, color: '#16A34A' },
-  { name: 'In Progress', value: 23,  color: '#0EA5E9' },
-  { name: 'Pending',     value: 27,  color: '#BA7517' },
-  { name: 'Missed Dose', value: 18,  color: '#D85A30' },
+  { name: 'Completed',   value: 128, color: '#0D9488' },
+  { name: 'In Progress', value: 23,  color: '#06B6D4' },
+  { name: 'Pending',     value: 27,  color: '#F59E0B' },
+  { name: 'Missed Dose', value: 18,  color: '#F43F5E' },
 ];
 
 const animalTypeData = [
-  { type: 'Dog',   count: 89, pct: 67, color: '#D85A30' },
-  { type: 'Cat',   count: 31, pct: 23, color: '#0EA5E9' },
-  { type: 'Other', count: 13, pct: 10, color: '#BA7517' },
+  { type: 'Dog',   count: 89, pct: 67, color: '#0D9488' },
+  { type: 'Cat',   count: 31, pct: 23, color: '#06B6D4' },
+  { type: 'Other', count: 13, pct: 10, color: '#64748B' },
 ];
 
 const highRiskBarangays = [
-  { name: 'Aplaya',    cases: 23, level: 'Critical', dotColor: '#C0392B',  badgeClass: 'text-destructive bg-destructive-bg' },
-  { name: 'San Jose',  cases: 18, level: 'High',     dotColor: '#D85A30',  badgeClass: 'text-warning bg-warning-bg' },
-  { name: 'Poblacion', cases: 15, level: 'High',     dotColor: '#D85A30',  badgeClass: 'text-warning bg-warning-bg' },
-  { name: 'Cogon',     cases: 12, level: 'Moderate', dotColor: '#0EA5E9',  badgeClass: 'text-accent bg-accent-bg' },
-  { name: 'Dulangan',  cases: 10, level: 'Moderate', dotColor: '#0EA5E9',  badgeClass: 'text-accent bg-accent-bg' },
+  { name: 'Aplaya',    cases: 23, level: 'Critical', dotColor: '#E11D48',  badgeClass: 'text-destructive bg-destructive-bg' },
+  { name: 'San Jose',  cases: 18, level: 'High',     dotColor: '#F43F5E',  badgeClass: 'text-warning bg-warning-bg' },
+  { name: 'Poblacion', cases: 15, level: 'High',     dotColor: '#F59E0B',  badgeClass: 'text-warning bg-warning-bg' },
+  { name: 'Cogon',     cases: 12, level: 'Moderate', dotColor: '#06B6D4',  badgeClass: 'text-accent bg-accent-bg' },
+  { name: 'Dulangan',  cases: 10, level: 'Moderate', dotColor: '#06B6D4',  badgeClass: 'text-accent bg-accent-bg' },
 ];
 
 const inventoryItems = [
@@ -71,9 +71,9 @@ const inventoryItems = [
 ];
 
 const STATUS_COLOR: Record<string, string> = {
-  ok:       '#16A34A',
-  low:      '#BA7517',
-  critical: '#D85A30',
+  ok:       '#0D9488',
+  low:      '#F59E0B',
+  critical: '#F43F5E',
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -288,9 +288,9 @@ function NurseDashboard({
             </div>
             <div className="p-5 space-y-3.5">
               {[
-                { label: 'Sent reminders', value: reminderSent, color: '#16A34A' },
-                { label: 'Pending sends', value: reminderPending, color: '#0EA5E9' },
-                { label: 'Needs follow-up', value: overdueDoses, color: '#D85A30' },
+                { label: 'Sent reminders', value: reminderSent, color: '#0D9488' },
+                { label: 'Pending sends', value: reminderPending, color: '#06B6D4' },
+                { label: 'Needs follow-up', value: overdueDoses, color: '#F43F5E' },
               ].map((item) => (
                 <div key={item.label}>
                   <div className="flex items-center justify-between mb-1.5">
@@ -491,19 +491,19 @@ function ClinicAdminDashboard({
                 <p className="text-[12px] font-normal text-slate-500 mt-0.5">Cases reported vs. vaccinated for the last 6 months</p>
               </div>
               <div className="flex flex-wrap items-center gap-3 text-[11px] font-medium text-slate-500">
-                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#D85A30' }} /> Bite Cases</span>
-                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#16A34A' }} /> Vaccinated</span>
+                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#64748B' }} /> Bite Cases</span>
+                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#0D9488' }} /> Vaccinated</span>
               </div>
             </div>
             <div className="px-5 pt-4 pb-5">
               <ResponsiveContainer width="100%" height={210}>
                 <BarChart data={monthlyTrendData} barGap={3} barCategoryGap="28%" margin={{ top: 2, right: 6, left: -18, bottom: 0 }}>
-                  <CartesianGrid key="bc-grid" strokeDasharray="3 3" stroke="#E8E5DC" vertical={false} />
+                  <CartesianGrid key="bc-grid" strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
                   <XAxis key="bc-xaxis" dataKey="month" tick={{ fontSize: 11, fill: '#64748B' }} axisLine={false} tickLine={false} />
                   <YAxis key="bc-yaxis" tick={{ fontSize: 11, fill: '#64748B' }} axisLine={false} tickLine={false} />
-                  <Tooltip key="bc-tooltip" content={<ChartTooltip />} cursor={{ fill: '#ECFDF5' }} />
-                  <Bar key="bc-bar-cases" dataKey="cases" name="Bite Cases" fill="#D85A30" radius={[5, 5, 0, 0]} />
-                  <Bar key="bc-bar-vaccinated" dataKey="vaccinated" name="Vaccinated" fill="#16A34A" radius={[5, 5, 0, 0]} />
+                  <Tooltip key="bc-tooltip" content={<ChartTooltip />} cursor={{ fill: '#F0FDFA' }} />
+                  <Bar key="bc-bar-cases" dataKey="cases" name="Bite Cases" fill="#64748B" radius={[5, 5, 0, 0]} />
+                  <Bar key="bc-bar-vaccinated" dataKey="vaccinated" name="Vaccinated" fill="#0D9488" radius={[5, 5, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
