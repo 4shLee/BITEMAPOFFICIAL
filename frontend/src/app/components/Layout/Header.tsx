@@ -17,8 +17,6 @@ export function Header({ title, breadcrumbs = [] }: HeaderProps) {
   const isIncidentFormPage = location.pathname === '/incidents/new' || /^\/incidents\/[^/]+\/edit$/.test(location.pathname);
   const canAccessNotifications = canAccessPath(currentUser?.role, '/notifications');
   const isSystemAdmin = isSystemAdminRole(currentUser?.role);
-  const pagesWithModuleSearch = ['/incidents', '/patients', '/pep-schedule', '/inventory', '/notifications', '/users', '/audit-logs', '/settings'];
-  const showGlobalSearch = !pagesWithModuleSearch.includes(location.pathname);
   const { quickAlerts, clinicPriorityCount, clinicSmsSimulation, alertsLoading } = useHeaderAlerts();
   const [isAlertOpen, setIsAlertOpen] = useState(false);
 
@@ -37,7 +35,7 @@ export function Header({ title, breadcrumbs = [] }: HeaderProps) {
           : '';
 
   return (
-    <header className="sticky top-0 z-20 border-b border-border/70 bg-background/95 px-6 py-3 backdrop-blur lg:px-8">
+    <header className="sticky top-0 z-[1000] border-b border-border/70 bg-background/95 px-6 py-3 backdrop-blur lg:px-8">
       <div className="flex items-center justify-between gap-4 lg:gap-8">
         {/* Left: Breadcrumbs & Page Title */}
         <div className="min-w-0 shrink-0">
@@ -54,14 +52,10 @@ export function Header({ title, breadcrumbs = [] }: HeaderProps) {
           <h1 className="text-[22px] font-extrabold tracking-tight text-foreground">{title}</h1>
         </div>
 
-        {/* Center: Long, horizontally centered Global Search Bar with attached dropdown */}
-        {showGlobalSearch ? (
-          <div className="flex flex-1 justify-center px-2 lg:px-6 min-w-0">
-            <GlobalSearchDropdown />
-          </div>
-        ) : (
-          <div className="flex-1" />
-        )}
+        {/* Center: Long, horizontally centered Global Search Bar with attached dropdown (Available across ALL modules) */}
+        <div className="flex flex-1 justify-center px-2 lg:px-6 min-w-0">
+          <GlobalSearchDropdown />
+        </div>
 
         {/* Right: Actions */}
         <div className="flex items-center gap-3 shrink-0">
@@ -92,7 +86,7 @@ export function Header({ title, breadcrumbs = [] }: HeaderProps) {
             </button>
 
             {isAlertOpen && (
-              <div className="absolute right-0 top-11 z-50 w-80 overflow-hidden rounded-2xl border border-border bg-card shadow-xl shadow-slate-900/15">
+              <div className="absolute right-0 top-11 z-[1050] w-80 overflow-hidden rounded-2xl border border-border bg-card shadow-xl shadow-slate-900/15">
                 <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-foreground">Notifications</p>

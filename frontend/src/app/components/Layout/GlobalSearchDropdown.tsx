@@ -359,7 +359,7 @@ export function GlobalSearchDropdown() {
 
       {/* Dropdown Menu (NOT modal, attached directly underneath the search bar) */}
       {isOpen && (
-        <div className="absolute left-0 right-0 top-full mt-2 z-50 overflow-hidden rounded-2xl border border-border bg-card shadow-2xl shadow-slate-900/15 ring-1 ring-black/5 animate-in fade-in-0 zoom-in-95 duration-100">
+        <div className="absolute left-0 right-0 top-full mt-2 z-[1050] overflow-hidden rounded-2xl border border-border bg-card shadow-2xl shadow-slate-900/15 ring-1 ring-black/5 animate-in fade-in-0 zoom-in-95 duration-100">
           <div
             ref={listRef}
             className="max-h-[460px] overflow-y-auto p-2 scroll-smooth divide-y divide-border/40"
