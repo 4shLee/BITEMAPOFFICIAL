@@ -43,6 +43,7 @@ class EnsureUserHasRole
 
         return match ($key) {
             'admin' => 'system_admin',
+            'clinic_administrator' => 'clinic_admin',
             'health_officer' => 'doctor',
             'nurse', 'vaccinator' => 'nurse_vaccinator',
             default => $key,

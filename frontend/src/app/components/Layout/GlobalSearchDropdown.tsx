@@ -13,7 +13,13 @@ import {
   ArrowRight,
   CornerDownLeft,
 } from 'lucide-react';
-import { searchAPI, type GlobalSearchResultItem } from '../../../lib/services/api';
+import {
+  searchAPI,
+  patientsAPI,
+  incidentsAPI,
+  inventoryAPI,
+  type GlobalSearchResultItem,
+} from '../../../lib/services/api';
 
 interface FlattenedItem {
   id: string;
@@ -80,12 +86,12 @@ export function GlobalSearchDropdown() {
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedQuery(query.trim());
-    }, 250);
+    }, 200);
 
     return () => clearTimeout(handler);
   }, [query]);
 
-  // Fetch search results from backend
+  // Fetch search results (with automatic fallback to active module APIs)
   useEffect(() => {
     if (!debouncedQuery) {
       setResults({
@@ -104,23 +110,142 @@ export function GlobalSearchDropdown() {
     const controller = new AbortController();
     setIsLoading(true);
 
-    searchAPI
-      .globalSearch(debouncedQuery, controller.signal)
-      .then((res) => {
+    const performSearch = async () => {
+      // 1. Try dedicated backend /api/global-search endpoint first
+      try {
+        const res = await searchAPI.globalSearch(debouncedQuery, controller.signal);
         if (res && res.success && res.data) {
-          setResults(res.data);
-          setSelectedIndex(0);
-        }
-      })
-      .catch((err) => {
-        if (err.name !== 'AbortError') {
-          console.error('Search error:', err);
-        }
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
+          const hasAny =
+            res.data.patients?.length > 0 ||
+            res.data.incidents?.length > 0 ||
+            res.data.pep_schedules?.length > 0 ||
+            res.data.inventory?.length > 0 ||
+            res.data.users?.length > 0 ||
+            res.data.navigation?.length > 0;
 
+          if (hasAny) {
+            setResults(res.data);
+            setSelectedIndex(0);
+            setIsLoading(false);
+            return;
+          }
+        }
+      } catch (err: unknown) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        // Dedicated endpoint error (e.g. 404 if server not yet updated), proceed to fallback
+      }
+
+      // 2. Direct fallback using active module endpoints (guaranteed to match existing database records)
+      try {
+        const [patientsRes, incidentsRes, inventoryRes] = await Promise.allSettled([
+          patientsAPI.getAll({ search: debouncedQuery, per_page: 5 }, controller.signal),
+          incidentsAPI.getAll({ search: debouncedQuery, per_page: 5 }, controller.signal),
+          inventoryAPI.getAll({ search: debouncedQuery, per_page: 5 }, controller.signal),
+        ]);
+
+        const patients: GlobalSearchResultItem[] = [];
+        if (
+          patientsRes.status === 'fulfilled' &&
+          patientsRes.value?.success &&
+          Array.isArray(patientsRes.value.data)
+        ) {
+          patientsRes.value.data.forEach((p: any) => {
+            const name =
+              p.display_name ||
+              p.full_name ||
+              `${p.first_name || ''} ${p.last_name || ''}`.trim() ||
+              'Unnamed Patient';
+            const details: string[] = [];
+            if (p.age !== null && p.age !== undefined) details.push(`${p.age} yrs old`);
+            if (p.sex) details.push(p.sex);
+            const brgy = p.residence_barangay || p.barangay?.name;
+            if (brgy) details.push(brgy);
+            patients.push({
+              id: p.id,
+              title: name,
+              subtitle: details.join(' • '),
+              contact: p.contact_number,
+              url: `/patients/${p.id}`,
+            });
+          });
+        }
+
+        const incidents: GlobalSearchResultItem[] = [];
+        if (
+          incidentsRes.status === 'fulfilled' &&
+          incidentsRes.value?.success &&
+          Array.isArray(incidentsRes.value.data)
+        ) {
+          incidentsRes.value.data.forEach((inc: any) => {
+            const caseCode =
+              inc.case_code || inc.incident_number || `INC-${String(inc.id).padStart(5, '0')}`;
+            const patientName = inc.patient_name || inc.patient?.full_name || '';
+            const details: string[] = [];
+            if (patientName) details.push(`Patient: ${patientName}`);
+            if (inc.animal_type) details.push(inc.animal_type);
+            if (inc.who_category) details.push(inc.who_category);
+            if (inc.incident_date) details.push(inc.incident_date);
+            incidents.push({
+              id: inc.id,
+              title: `${caseCode}${patientName ? ` (${patientName})` : ''}`,
+              subtitle: details.join(' • '),
+              url: `/incidents/${inc.id}`,
+            });
+          });
+        }
+
+        const inventory: GlobalSearchResultItem[] = [];
+        if (
+          inventoryRes.status === 'fulfilled' &&
+          inventoryRes.value?.success &&
+          Array.isArray(inventoryRes.value.data)
+        ) {
+          inventoryRes.value.data.forEach((item: any) => {
+            inventory.push({
+              id: item.id,
+              title: item.item_name + (item.brand ? ` (${item.brand})` : ''),
+              subtitle: `${item.item_type || 'Item'} • ${item.current_stock ?? 0} ${item.unit || 'units'} in stock`,
+              url: '/inventory',
+            });
+          });
+        }
+
+        const navPages = [
+          { title: 'Dashboard', subtitle: 'Operations overview, key metrics and charts', url: '/dashboard', keywords: 'dashboard home overview stats' },
+          { title: 'Patient Registry', subtitle: 'Search, view, and add patient profiles', url: '/patients', keywords: 'patient registry list records persons' },
+          { title: 'Incident Management', subtitle: 'Review logged animal bites and exposures', url: '/incidents', keywords: 'incidents cases animal bite management list' },
+          { title: 'New Incident Report', subtitle: 'Log an animal bite or rabies exposure case', url: '/incidents/new', keywords: 'new incident report add log' },
+          { title: 'PEP Vaccination Schedule', subtitle: 'Track Day 0, 3, 7, 14, 28 doses and completion', url: '/pep-schedule', keywords: 'pep schedule vaccines doses appointments' },
+          { title: 'Inventory & Stocks', subtitle: 'Track anti-rabies vials, serums, lots, and expiry', url: '/inventory', keywords: 'inventory stock vaccines vials medicine' },
+          { title: 'GIS Heatmap & Map', subtitle: 'High-risk barangays and spatial bite density', url: '/gis-map', keywords: 'gis map heatmap spatial' },
+          { title: 'Reports Generation', subtitle: 'Generate and export DOH clinic summaries and CSVs', url: '/reports', keywords: 'reports export csv pdf summary' },
+        ];
+        const lower = debouncedQuery.toLowerCase();
+        const navigation = navPages.filter(
+          (nav) =>
+            nav.title.toLowerCase().includes(lower) ||
+            nav.subtitle.toLowerCase().includes(lower) ||
+            nav.keywords.toLowerCase().includes(lower)
+        );
+
+        setResults({
+          patients,
+          incidents,
+          pep_schedules: [],
+          inventory,
+          users: [],
+          navigation,
+        });
+        setSelectedIndex(0);
+      } catch (fallbackErr: unknown) {
+        if (fallbackErr instanceof DOMException && fallbackErr.name === 'AbortError') return;
+        console.error('Fallback search failed:', fallbackErr);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    performSearch();
     return () => controller.abort();
   }, [debouncedQuery]);
 
@@ -315,12 +440,12 @@ export function GlobalSearchDropdown() {
 
   return (
     <div ref={containerRef} className="relative w-full max-w-xl lg:max-w-2xl">
-      {/* Search Input Box */}
+      {/* Search Input Box (type="text" to prevent duplicate browser native 'x' button) */}
       <div className="relative flex items-center">
         <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors" />
         <input
           ref={inputRef}
-          type="search"
+          type="text"
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
