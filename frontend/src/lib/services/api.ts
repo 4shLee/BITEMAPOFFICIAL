@@ -624,6 +624,33 @@ export const gisAPI = {
   }
 };
 
+// ============ GLOBAL SEARCH API ============
+export interface GlobalSearchResultItem {
+  id?: number | string;
+  title: string;
+  subtitle?: string;
+  contact?: string | null;
+  url: string;
+}
+
+export interface GlobalSearchResponse {
+  success: boolean;
+  data: {
+    patients: GlobalSearchResultItem[];
+    incidents: GlobalSearchResultItem[];
+    pep_schedules: GlobalSearchResultItem[];
+    inventory: GlobalSearchResultItem[];
+    users: GlobalSearchResultItem[];
+    navigation: GlobalSearchResultItem[];
+  };
+}
+
+export const searchAPI = {
+  async globalSearch(query: string, signal?: AbortSignal): Promise<GlobalSearchResponse> {
+    return apiRequest('/global-search?query=' + encodeURIComponent(query), { signal });
+  },
+};
+
 // ============ PUBLIC API (No Auth) ============
 export const publicAPI = {
   async getStatistics() {

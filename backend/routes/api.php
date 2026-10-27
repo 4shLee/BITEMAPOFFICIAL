@@ -100,6 +100,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/reports/download', [BitemapApiController::class, 'downloadReport'])
         ->middleware('role:clinic_admin,doctor');
 
+    Route::get('/global-search', [BitemapApiController::class, 'globalSearch'])
+        ->middleware('role:system_admin,clinic_admin,doctor,nurse_vaccinator');
+
     Route::get('/animals', [BitemapApiController::class, 'animals'])->middleware('role:clinic_admin');
     Route::post('/animals', [BitemapApiController::class, 'animals'])->middleware('role:clinic_admin');
     Route::put('/animals/{id}', [BitemapApiController::class, 'animals'])->middleware('role:clinic_admin');

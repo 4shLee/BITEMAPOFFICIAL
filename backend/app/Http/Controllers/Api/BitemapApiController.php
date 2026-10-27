@@ -4660,6 +4660,228 @@ class BitemapApiController extends Controller
             || InventoryProductCatalog::match($inventory->item_name, $inventory->brand ?? null) !== null;
     }
 
+    public function globalSearch(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'query' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        $query = trim((string) ($validated['query'] ?? ''));
+        $user = $request->user();
+        $role = strtolower(trim((string) ($user?->role ?? '')));
+
+        if ($query === '') {
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'patients' => [],
+                    'incidents' => [],
+                    'pep_schedules' => [],
+                    'inventory' => [],
+                    'users' => [],
+                    'navigation' => [],
+                ],
+            ]);
+        }
+
+        $like = '%' . $query . '%';
+
+        // 1. Patients search
+        $patients = Patient::query()
+            ->with('barangay:id,name')
+            ->where(function ($q) use ($like, $query) {
+                $q->where('full_name', 'like', $like)
+                    ->orWhere('first_name', 'like', $like)
+                    ->orWhere('last_name', 'like', $like)
+                    ->orWhere('contact_number', 'like', $like)
+                    ->orWhere('residence_barangay', 'like', $like);
+
+                if (is_numeric($query)) {
+                    $q->orWhere('id', (int) $query);
+                }
+            })
+            ->latest('id')
+            ->limit(5)
+            ->get();
+
+        $patientResults = $patients->map(function (Patient $patient) {
+            $name = $patient->full_name ?: trim($patient->first_name . ' ' . $patient->last_name);
+            $barangay = $patient->residence_barangay ?: ($patient->barangay?->name ?? 'Barangay N/A');
+            $details = [];
+            if ($patient->age !== null) {
+                $details[] = $patient->age . ' yrs old';
+            }
+            if ($patient->sex) {
+                $details[] = $patient->sex;
+            }
+            if ($barangay) {
+                $details[] = $barangay;
+            }
+
+            return [
+                'id' => $patient->id,
+                'title' => $name ?: 'Unnamed Patient',
+                'subtitle' => implode(' • ', $details),
+                'contact' => $patient->contact_number,
+                'url' => '/patients/' . $patient->id,
+            ];
+        })->values();
+
+        // 2. Bite Incidents search
+        $incidents = Incident::query()
+            ->with(['patient:id,full_name,first_name,last_name', 'barangay:id,name'])
+            ->where(function ($q) use ($like, $query) {
+                $q->where('animal_type', 'like', $like)
+                    ->orWhere('who_category', 'like', $like)
+                    ->orWhere('bite_site', 'like', $like)
+                    ->orWhere('incident_specific_location', 'like', $like)
+                    ->orWhereHas('patient', function ($pq) use ($like) {
+                        $pq->where('full_name', 'like', $like)
+                            ->orWhere('first_name', 'like', $like)
+                            ->orWhere('last_name', 'like', $like);
+                    });
+
+                if (is_numeric($query)) {
+                    $q->orWhere('id', (int) $query);
+                }
+
+                if (preg_match('/(?:inc-?)?(\d+)/i', $query, $matches)) {
+                    $q->orWhere('id', (int) $matches[1]);
+                }
+            })
+            ->latest('id')
+            ->limit(5)
+            ->get();
+
+        $incidentResults = $incidents->map(function (Incident $incident) {
+            $patientName = $incident->patient?->full_name
+                ?: trim(($incident->patient?->first_name ?? '') . ' ' . ($incident->patient?->last_name ?? ''));
+            $caseCode = 'INC-' . str_pad((string) $incident->id, 5, '0', STR_PAD_LEFT);
+            $details = [];
+            if ($patientName) {
+                $details[] = 'Patient: ' . $patientName;
+            }
+            if ($incident->animal_type) {
+                $details[] = $incident->animal_type;
+            }
+            if ($incident->who_category) {
+                $details[] = $incident->who_category;
+            }
+            if ($incident->incident_date) {
+                $details[] = $incident->incident_date;
+            }
+
+            return [
+                'id' => $incident->id,
+                'title' => $caseCode . ($patientName ? ' (' . $patientName . ')' : ''),
+                'subtitle' => implode(' • ', $details),
+                'url' => '/incidents/' . $incident->id,
+            ];
+        })->values();
+
+        // 3. PEP Schedules search
+        $schedules = PepSchedule::query()
+            ->with(['incident.patient:id,full_name,first_name,last_name'])
+            ->where(function ($q) use ($like) {
+                $q->where('dose_day', 'like', $like)
+                    ->orWhere('status', 'like', $like)
+                    ->orWhere('vaccine_type', 'like', $like)
+                    ->orWhereHas('incident.patient', function ($pq) use ($like) {
+                        $pq->where('full_name', 'like', $like)
+                            ->orWhere('first_name', 'like', $like)
+                            ->orWhere('last_name', 'like', $like);
+                    });
+            })
+            ->orderBy('scheduled_date', 'asc')
+            ->limit(5)
+            ->get();
+
+        $scheduleResults = $schedules->map(function (PepSchedule $sched) {
+            $patient = $sched->incident?->patient;
+            $patientName = $patient?->full_name
+                ?: trim(($patient?->first_name ?? '') . ' ' . ($patient?->last_name ?? ''));
+
+            return [
+                'id' => $sched->id,
+                'title' => ($patientName ?: 'Patient') . ' — Day ' . $sched->dose_day . ' Dose',
+                'subtitle' => 'Scheduled: ' . ($sched->scheduled_date ?? 'N/A') . ' • Status: ' . ($sched->status ?? 'Pending'),
+                'url' => '/pep-schedule',
+            ];
+        })->values();
+
+        // 4. Inventory search
+        $inventory = Inventory::query()
+            ->where('item_name', 'like', $like)
+            ->orWhere('brand', 'like', $like)
+            ->orWhere('item_type', 'like', $like)
+            ->limit(5)
+            ->get();
+
+        $inventoryResults = $inventory->map(function (Inventory $item) {
+            $stockText = $item->current_stock . ' ' . ($item->unit ?? 'units') . ' in stock';
+            return [
+                'id' => $item->id,
+                'title' => $item->item_name . ($item->brand ? ' (' . $item->brand . ')' : ''),
+                'subtitle' => ($item->item_type ?? 'Supply') . ' • ' . $stockText,
+                'url' => '/inventory',
+            ];
+        })->values();
+
+        // 5. Users search (only if admin)
+        $userResults = [];
+        $isUserAdmin = in_array($role, ['system_admin', 'clinic_admin', 'admin']);
+        if ($isUserAdmin) {
+            $users = User::query()
+                ->where('name', 'like', $like)
+                ->orWhere('email', 'like', $like)
+                ->orWhere('role', 'like', $like)
+                ->limit(5)
+                ->get();
+
+            $userResults = $users->map(function (User $u) {
+                return [
+                    'id' => $u->id,
+                    'title' => $u->name,
+                    'subtitle' => ($u->email ?? '') . ' • Role: ' . ucwords(str_replace('_', ' ', (string) $u->role)),
+                    'url' => '/users',
+                ];
+            })->values();
+        }
+
+        // 6. Navigation items
+        $navigationMap = [
+            ['title' => 'Dashboard', 'subtitle' => 'Operations overview, key metrics and charts', 'url' => '/dashboard', 'keywords' => 'dashboard home overview stats bite cases'],
+            ['title' => 'Patient Registry', 'subtitle' => 'Search, view, and add patient profiles', 'url' => '/patients', 'keywords' => 'patient registry list records persons profiles'],
+            ['title' => 'New Patient Record', 'subtitle' => 'Register a new patient into the system', 'url' => '/patients/new', 'keywords' => 'new patient add create register'],
+            ['title' => 'Incident Management', 'subtitle' => 'Review logged animal bites and exposures', 'url' => '/incidents', 'keywords' => 'incidents cases animal bite management list'],
+            ['title' => 'New Incident Report', 'subtitle' => 'Log an animal bite or rabies exposure case', 'url' => '/incidents/new', 'keywords' => 'new incident report add log encode'],
+            ['title' => 'PEP Vaccination Schedule', 'subtitle' => 'Track Day 0, 3, 7, 14, 28 doses and completion', 'url' => '/pep-schedule', 'keywords' => 'pep schedule vaccines doses appointments vaccination immunization'],
+            ['title' => 'Inventory & Stocks', 'subtitle' => 'Track anti-rabies vials, serums, lots, and expiry', 'url' => '/inventory', 'keywords' => 'inventory stock vaccines vials medicine supplies tetanus serum'],
+            ['title' => 'GIS Heatmap & Map', 'subtitle' => 'High-risk barangays and spatial bite density', 'url' => '/gis-map', 'keywords' => 'gis map heatmap spatial geographic barangay locations'],
+            ['title' => 'Reports Generation', 'subtitle' => 'Generate and export DOH clinic summaries and CSVs', 'url' => '/reports', 'keywords' => 'reports export csv pdf summary compliance print download'],
+            ['title' => 'Notifications', 'subtitle' => 'View follow-up reminders and SMS dispatch logs', 'url' => '/notifications', 'keywords' => 'notifications alerts reminders sms messages queue'],
+        ];
+
+        $lowerQuery = strtolower($query);
+        $navigationResults = array_values(array_filter($navigationMap, function ($nav) use ($lowerQuery) {
+            return str_contains(strtolower($nav['title']), $lowerQuery)
+                || str_contains(strtolower($nav['subtitle']), $lowerQuery)
+                || str_contains(strtolower($nav['keywords']), $lowerQuery);
+        }));
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'patients' => $patientResults,
+                'incidents' => $incidentResults,
+                'pep_schedules' => $scheduleResults,
+                'inventory' => $inventoryResults,
+                'users' => $userResults,
+                'navigation' => $navigationResults,
+            ],
+        ]);
+    }
+
     private function normalizeTransactionType(?string $type): string
     {
         return match ($type) {
