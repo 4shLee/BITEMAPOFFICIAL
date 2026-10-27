@@ -231,7 +231,7 @@ class BitemapApiController extends Controller
     {
         $filters = $request->validate([
             'page' => ['sometimes', 'integer', 'min:1'],
-            'per_page' => ['sometimes', 'integer', Rule::in([10, 20, 25, 50])],
+            'per_page' => ['sometimes', 'integer', Rule::in([5, 10, 20, 25, 50])],
             'search' => ['sometimes', 'nullable', 'string', 'max:255'],
             'barangay_id' => ['sometimes', 'nullable', 'integer', 'exists:barangays,id'],
         ]);
@@ -349,7 +349,7 @@ class BitemapApiController extends Controller
     {
         $filters = $request->validate([
             'page' => ['sometimes', 'integer', 'min:1'],
-            'per_page' => ['sometimes', 'integer', Rule::in([10, 20, 25, 50])],
+            'per_page' => ['sometimes', 'integer', Rule::in([5, 10, 20, 25, 50])],
             'search' => ['sometimes', 'nullable', 'string', 'max:255'],
             'status' => ['sometimes', 'nullable', Rule::in(['Active', 'Completed', 'Missed', 'Lost to Follow-up'])],
             'barangay_id' => ['sometimes', 'nullable', 'integer', 'exists:barangays,id'],

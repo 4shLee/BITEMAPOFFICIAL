@@ -137,10 +137,11 @@ export function GlobalSearchDropdown() {
 
       // 2. Direct fallback using active module endpoints (guaranteed to match existing database records)
       try {
+        const lowerQuery = debouncedQuery.toLowerCase();
         const [patientsRes, incidentsRes, inventoryRes] = await Promise.allSettled([
-          patientsAPI.getAll({ search: debouncedQuery, per_page: 5 }, controller.signal),
-          incidentsAPI.getAll({ search: debouncedQuery, per_page: 5 }, controller.signal),
-          inventoryAPI.getAll({ search: debouncedQuery, per_page: 5 }, controller.signal),
+          patientsAPI.getAll({ search: debouncedQuery, per_page: 10 }, controller.signal),
+          incidentsAPI.getAll({ search: debouncedQuery, per_page: 10 }, controller.signal),
+          inventoryAPI.getAll(),
         ]);
 
         const patients: GlobalSearchResultItem[] = [];
@@ -149,12 +150,12 @@ export function GlobalSearchDropdown() {
           patientsRes.value?.success &&
           Array.isArray(patientsRes.value.data)
         ) {
-          patientsRes.value.data.forEach((p: any) => {
+          patientsRes.value.data.slice(0, 5).forEach((p: any) => {
             const name =
               p.display_name ||
               p.full_name ||
               `${p.first_name || ''} ${p.last_name || ''}`.trim() ||
-              'Unnamed Patient';
+              'Patient';
             const details: string[] = [];
             if (p.age !== null && p.age !== undefined) details.push(`${p.age} yrs old`);
             if (p.sex) details.push(p.sex);
@@ -176,7 +177,7 @@ export function GlobalSearchDropdown() {
           incidentsRes.value?.success &&
           Array.isArray(incidentsRes.value.data)
         ) {
-          incidentsRes.value.data.forEach((inc: any) => {
+          incidentsRes.value.data.slice(0, 5).forEach((inc: any) => {
             const caseCode =
               inc.case_code || inc.incident_number || `INC-${String(inc.id).padStart(5, '0')}`;
             const patientName = inc.patient_name || inc.patient?.full_name || '';
@@ -200,14 +201,22 @@ export function GlobalSearchDropdown() {
           inventoryRes.value?.success &&
           Array.isArray(inventoryRes.value.data)
         ) {
-          inventoryRes.value.data.forEach((item: any) => {
-            inventory.push({
-              id: item.id,
-              title: item.item_name + (item.brand ? ` (${item.brand})` : ''),
-              subtitle: `${item.item_type || 'Item'} • ${item.current_stock ?? 0} ${item.unit || 'units'} in stock`,
-              url: '/inventory',
+          inventoryRes.value.data
+            .filter((item: any) => {
+              const name = String(item.item_name || '').toLowerCase();
+              const brand = String(item.brand || '').toLowerCase();
+              const type = String(item.item_type || '').toLowerCase();
+              return name.includes(lowerQuery) || brand.includes(lowerQuery) || type.includes(lowerQuery);
+            })
+            .slice(0, 5)
+            .forEach((item: any) => {
+              inventory.push({
+                id: item.id,
+                title: item.item_name + (item.brand ? ` (${item.brand})` : ''),
+                subtitle: `${item.item_type || 'Supply'} • ${item.current_stock ?? 0} ${item.unit || 'units'} in stock`,
+                url: '/inventory',
+              });
             });
-          });
         }
 
         const navPages = [
