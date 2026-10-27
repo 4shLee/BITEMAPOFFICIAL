@@ -11,15 +11,9 @@ import {
   Shield,
   Compass,
   ArrowRight,
-  ExternalLink,
   CornerDownLeft,
 } from 'lucide-react';
 import { searchAPI, type GlobalSearchResultItem } from '../../../lib/services/api';
-
-interface GlobalSearchModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-}
 
 interface FlattenedItem {
   id: string;
@@ -30,11 +24,13 @@ interface FlattenedItem {
   icon: React.ReactNode;
 }
 
-export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
+export function GlobalSearchDropdown() {
   const navigate = useNavigate();
+  const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
+  const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -55,19 +51,30 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
     navigation: [],
   });
 
-  // Focus input when opened
+  // Global Ctrl+K / Cmd+K shortcut listener to focus and open
   useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
         inputRef.current?.focus();
         inputRef.current?.select();
-      }, 50);
-    } else {
-      setQuery('');
-      setDebouncedQuery('');
-      setSelectedIndex(0);
-    }
-  }, [isOpen]);
+        setIsOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, []);
+
+  // Click outside listener to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Debounce search input
   useEffect(() => {
@@ -78,10 +85,8 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
     return () => clearTimeout(handler);
   }, [query]);
 
-  // Fetch search results
+  // Fetch search results from backend
   useEffect(() => {
-    if (!isOpen) return;
-
     if (!debouncedQuery) {
       setResults({
         patients: [],
@@ -117,7 +122,7 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
       });
 
     return () => controller.abort();
-  }, [debouncedQuery, isOpen]);
+  }, [debouncedQuery]);
 
   // Flatten results for keyboard navigation
   const flattenedItems = useMemo<FlattenedItem[]>(() => {
@@ -256,12 +261,20 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
   }, [debouncedQuery, results]);
 
   const handleSelectItem = (item: FlattenedItem) => {
-    onClose();
+    setIsOpen(false);
     navigate(item.url);
   };
 
-  // Keyboard navigation inside modal
+  // Keyboard navigation inside input/dropdown
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!isOpen) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setIsOpen(true);
+      }
+      return;
+    }
+
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       setSelectedIndex((prev) => (prev < flattenedItems.length - 1 ? prev + 1 : 0));
@@ -275,7 +288,8 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
       }
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      onClose();
+      setIsOpen(false);
+      inputRef.current?.blur();
     }
   };
 
@@ -288,10 +302,7 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
     }
   }, [selectedIndex]);
 
-  if (!isOpen) return null;
-
-  const totalResultsCount = flattenedItems.length;
-  const hasResults = totalResultsCount > 0;
+  const hasResults = flattenedItems.length > 0;
 
   // Group items by category for rendering
   const groupedCategories = flattenedItems.reduce<Record<string, FlattenedItem[]>>((acc, item) => {
@@ -303,31 +314,29 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
   }, {});
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 flex items-start justify-center pt-14 sm:pt-20 px-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-150"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-2xl overflow-hidden rounded-2xl border border-border/80 bg-card shadow-2xl shadow-slate-950/20 ring-1 ring-black/5 animate-in zoom-in-95 duration-150"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Search Input Bar */}
-        <div className="relative flex items-center border-b border-border/70 px-4 py-3">
-          <Search className="h-5 w-5 text-muted-foreground mr-3 shrink-0" />
-          <input
-            ref={inputRef}
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Search patients, bite incidents, schedules, inventory..."
-            className="flex-1 bg-transparent text-sm sm:text-base font-medium text-foreground placeholder:text-muted-foreground focus:outline-none"
-          />
+    <div ref={containerRef} className="relative w-full max-w-xl lg:max-w-2xl">
+      {/* Search Input Box */}
+      <div className="relative flex items-center">
+        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors" />
+        <input
+          ref={inputRef}
+          type="search"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setIsOpen(true);
+          }}
+          onFocus={() => setIsOpen(true)}
+          onKeyDown={handleKeyDown}
+          placeholder="Search BITEMAP (patients, bite incidents, schedules, inventory...)"
+          className="h-10 w-full rounded-full border border-input bg-input-background pl-10 pr-24 text-sm shadow-xs transition-all placeholder:text-muted-foreground/80 focus:border-primary/60 focus:bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+        />
+
+        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
           {isLoading && (
-            <Loader2 className="h-4 w-4 animate-spin text-primary mr-2 shrink-0" />
+            <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
           )}
+
           {query && (
             <button
               type="button"
@@ -335,45 +344,48 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
                 setQuery('');
                 inputRef.current?.focus();
               }}
-              className="rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors mr-1"
+              className="rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
               aria-label="Clear search"
             >
-              <X className="h-4 w-4" />
+              <X className="h-3.5 w-3.5" />
             </button>
           )}
-          <kbd className="hidden sm:inline-flex h-5 items-center rounded border border-border bg-muted px-1.5 font-mono text-[11px] font-medium text-muted-foreground">
-            ESC
+
+          <kbd className="pointer-events-none hidden sm:inline-flex h-5 items-center gap-0.5 rounded border border-border bg-muted/80 px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+            <span className="text-[9px]">Ctrl</span>K
           </kbd>
         </div>
+      </div>
 
-        {/* Results List Area */}
-        <div
-          ref={listRef}
-          className="max-h-[60vh] overflow-y-auto p-2 scroll-smooth"
-        >
-          {isLoading && !hasResults && (
-            <div className="py-12 text-center">
-              <Loader2 className="h-6 w-6 animate-spin text-primary mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">Searching BITEMAP database...</p>
-            </div>
-          )}
-
-          {!isLoading && debouncedQuery && !hasResults && (
-            <div className="py-12 text-center px-4">
-              <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground mb-3">
-                <Search className="h-5 w-5" />
+      {/* Dropdown Menu (NOT modal, attached directly underneath the search bar) */}
+      {isOpen && (
+        <div className="absolute left-0 right-0 top-full mt-2 z-50 overflow-hidden rounded-2xl border border-border bg-card shadow-2xl shadow-slate-900/15 ring-1 ring-black/5 animate-in fade-in-0 zoom-in-95 duration-100">
+          <div
+            ref={listRef}
+            className="max-h-[460px] overflow-y-auto p-2 scroll-smooth divide-y divide-border/40"
+          >
+            {isLoading && !hasResults && (
+              <div className="py-10 text-center">
+                <Loader2 className="h-5 w-5 animate-spin text-primary mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">Searching database...</p>
               </div>
-              <p className="text-sm font-semibold text-foreground">No matches found</p>
-              <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
-                No patient, incident, schedule, or inventory record matches &ldquo;{debouncedQuery}&rdquo;. Check spelling or search inside the specific module.
-              </p>
-            </div>
-          )}
+            )}
 
-          {hasResults && (
-            <div className="space-y-4 py-1">
-              {Object.entries(groupedCategories).map(([category, items]) => (
-                <div key={category}>
+            {!isLoading && debouncedQuery && !hasResults && (
+              <div className="py-10 text-center px-4">
+                <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-muted text-muted-foreground mb-2">
+                  <Search className="h-4 w-4" />
+                </div>
+                <p className="text-sm font-semibold text-foreground">No matches found</p>
+                <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
+                  No records match &ldquo;{debouncedQuery}&rdquo;. Try another name, case code, or inventory item.
+                </p>
+              </div>
+            )}
+
+            {hasResults &&
+              Object.entries(groupedCategories).map(([category, items]) => (
+                <div key={category} className="py-2 first:pt-1 last:pb-1">
                   <div className="px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                     {category}
                   </div>
@@ -389,9 +401,9 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
                           data-index={overallIndex}
                           onClick={() => handleSelectItem(item)}
                           onMouseEnter={() => setSelectedIndex(overallIndex)}
-                          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all ${
+                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-all ${
                             isSelected
-                              ? 'bg-primary/10 text-primary-dark font-medium shadow-xs'
+                              ? 'bg-primary/10 text-primary-dark font-medium shadow-2xs'
                               : 'hover:bg-muted/60 text-foreground'
                           }`}
                         >
@@ -405,11 +417,9 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
                             {item.icon}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <p className="text-sm font-semibold truncate leading-snug">
-                                {item.title}
-                              </p>
-                            </div>
+                            <p className="text-sm font-semibold truncate leading-snug">
+                              {item.title}
+                            </p>
                             {item.subtitle && (
                               <p className="text-xs text-muted-foreground truncate mt-0.5">
                                 {item.subtitle}
@@ -418,11 +428,11 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
                           </div>
                           {isSelected ? (
                             <div className="flex items-center gap-1 text-primary text-xs font-semibold shrink-0">
-                              <span className="hidden sm:inline">Open</span>
+                              <span className="hidden sm:inline">Go</span>
                               <CornerDownLeft className="h-3.5 w-3.5" />
                             </div>
                           ) : (
-                            <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
+                            <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0" />
                           )}
                         </button>
                       );
@@ -430,32 +440,30 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
                   </div>
                 </div>
               ))}
-            </div>
-          )}
-        </div>
+          </div>
 
-        {/* Footer shortcuts hint */}
-        <div className="flex items-center justify-between border-t border-border/60 bg-muted/30 px-4 py-2.5 text-[11px] text-muted-foreground">
-          <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1">
-              <kbd className="rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px]">↑</kbd>
-              <kbd className="rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px]">↓</kbd>
-              <span>navigate</span>
-            </span>
-            <span className="flex items-center gap-1">
-              <kbd className="rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px]">↵</kbd>
-              <span>select</span>
-            </span>
-            <span className="flex items-center gap-1">
-              <kbd className="rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px]">esc</kbd>
-              <span>close</span>
+          {/* Bottom subtle shortcut hints */}
+          <div className="flex items-center justify-between border-t border-border/60 bg-muted/30 px-3.5 py-2 text-[11px] text-muted-foreground">
+            <div className="flex items-center gap-2.5">
+              <span className="flex items-center gap-1">
+                <kbd className="rounded border border-border bg-background px-1 py-0.5 font-mono text-[9px]">↑↓</kbd>
+                <span>navigate</span>
+              </span>
+              <span className="flex items-center gap-1">
+                <kbd className="rounded border border-border bg-background px-1 py-0.5 font-mono text-[9px]">↵</kbd>
+                <span>select</span>
+              </span>
+              <span className="flex items-center gap-1">
+                <kbd className="rounded border border-border bg-background px-1 py-0.5 font-mono text-[9px]">esc</kbd>
+                <span>close</span>
+              </span>
+            </div>
+            <span className="text-[10px] text-muted-foreground/75 font-medium">
+              Global Search
             </span>
           </div>
-          <span className="text-[10px] text-muted-foreground/80 font-medium">
-            BITEMAP Global Search
-          </span>
         </div>
-      </div>
+      )}
     </div>
   );
 }
