@@ -179,6 +179,8 @@ class BitemapApiController extends Controller
 
     public function dashboardStats(): JsonResponse
     {
+        $todayStr = today()->toDateString();
+
         $totalCases = Incident::count();
         $activeCases = Incident::where('status', 'Active')->count();
         $completedVaccinations = Incident::where('status', 'Completed')->count();
@@ -201,6 +203,133 @@ class BitemapApiController extends Controller
             ->map(fn (Inventory $item) => $this->inventoryPayload($item))
             ->values();
 
+        // Monthly bite incident trends (last 6 calendar months)
+        $monthlyTrends = collect(range(5, 0))->map(function (int $monthsAgo) {
+            $monthDate = now()->subMonths($monthsAgo);
+            $start = $monthDate->copy()->startOfMonth()->toDateString();
+            $end = $monthDate->copy()->endOfMonth()->toDateString();
+            $cases = Incident::whereBetween('incident_date', [$start, $end])->count();
+            $vaccinated = PepSchedule::whereIn('status', ['Done', 'Completed'])
+                ->where(function ($q) use ($start, $end) {
+                    $q->whereBetween('administered_date', [$start, $end])
+                      ->orWhere(function ($q2) use ($start, $end) {
+                          $q2->whereNull('administered_date')
+                             ->whereBetween('scheduled_date', [$start, $end]);
+                      });
+                })
+                ->count();
+            return [
+                'month' => $monthDate->format('M'),
+                'cases' => $cases,
+                'vaccinated' => $vaccinated,
+            ];
+        })->values();
+
+        // Vaccination compliance breakdown
+        $completedDoses = PepSchedule::whereIn('status', ['Done', 'Completed'])->count();
+        $inProgressCases = Incident::where('status', 'Active')->count();
+        $pendingDosesCount = PepSchedule::whereIn('status', ['Pending', 'Upcoming'])
+            ->whereDate('scheduled_date', '>=', $todayStr)
+            ->count();
+        $overdueDosesCount = PepSchedule::where(function ($q) use ($todayStr) {
+            $q->whereIn('status', ['Overdue', 'Missed'])
+              ->orWhere(function ($q2) use ($todayStr) {
+                  $q2->whereIn('status', ['Pending', 'Upcoming'])
+                     ->whereDate('scheduled_date', '<', $todayStr);
+              });
+        })->count();
+
+        $totalTracked = $completedDoses + $inProgressCases + $pendingDosesCount + $overdueDosesCount;
+        $complianceRate = $totalTracked > 0 ? (int) round(($completedDoses / $totalTracked) * 100) : 0;
+
+        $vaccinationCompliance = [
+            ['name' => 'Completed', 'value' => $completedDoses, 'color' => '#0D9488'],
+            ['name' => 'In Progress', 'value' => $inProgressCases, 'color' => '#06B6D4'],
+            ['name' => 'Pending', 'value' => $pendingDosesCount, 'color' => '#F59E0B'],
+            ['name' => 'Missed Dose', 'value' => $overdueDosesCount, 'color' => '#F43F5E'],
+        ];
+
+        // Animal type distribution
+        $animalPalette = ['#0D9488', '#06B6D4', '#F59E0B', '#64748B', '#8B5CF6'];
+        $animalGroups = Incident::query()
+            ->selectRaw("COALESCE(NULLIF(TRIM(animal_type), ''), 'Other') as animal, count(*) as total")
+            ->groupBy('animal')
+            ->orderByDesc('total')
+            ->get();
+        $totalIncidentsWithAnimal = $animalGroups->sum('total');
+        $animalTypeDistribution = $animalGroups->map(function ($item, $index) use ($totalIncidentsWithAnimal, $animalPalette) {
+            $count = (int) $item->total;
+            $pct = $totalIncidentsWithAnimal > 0 ? (int) round(($count / $totalIncidentsWithAnimal) * 100) : 0;
+            return [
+                'type' => ucfirst(strtolower($item->animal)),
+                'count' => $count,
+                'pct' => $pct,
+                'color' => $animalPalette[$index % count($animalPalette)],
+            ];
+        })->values();
+
+        // High risk / top barangays
+        $highRiskBarangaysList = Barangay::withCount('incidents')
+            ->orderByDesc('incidents_count')
+            ->orderBy('name')
+            ->limit(5)
+            ->get()
+            ->map(function (Barangay $b) {
+                $count = (int) $b->incidents_count;
+                $level = match (true) {
+                    $count >= 15 => 'Critical',
+                    $count >= 8 => 'High',
+                    $count >= 3 => 'Moderate',
+                    default => 'Low',
+                };
+                $dotColor = match ($level) {
+                    'Critical' => '#E11D48',
+                    'High' => '#F43F5E',
+                    'Moderate' => '#F59E0B',
+                    default => '#0D9488',
+                };
+                $badgeClass = match ($level) {
+                    'Critical' => 'text-destructive bg-destructive-bg',
+                    'High' => 'text-warning bg-warning-bg',
+                    'Moderate' => 'text-accent bg-accent-bg',
+                    default => 'text-teal-700 bg-teal-50',
+                };
+                return [
+                    'name' => $b->name,
+                    'cases' => $count,
+                    'level' => $level,
+                    'dotColor' => $dotColor,
+                    'badgeClass' => $badgeClass,
+                ];
+            })->values();
+
+        // Today's PEP schedule for nurse dashboard
+        $todaySchedules = PepSchedule::with(['incident.patient'])
+            ->whereDate('scheduled_date', $todayStr)
+            ->whereNotIn('status', ['Done', 'Completed', 'Cancelled', 'Skipped'])
+            ->orderBy('id')
+            ->limit(5)
+            ->get()
+            ->map(function (PepSchedule $schedule) {
+                return [
+                    'id' => $schedule->id,
+                    'patient' => $schedule->incident?->patient?->full_name ?? 'Patient record pending',
+                    'dose' => 'Day '.$schedule->dose_day,
+                    'time' => '08:00 AM',
+                    'status' => 'Due today',
+                ];
+            })->values();
+
+        // Reminder & notification counts
+        $dosesDueToday = PepSchedule::whereDate('scheduled_date', $todayStr)
+            ->whereNotIn('status', ['Done', 'Completed', 'Cancelled', 'Skipped'])
+            ->count();
+        $remindersSentToday = Notification::whereDate('sent_at', $todayStr)
+            ->where('status', 'Sent')
+            ->count();
+        $remindersPending = Notification::where('status', 'Pending')->count();
+        $totalNotifications = Notification::count();
+
         return response()->json([
             'success' => true,
             'stats' => [
@@ -209,7 +338,18 @@ class BitemapApiController extends Controller
                 'completedVaccinations' => $completedVaccinations,
                 'pendingDoses' => $pendingDoses,
                 'highRiskBarangays' => $highRiskBarangays,
+                'dosesDueToday' => $dosesDueToday,
+                'overdueDoses' => $overdueDosesCount,
+                'remindersSentToday' => $remindersSentToday,
+                'remindersPending' => $remindersPending,
+                'totalNotifications' => $totalNotifications,
+                'complianceRate' => $complianceRate,
             ],
+            'monthlyTrends' => $monthlyTrends,
+            'vaccinationCompliance' => $vaccinationCompliance,
+            'animalTypeDistribution' => $animalTypeDistribution,
+            'highRiskBarangaysList' => $highRiskBarangaysList,
+            'todaySchedules' => $todaySchedules,
             'recentIncidents' => $recentIncidents,
             'lowStockItems' => $lowStockItems,
         ]);

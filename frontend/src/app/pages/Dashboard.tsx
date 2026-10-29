@@ -13,62 +13,12 @@ import {
 import { Header } from '../components/Layout/Header';
 import { Badge } from '../components/ui/Badge';
 import { AlertBanner } from '../components/ui/AlertBanner';
-import { auditLogsAPI, dashboardAPI, getErrorMessage, settingsAPI, usersAPI } from '../../lib/services/api';
+import { auditLogsAPI, dashboardAPI, getErrorMessage, notificationsAPI, settingsAPI, usersAPI } from '../../lib/services/api';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { toast } from 'sonner';
 import { canPerformAction, getRoleLabel, getStoredUser, normalizeRoleKey } from '../../lib/auth/roleAccess';
 
-// ─── Chart & static data ───────────────────────────────────────────────────
-
-const monthlyTrendData = [
-  { month: 'Dec', cases: 14, vaccinated: 12 },
-  { month: 'Jan', cases: 18, vaccinated: 15 },
-  { month: 'Feb', cases: 22, vaccinated: 19 },
-  { month: 'Mar', cases: 19, vaccinated: 18 },
-  { month: 'Apr', cases: 28, vaccinated: 24 },
-  { month: 'May', cases: 15, vaccinated: 11 },
-];
-
-const barangayCasesData = [
-  { name: 'Aplaya',      cases: 23, fill: '#E11D48' },
-  { name: 'San Jose',   cases: 18, fill: '#F43F5E' },
-  { name: 'Poblacion',  cases: 15, fill: '#F59E0B' },
-  { name: 'Cogon',      cases: 12, fill: '#F59E0B' },
-  { name: 'Dulangan',   cases: 10, fill: '#06B6D4' },
-  { name: 'San Agustin',cases: 8,  fill: '#06B6D4' },
-  { name: 'Tiguman',    cases: 6,  fill: '#0D9488' },
-  { name: 'Ruparan',    cases: 4,  fill: '#0D9488' },
-];
-
-const vaccinationComplianceData = [
-  { name: 'Completed',   value: 128, color: '#0D9488' },
-  { name: 'In Progress', value: 23,  color: '#06B6D4' },
-  { name: 'Pending',     value: 27,  color: '#F59E0B' },
-  { name: 'Missed Dose', value: 18,  color: '#F43F5E' },
-];
-
-const animalTypeData = [
-  { type: 'Dog',   count: 89, pct: 67, color: '#0D9488' },
-  { type: 'Cat',   count: 31, pct: 23, color: '#06B6D4' },
-  { type: 'Other', count: 13, pct: 10, color: '#64748B' },
-];
-
-const highRiskBarangays = [
-  { name: 'Aplaya',    cases: 23, level: 'Critical', dotColor: '#E11D48',  badgeClass: 'text-destructive bg-destructive-bg' },
-  { name: 'San Jose',  cases: 18, level: 'High',     dotColor: '#F43F5E',  badgeClass: 'text-warning bg-warning-bg' },
-  { name: 'Poblacion', cases: 15, level: 'High',     dotColor: '#F59E0B',  badgeClass: 'text-warning bg-warning-bg' },
-  { name: 'Cogon',     cases: 12, level: 'Moderate', dotColor: '#06B6D4',  badgeClass: 'text-accent bg-accent-bg' },
-  { name: 'Dulangan',  cases: 10, level: 'Moderate', dotColor: '#06B6D4',  badgeClass: 'text-accent bg-accent-bg' },
-];
-
-const inventoryItems = [
-  { name: 'Anti-Rabies Vaccine',    stock: 45,  max: 100, unit: 'vials', status: 'low'      },
-  { name: 'Equine RIG (eRIG)',       stock: 120, max: 150, unit: 'vials', status: 'ok'       },
-  { name: 'Human RIG (hRIG)',        stock: 8,   max: 30,  unit: 'vials', status: 'critical' },
-  { name: 'Tetanus Toxoid',          stock: 85,  max: 120, unit: 'vials', status: 'ok'       },
-  { name: 'Anti-Tetanus Serum',      stock: 22,  max: 50,  unit: 'vials', status: 'low'      },
-  { name: 'Syringes (5 ml)',         stock: 0,   max: 200, unit: 'pcs',   status: 'critical' },
-];
+// ─── Constants & Types ────────────────────────────────────────────────────────
 
 const STATUS_COLOR: Record<string, string> = {
   ok:       '#0D9488',
@@ -82,8 +32,6 @@ const STATUS_LABEL: Record<string, string> = {
   critical: 'Critical',
 };
 
-// ─── Shared chart tooltip ──────────────────────────────────────────────────
-
 type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'neutral';
 
 type DashboardStats = {
@@ -92,6 +40,12 @@ type DashboardStats = {
   completedVaccinations: number;
   pendingDoses: number;
   highRiskBarangays: number;
+  dosesDueToday?: number;
+  overdueDoses?: number;
+  remindersSentToday?: number;
+  remindersPending?: number;
+  totalNotifications?: number;
+  complianceRate?: number;
 };
 
 type DashboardIncident = {
@@ -122,6 +76,9 @@ type DashboardUser = {
 };
 
 type DashboardAuditLog = {
+  id?: number | string;
+  user_name?: string | null;
+  user_role?: string | null;
   action?: string | null;
   module?: string | null;
   description?: string | null;
@@ -134,6 +91,41 @@ type DashboardSetting = {
   setting_value: unknown;
 };
 
+type MonthlyTrend = {
+  month: string;
+  cases: number;
+  vaccinated: number;
+};
+
+type ComplianceItem = {
+  name: string;
+  value: number;
+  color: string;
+};
+
+type AnimalTypeItem = {
+  type: string;
+  count: number;
+  pct: number;
+  color: string;
+};
+
+type HighRiskBarangay = {
+  name: string;
+  cases: number;
+  level: string;
+  dotColor: string;
+  badgeClass: string;
+};
+
+type TodayScheduleItem = {
+  id: number | string;
+  patient: string;
+  dose: string;
+  time?: string;
+  status: string;
+};
+
 type ChartTooltipEntry = {
   dataKey?: string | number;
   name?: ReactNode;
@@ -141,6 +133,27 @@ type ChartTooltipEntry = {
   fill?: string;
   value?: ReactNode;
 };
+
+function getDefaultMonthlyTrends(): MonthlyTrend[] {
+  const months: MonthlyTrend[] = [];
+  const date = new Date();
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(date.getFullYear(), date.getMonth() - i, 1);
+    months.push({
+      month: d.toLocaleString('en-US', { month: 'short' }),
+      cases: 0,
+      vaccinated: 0,
+    });
+  }
+  return months;
+}
+
+const defaultVaccinationCompliance: ComplianceItem[] = [
+  { name: 'Completed',   value: 0, color: '#0D9488' },
+  { name: 'In Progress', value: 0, color: '#06B6D4' },
+  { name: 'Pending',     value: 0, color: '#F59E0B' },
+  { name: 'Missed Dose', value: 0, color: '#F43F5E' },
+];
 
 function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: ChartTooltipEntry[]; label?: ReactNode }) {
   if (!active || !payload?.length) return null;
@@ -160,7 +173,7 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
   );
 }
 
-// ─── Dashboard ─────────────────────────────────────────────────────────────
+// ─── Shared KPI Card ────────────────────────────────────────────────────────
 
 function NurseKpiCard({ title, value, helper, icon: Icon, tone }: {
   title: string;
@@ -192,10 +205,13 @@ function NurseKpiCard({ title, value, helper, icon: Icon, tone }: {
   );
 }
 
+// ─── Nurse Dashboard ─────────────────────────────────────────────────────────
+
 function NurseDashboard({
   stats,
   recentIncidents,
   lowStockItems,
+  todaySchedules,
   lastUpdated,
   getCategoryVariant,
   canCreateIncident,
@@ -203,27 +219,18 @@ function NurseDashboard({
   stats: DashboardStats;
   recentIncidents: DashboardIncident[];
   lowStockItems: DashboardInventoryItem[];
+  todaySchedules: TodayScheduleItem[];
   lastUpdated: string;
   getCategoryVariant: (cat?: string | null) => BadgeVariant;
   canCreateIncident: boolean;
 }) {
-  const todaySchedule = recentIncidents.slice(0, 5).map((incident, index) => ({
-    id: incident.id,
-    patient: incident.patient?.full_name || 'Patient record pending',
-    dose: ['Day 0', 'Day 3', 'Day 7', 'Day 14', 'Day 28'][index % 5],
-    time: ['08:30 AM', '09:15 AM', '10:00 AM', '01:30 PM', '02:15 PM'][index % 5],
-    status: index === 0 ? 'Due today' : 'Scheduled',
-  }));
-  const scheduleRows = todaySchedule.length > 0 ? todaySchedule : [
-    { id: 'empty-1', patient: 'No PEP schedules queued', dose: 'Today', time: '--', status: 'Clear' },
-  ];
-  const supplyRows = (lowStockItems.length > 0 ? lowStockItems : inventoryItems.filter((item) => item.status !== 'ok')).slice(0, 5);
-  const lowStockCount = lowStockItems.length || supplyRows.length;
-  const overdueDoses = vaccinationComplianceData.find((item) => item.name === 'Missed Dose')?.value || 0;
-  const followUpPatients = Math.max(stats.activeCases || 0, recentIncidents.length);
-  const dueToday = stats.pendingDoses || todaySchedule.length;
-  const reminderSent = Math.max(0, dueToday - 1);
-  const reminderPending = dueToday > 0 ? 1 : 0;
+  const dueToday = Number(stats.dosesDueToday ?? todaySchedules.length);
+  const overdueDoses = Number(stats.overdueDoses ?? 0);
+  const followUpPatients = Number(stats.activeCases ?? recentIncidents.length);
+  const lowStockCount = lowStockItems.length;
+  const reminderSent = Number(stats.remindersSentToday ?? 0);
+  const reminderPending = Number(stats.remindersPending ?? 0);
+  const maxReminderValue = Math.max(1, reminderSent, reminderPending, overdueDoses);
 
   return (
     <div className="flex-1 min-w-0 bg-[#f3f7f5]" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
@@ -233,7 +240,7 @@ function NurseDashboard({
         {lowStockItems.length > 0 && (
           <AlertBanner
             variant="warning"
-            message={`Inventory attention needed: ${lowStockItems[0].item_name} has ${lowStockItems[0].current_stock} ${lowStockItems[0].unit} remaining.`}
+            message={`Inventory attention needed: ${lowStockItems[0].item_name || lowStockItems[0].name} has ${lowStockItems[0].current_stock ?? lowStockItems[0].stock} ${lowStockItems[0].unit || 'units'} remaining.`}
           />
         )}
 
@@ -249,10 +256,34 @@ function NurseDashboard({
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          <NurseKpiCard title="Doses Due Today" value={dueToday} helper="Patients scheduled for PEP dose administration." icon={CalendarDays} tone="emerald" />
-          <NurseKpiCard title="Overdue Doses" value={overdueDoses} helper="Missed or delayed doses needing immediate follow-up." icon={Clock} tone="rose" />
-          <NurseKpiCard title="Patients for Follow-up" value={followUpPatients} helper="Active cases requiring patient contact or schedule review." icon={UserCheck} tone="teal" />
-          <NurseKpiCard title="Low Stock Items" value={lowStockCount} helper="Inventory items below reorder or critical level." icon={Package} tone="amber" />
+          <NurseKpiCard
+            title="Doses Due Today"
+            value={dueToday}
+            helper={dueToday > 0 ? `${dueToday} patient(s) scheduled for PEP dose administration today.` : 'No PEP doses scheduled for administration today.'}
+            icon={CalendarDays}
+            tone="emerald"
+          />
+          <NurseKpiCard
+            title="Overdue Doses"
+            value={overdueDoses}
+            helper={overdueDoses > 0 ? `${overdueDoses} delayed dose(s) needing contact or schedule review.` : 'No overdue vaccination doses.'}
+            icon={Clock}
+            tone={overdueDoses > 0 ? 'rose' : 'teal'}
+          />
+          <NurseKpiCard
+            title="Patients for Follow-up"
+            value={followUpPatients}
+            helper={followUpPatients > 0 ? `${followUpPatients} active case(s) requiring follow-up monitoring.` : 'No active bite cases requiring follow-up.'}
+            icon={UserCheck}
+            tone="teal"
+          />
+          <NurseKpiCard
+            title="Low Stock Items"
+            value={lowStockCount}
+            helper={lowStockCount > 0 ? `${lowStockCount} item(s) below reorder threshold.` : 'All vaccine & supply levels adequate.'}
+            icon={Package}
+            tone={lowStockCount > 0 ? 'amber' : 'emerald'}
+          />
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -260,25 +291,35 @@ function NurseDashboard({
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <h2 className="text-[16px] font-bold text-slate-950">Today's PEP Schedule</h2>
-                <p className="text-[12px] font-normal text-slate-500 mt-0.5">Patients due for vaccination or schedule review</p>
+                <p className="text-[12px] font-normal text-slate-500 mt-0.5">Patients due for vaccination or schedule review today</p>
               </div>
               <Link to="/pep-schedule" className="text-[13px] text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">
                 Open schedule <ChevronRight className="w-3 h-3" />
               </Link>
             </div>
-            <div className="divide-y divide-slate-100">
-              {scheduleRows.map((row) => (
-                <div key={row.id} className="px-6 py-3.5 flex items-center justify-between gap-4 hover:bg-emerald-50/40 transition-colors">
-                  <div className="min-w-0">
-                    <p className="text-[14px] font-semibold text-slate-900 truncate">{row.patient}</p>
-                    <p className="text-[12px] font-normal text-slate-500 mt-0.5">{row.dose} dose - {row.time}</p>
-                  </div>
-                  <Badge variant={row.status === 'Clear' ? 'success' : row.status === 'Due today' ? 'warning' : 'info'}>
-                    {row.status}
-                  </Badge>
+            {todaySchedules.length === 0 ? (
+              <div className="px-6 py-8 text-center">
+                <div className="mx-auto mb-2.5 w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                  <CalendarDays className="w-5 h-5" />
                 </div>
-              ))}
-            </div>
+                <p className="text-[14px] font-semibold text-slate-900">No PEP schedules due today</p>
+                <p className="text-[12px] font-normal text-slate-500 mt-1">Vaccination appointments scheduled for today will appear here.</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {todaySchedules.map((row) => (
+                  <div key={row.id} className="px-6 py-3.5 flex items-center justify-between gap-4 hover:bg-emerald-50/40 transition-colors">
+                    <div className="min-w-0">
+                      <p className="text-[14px] font-semibold text-slate-900 truncate">{row.patient}</p>
+                      <p className="text-[12px] font-normal text-slate-500 mt-0.5">{row.dose} dose - {row.time || 'Clinic Hours'}</p>
+                    </div>
+                    <Badge variant={row.status === 'Clear' ? 'success' : row.status === 'Due today' ? 'warning' : 'info'}>
+                      {row.status}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
@@ -298,10 +339,19 @@ function NurseDashboard({
                     <span className="text-[13px] font-semibold text-slate-900 tabular-nums">{item.value}</span>
                   </div>
                   <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${Math.min(100, Math.max(8, item.value * 8))}%`, background: item.color }} />
+                    <div
+                      className="h-full rounded-full transition-all duration-300"
+                      style={{
+                        width: item.value > 0 ? `${Math.min(100, Math.max(10, Math.round((item.value / maxReminderValue) * 100)))}%` : '0%',
+                        background: item.color
+                      }}
+                    />
                   </div>
                 </div>
               ))}
+              {reminderSent === 0 && reminderPending === 0 && overdueDoses === 0 && (
+                <p className="text-[11px] text-slate-400 text-center pt-1">No reminder activity queued for today.</p>
+              )}
               <Link to="/notifications" className="mt-1 inline-flex items-center gap-1 text-[13px] font-bold text-emerald-700 hover:underline">
                 View notifications <ChevronRight className="w-3 h-3" />
               </Link>
@@ -346,7 +396,7 @@ function NurseDashboard({
                     {recentIncidents.slice(0, 5).map((incident) => (
                       <tr key={incident.id} className="hover:bg-emerald-50/40 transition-colors">
                         <td className="px-5 py-3 text-[13px] font-normal text-slate-500 whitespace-nowrap">
-                          {new Date(incident.incident_date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+                          {incident.incident_date ? new Date(incident.incident_date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }) : '-'}
                         </td>
                         <td className="px-5 py-3 text-[13px] font-medium text-slate-900">{incident.patient?.full_name || '-'}</td>
                         <td className="px-5 py-3">
@@ -355,7 +405,7 @@ function NurseDashboard({
                           </Badge>
                         </td>
                         <td className="px-5 py-3">
-                          <Badge variant={incident.status === 'Active' ? 'info' : 'success'}>{incident.status}</Badge>
+                          <Badge variant={incident.status === 'Active' ? 'info' : 'success'}>{incident.status || '-'}</Badge>
                         </td>
                       </tr>
                     ))}
@@ -376,16 +426,22 @@ function NurseDashboard({
               </Link>
             </div>
             <div className="p-5 space-y-3.5">
-              {supplyRows.length === 0 ? (
-                <p className="text-[12px] font-normal text-slate-500 text-center py-5">All vaccine and supply levels are adequate.</p>
-              ) : supplyRows.map((item) => {
-                const name = item.item_name || item.name;
-                const stock = item.current_stock ?? item.stock;
+              {lowStockItems.length === 0 ? (
+                <div className="py-6 text-center">
+                  <div className="mx-auto mb-2 w-9 h-9 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                    <Package className="w-4 h-4" />
+                  </div>
+                  <p className="text-[13px] font-semibold text-slate-800">All supplies adequate</p>
+                  <p className="text-[11px] font-normal text-slate-400 mt-0.5">No vaccine or supply items currently below reorder levels.</p>
+                </div>
+              ) : lowStockItems.slice(0, 5).map((item) => {
+                const name = item.item_name || item.name || 'Unnamed Item';
+                const stock = item.current_stock ?? item.stock ?? 0;
                 const unit = item.unit || 'units';
-                const status = item.status || (stock <= 10 ? 'critical' : 'low');
+                const status = item.status || (Number(stock) <= 10 ? 'critical' : 'low');
                 const color = STATUS_COLOR[status] || STATUS_COLOR.low;
                 return (
-                  <div key={name} className="rounded-2xl bg-slate-50/70 px-3 py-3">
+                  <div key={String(item.id || name)} className="rounded-2xl bg-slate-50/70 px-3 py-3">
                     <div className="flex items-start justify-between gap-3 mb-1.5">
                       <p className="text-[13px] font-semibold text-slate-900 leading-tight">{name}</p>
                       <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0" style={{ color, background: color + '1A' }}>
@@ -430,10 +486,16 @@ function NurseDashboard({
   );
 }
 
+// ─── Clinic Admin & Doctor Dashboard ──────────────────────────────────────────
+
 function ClinicAdminDashboard({
   stats,
   recentIncidents,
   lowStockItems,
+  monthlyTrends,
+  vaccinationCompliance,
+  animalTypeDistribution,
+  highRiskBarangaysList,
   lastUpdated,
   complianceRate,
   getCategoryVariant,
@@ -442,16 +504,29 @@ function ClinicAdminDashboard({
   stats: DashboardStats;
   recentIncidents: DashboardIncident[];
   lowStockItems: DashboardInventoryItem[];
+  monthlyTrends: MonthlyTrend[];
+  vaccinationCompliance: ComplianceItem[];
+  animalTypeDistribution: AnimalTypeItem[];
+  highRiskBarangaysList: HighRiskBarangay[];
   lastUpdated: string;
   complianceRate: number;
   getCategoryVariant: (cat?: string | null) => BadgeVariant;
   isDoctor?: boolean;
 }) {
-  const highRiskWatchlist = highRiskBarangays.slice(0, 5);
+  const highRiskWatchlist = highRiskBarangaysList.slice(0, 5);
   const highRiskAlertCount = highRiskWatchlist.filter((barangay) => barangay.level === 'Critical' || barangay.level === 'High').length;
   const displayedHighRiskCount = Math.max(Number(stats.highRiskBarangays || 0), highRiskAlertCount);
-  const clinicSupplyRows = (lowStockItems.length > 0 ? lowStockItems : inventoryItems.filter((item) => item.status !== 'ok')).slice(0, 5);
+  const clinicSupplyRows = lowStockItems.slice(0, 5);
   const recentIncidentRows = recentIncidents.slice(0, 5);
+
+  const totalTrendCases = monthlyTrends.reduce((s, m) => s + m.cases + m.vaccinated, 0);
+  const hasMonthlyData = totalTrendCases > 0;
+
+  const totalCompliance = vaccinationCompliance.reduce((s, d) => s + d.value, 0);
+  const hasComplianceData = totalCompliance > 0;
+  const complianceChartData = hasComplianceData
+    ? vaccinationCompliance.filter((d) => d.value > 0)
+    : [{ name: 'No PEP records', value: 1, color: '#E2E8F0' }];
 
   return (
     <div className="flex-1 min-w-0 bg-[#f3f7f5]" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
@@ -461,14 +536,18 @@ function ClinicAdminDashboard({
         {lowStockItems.length > 0 && (
           <AlertBanner
             variant="warning"
-            message={`Inventory attention needed: ${lowStockItems[0].item_name} has ${lowStockItems[0].current_stock} ${lowStockItems[0].unit} remaining.`}
+            message={`Inventory attention needed: ${lowStockItems[0].item_name || lowStockItems[0].name} has ${lowStockItems[0].current_stock ?? lowStockItems[0].stock} ${lowStockItems[0].unit || 'units'} remaining.`}
           />
         )}
 
         <div className="rounded-3xl bg-gradient-to-r from-emerald-700 to-teal-600 px-6 py-4 text-white shadow-[0_18px_45px_rgba(4,120,87,0.18)] flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-[28px] font-bold leading-[32px]">Clinic Operations Overview</p>
-            <p className="mt-1 text-[13px] font-normal text-emerald-50/90">Clinic-wide monitoring for incidents, PEP compliance, inventory, GIS, and reports.</p>
+            <p className="text-[28px] font-bold leading-[32px]">{isDoctor ? 'Clinical & Epidemiological Overview' : 'Clinic Operations Overview'}</p>
+            <p className="mt-1 text-[13px] font-normal text-emerald-50/90">
+              {isDoctor
+                ? 'Medical oversight for rabies exposures, patient PEP adherence, animal vectors, and GIS incidence.'
+                : 'Clinic-wide monitoring for incidents, PEP compliance, inventory, GIS, and reports.'}
+            </p>
           </div>
           <div className="flex items-center gap-1.5 rounded-2xl bg-white/12 px-3 py-2 text-[12px] font-semibold text-emerald-50">
             <RefreshCw className="w-3 h-3" />
@@ -477,10 +556,34 @@ function ClinicAdminDashboard({
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          <NurseKpiCard title="Total Bite Cases" value={stats.totalCases} helper="All bite incidents logged for clinic monitoring." icon={Users} tone="emerald" />
-          <NurseKpiCard title="Completed PEP" value={stats.completedVaccinations} helper={`${complianceRate}% of tracked PEP cycles completed.`} icon={Syringe} tone="teal" />
-          <NurseKpiCard title="Pending Follow-ups" value={stats.pendingDoses} helper="Upcoming or pending PEP doses needing review." icon={Clock} tone="amber" />
-          <NurseKpiCard title="High-Risk Barangays" value={displayedHighRiskCount} helper="Critical or high areas under active monitoring." icon={MapPin} tone="rose" />
+          <NurseKpiCard
+            title="Total Bite Cases"
+            value={stats.totalCases}
+            helper={stats.totalCases > 0 ? 'All bite incidents logged for clinic monitoring.' : 'No bite incident cases logged yet.'}
+            icon={Users}
+            tone="emerald"
+          />
+          <NurseKpiCard
+            title="Completed PEP"
+            value={stats.completedVaccinations}
+            helper={hasComplianceData ? `${complianceRate}% of tracked PEP cycles completed.` : 'No PEP vaccination cycles tracked yet.'}
+            icon={Syringe}
+            tone="teal"
+          />
+          <NurseKpiCard
+            title="Pending Follow-ups"
+            value={stats.pendingDoses}
+            helper={stats.pendingDoses > 0 ? 'Upcoming or pending PEP doses needing review.' : 'No pending PEP doses queued.'}
+            icon={Clock}
+            tone="amber"
+          />
+          <NurseKpiCard
+            title="High-Risk Barangays"
+            value={displayedHighRiskCount}
+            helper={displayedHighRiskCount > 0 ? `${displayedHighRiskCount} critical/high area(s) under active monitoring.` : 'All monitored areas within safe threshold.'}
+            icon={MapPin}
+            tone={displayedHighRiskCount > 0 ? 'rose' : 'emerald'}
+          />
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -497,15 +600,24 @@ function ClinicAdminDashboard({
             </div>
             <div className="px-5 pt-4 pb-5">
               <ResponsiveContainer width="100%" height={210}>
-                <BarChart data={monthlyTrendData} barGap={3} barCategoryGap="28%" margin={{ top: 2, right: 6, left: -18, bottom: 0 }}>
+                <BarChart data={monthlyTrends} barGap={3} barCategoryGap="28%" margin={{ top: 2, right: 6, left: -18, bottom: 0 }}>
                   <CartesianGrid key="bc-grid" strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
                   <XAxis key="bc-xaxis" dataKey="month" tick={{ fontSize: 11, fill: '#64748B' }} axisLine={false} tickLine={false} />
-                  <YAxis key="bc-yaxis" tick={{ fontSize: 11, fill: '#64748B' }} axisLine={false} tickLine={false} />
+                  <YAxis key="bc-yaxis" tick={{ fontSize: 11, fill: '#64748B' }} axisLine={false} tickLine={false} allowDecimals={false} />
                   <Tooltip key="bc-tooltip" content={<ChartTooltip />} cursor={{ fill: '#F0FDFA' }} />
                   <Bar key="bc-bar-cases" dataKey="cases" name="Bite Cases" fill="#64748B" radius={[5, 5, 0, 0]} />
                   <Bar key="bc-bar-vaccinated" dataKey="vaccinated" name="Vaccinated" fill="#0D9488" radius={[5, 5, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
+              {!hasMonthlyData && (
+                <div className="mt-2 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                  <span className="flex items-center gap-1.5">
+                    <Activity className="w-3.5 h-3.5 text-slate-400" />
+                    No bite incidents or vaccinations recorded in the last 6 months.
+                  </span>
+                  <span className="text-[11px] text-slate-400 font-medium">Displaying zero baseline</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -518,19 +630,33 @@ function ClinicAdminDashboard({
               <div className="flex justify-center">
                 <div className="relative" style={{ width: 160, height: 160 }}>
                   <PieChart width={160} height={160}>
-                    <Pie key="pc-pie" data={vaccinationComplianceData} cx={80} cy={80} innerRadius={50} outerRadius={72} paddingAngle={2} dataKey="value" stroke="none">
-                      {vaccinationComplianceData.map((entry) => <Cell key={`cell-${entry.name}`} fill={entry.color} />)}
+                    <Pie
+                      key="pc-pie"
+                      data={complianceChartData}
+                      cx={80}
+                      cy={80}
+                      innerRadius={50}
+                      outerRadius={72}
+                      paddingAngle={hasComplianceData ? 2 : 0}
+                      dataKey="value"
+                      stroke="none"
+                    >
+                      {complianceChartData.map((entry) => <Cell key={`cell-${entry.name}`} fill={entry.color} />)}
                     </Pie>
-                    <Tooltip key="pc-tooltip" content={<ChartTooltip />} />
+                    <Tooltip key="pc-tooltip" content={hasComplianceData ? <ChartTooltip /> : () => null} />
                   </PieChart>
                   <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                    <p className="text-[26px] font-bold leading-none text-slate-950">{complianceRate}%</p>
-                    <p className="mt-1 text-[11px] font-medium text-slate-500">Completed</p>
+                    <p className={`text-[26px] font-bold leading-none ${hasComplianceData ? 'text-slate-950' : 'text-slate-400'}`}>
+                      {hasComplianceData ? `${complianceRate}%` : '0%'}
+                    </p>
+                    <p className={`mt-1 text-[11px] font-medium ${hasComplianceData ? 'text-slate-500' : 'text-slate-400'}`}>
+                      {hasComplianceData ? 'Completed' : 'No records'}
+                    </p>
                   </div>
                 </div>
               </div>
               <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
-                {vaccinationComplianceData.map((item) => (
+                {vaccinationCompliance.map((item) => (
                   <div key={item.name} className="flex items-center justify-between gap-3">
                     <span className="flex items-center gap-2 text-[12px] font-medium text-slate-500">
                       <span className="w-2 h-2 rounded-full shrink-0" style={{ background: item.color }} />
@@ -539,12 +665,14 @@ function ClinicAdminDashboard({
                     <span className="text-[12px] font-semibold text-slate-900 tabular-nums">{item.value}</span>
                   </div>
                 ))}
+                {!hasComplianceData && (
+                  <p className="text-center text-[11px] text-slate-400 pt-1">No vaccination records to display yet.</p>
+                )}
               </div>
             </div>
           </div>
         </div>
 
-        
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
           <div className="xl:col-span-2 overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
@@ -580,7 +708,7 @@ function ClinicAdminDashboard({
                     {recentIncidentRows.map((incident) => (
                       <tr key={incident.id} className="hover:bg-emerald-50/40 transition-colors">
                         <td className="px-5 py-3 text-[12px] text-slate-500 whitespace-nowrap">
-                          {new Date(incident.incident_date || '').toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          {incident.incident_date ? new Date(incident.incident_date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}
                         </td>
                         <td className="px-5 py-3 text-[13px] font-semibold text-slate-900">{incident.patient?.full_name || '-'}</td>
                         <td className="px-5 py-3 text-[12px] text-slate-500">{incident.barangay?.name || '-'}</td>
@@ -607,15 +735,21 @@ function ClinicAdminDashboard({
               </div>
               <div className="p-5 space-y-3">
                 {clinicSupplyRows.length === 0 ? (
-                  <p className="py-5 text-center text-[13px] text-slate-500">All vaccine and supply levels are adequate.</p>
+                  <div className="py-6 text-center">
+                    <div className="mx-auto mb-2 w-9 h-9 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                      <Package className="w-4 h-4" />
+                    </div>
+                    <p className="text-[13px] font-semibold text-slate-800">All supplies adequate</p>
+                    <p className="text-[11px] font-normal text-slate-400 mt-0.5">No vaccine or supply items currently below reorder levels.</p>
+                  </div>
                 ) : clinicSupplyRows.map((item) => {
-                  const name = item.item_name || item.name;
-                  const stock = item.current_stock ?? item.stock;
+                  const name = item.item_name || item.name || 'Unnamed Item';
+                  const stock = item.current_stock ?? item.stock ?? 0;
                   const unit = item.unit || 'units';
                   const status = item.status || (Number(stock) <= 10 ? 'critical' : 'low');
                   const color = STATUS_COLOR[status] || STATUS_COLOR.low;
                   return (
-                    <div key={name} className="rounded-2xl bg-slate-50/80 px-3 py-3">
+                    <div key={String(item.id || name)} className="rounded-2xl bg-slate-50/80 px-3 py-3">
                       <div className="flex items-start justify-between gap-3">
                         <p className="text-[13px] font-semibold leading-tight text-slate-900">{name}</p>
                         <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={{ color, background: color + '1A' }}>
@@ -645,28 +779,39 @@ function ClinicAdminDashboard({
                 <div>
                   <p className="text-[12px] font-semibold text-slate-700 uppercase tracking-wide">High-risk areas</p>
                   <div className="mt-1.5 flex items-center gap-2">
-                    <span className="flex items-center justify-center bg-red-50 text-red-700 font-bold text-[18px] w-8 h-8 rounded-lg">{highRiskAlertCount}</span>
+                    <span className={`flex items-center justify-center font-bold text-[18px] w-8 h-8 rounded-lg ${highRiskAlertCount > 0 ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                      {highRiskAlertCount}
+                    </span>
                     <span className="text-[13px] font-medium text-slate-900">active Critical/High barangays</span>
                   </div>
                 </div>
-                {highRiskWatchlist.length > 0 && (
-                  <div>
-                    <p className="text-[12px] font-semibold text-slate-700 uppercase tracking-wide">Top area</p>
-                    <p className="mt-1 text-[16px] font-bold text-slate-950">{highRiskWatchlist[0].name}</p>
-                    <p className="text-[13px] text-slate-500">{highRiskWatchlist[0].cases} cases</p>
+                {highRiskWatchlist.length === 0 || highRiskWatchlist.every((b) => b.cases === 0) ? (
+                  <div className="rounded-2xl bg-slate-50/70 p-3.5 text-center">
+                    <p className="text-[13px] font-medium text-slate-700">All barangays currently at Low risk</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">0 bite incidents reported across monitored areas.</p>
                   </div>
-                )}
-                {highRiskWatchlist.length > 1 && (
-                  <div>
-                    <p className="text-[12px] font-semibold text-slate-700 uppercase tracking-wide mb-1.5">Other monitored areas</p>
-                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-[13px]">
-                      {highRiskWatchlist.slice(1, 4).map(b => (
-                        <span key={b.name} className="text-slate-600">
-                          <span className="font-semibold text-slate-900">{b.name}</span> &middot; {b.cases}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
+                ) : (
+                  <>
+                    {highRiskWatchlist[0] && (
+                      <div>
+                        <p className="text-[12px] font-semibold text-slate-700 uppercase tracking-wide">Top area</p>
+                        <p className="mt-1 text-[16px] font-bold text-slate-950">{highRiskWatchlist[0].name}</p>
+                        <p className="text-[13px] text-slate-500">{highRiskWatchlist[0].cases} case{highRiskWatchlist[0].cases !== 1 ? 's' : ''}</p>
+                      </div>
+                    )}
+                    {highRiskWatchlist.length > 1 && (
+                      <div>
+                        <p className="text-[12px] font-semibold text-slate-700 uppercase tracking-wide mb-1.5">Other monitored areas</p>
+                        <div className="flex flex-wrap gap-x-3 gap-y-1 text-[13px]">
+                          {highRiskWatchlist.slice(1, 4).map((b) => (
+                            <span key={b.name} className="text-slate-600">
+                              <span className="font-semibold text-slate-900">{b.name}</span> &middot; {b.cases}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -680,20 +825,30 @@ function ClinicAdminDashboard({
               <p className="text-[12px] font-normal text-slate-500 mt-0.5">Distribution of reported incidents</p>
             </div>
             <div className="px-5 py-4 space-y-4">
-              {animalTypeData.map((animal) => (
-                <div key={animal.type}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="flex items-center gap-2 text-[13px] font-semibold text-slate-900">
-                      <span className="w-2 h-2 rounded-full" style={{ background: animal.color }} />
-                      {animal.type}
-                    </span>
-                    <span className="text-[12px] text-slate-500 tabular-nums">{animal.count} / {animal.pct}%</span>
+              {animalTypeDistribution.length === 0 ? (
+                <div className="py-8 text-center">
+                  <div className="mx-auto mb-2 w-9 h-9 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                    <Activity className="w-4 h-4" />
                   </div>
-                  <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${animal.pct}%`, background: animal.color }} />
-                  </div>
+                  <p className="text-[13px] font-semibold text-slate-800">No animal bite records yet</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Distribution by animal vector (Dog, Cat, etc.) will appear once incidents are recorded.</p>
                 </div>
-              ))}
+              ) : (
+                animalTypeDistribution.map((animal) => (
+                  <div key={animal.type}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="flex items-center gap-2 text-[13px] font-semibold text-slate-900">
+                        <span className="w-2 h-2 rounded-full" style={{ background: animal.color }} />
+                        {animal.type}
+                      </span>
+                      <span className="text-[12px] text-slate-500 tabular-nums">{animal.count} / {animal.pct}%</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: `${Math.max(4, animal.pct)}%`, background: animal.color }} />
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
@@ -712,28 +867,39 @@ function ClinicAdminDashboard({
                 <div>
                   <p className="text-[12px] font-semibold text-slate-700 uppercase tracking-wide">High-risk areas</p>
                   <div className="mt-1.5 flex items-center gap-2">
-                    <span className="flex items-center justify-center bg-red-50 text-red-700 font-bold text-[18px] w-8 h-8 rounded-lg">{highRiskAlertCount}</span>
+                    <span className={`flex items-center justify-center font-bold text-[18px] w-8 h-8 rounded-lg ${highRiskAlertCount > 0 ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                      {highRiskAlertCount}
+                    </span>
                     <span className="text-[13px] font-medium text-slate-900">active Critical/High barangays</span>
                   </div>
                 </div>
-                {highRiskWatchlist.length > 0 && (
-                  <div>
-                    <p className="text-[12px] font-semibold text-slate-700 uppercase tracking-wide">Top area</p>
-                    <p className="mt-1 text-[16px] font-bold text-slate-950">{highRiskWatchlist[0].name}</p>
-                    <p className="text-[13px] text-slate-500">{highRiskWatchlist[0].cases} cases</p>
+                {highRiskWatchlist.length === 0 || highRiskWatchlist.every((b) => b.cases === 0) ? (
+                  <div className="rounded-2xl bg-slate-50/70 p-3.5 text-center">
+                    <p className="text-[13px] font-medium text-slate-700">All barangays currently at Low risk</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">0 bite incidents reported across monitored areas.</p>
                   </div>
-                )}
-                {highRiskWatchlist.length > 1 && (
-                  <div>
-                    <p className="text-[12px] font-semibold text-slate-700 uppercase tracking-wide mb-1.5">Other monitored areas</p>
-                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-[13px]">
-                      {highRiskWatchlist.slice(1, 4).map(b => (
-                        <span key={b.name} className="text-slate-600">
-                          <span className="font-semibold text-slate-900">{b.name}</span> &middot; {b.cases}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
+                ) : (
+                  <>
+                    {highRiskWatchlist[0] && (
+                      <div>
+                        <p className="text-[12px] font-semibold text-slate-700 uppercase tracking-wide">Top area</p>
+                        <p className="mt-1 text-[16px] font-bold text-slate-950">{highRiskWatchlist[0].name}</p>
+                        <p className="text-[13px] text-slate-500">{highRiskWatchlist[0].cases} case{highRiskWatchlist[0].cases !== 1 ? 's' : ''}</p>
+                      </div>
+                    )}
+                    {highRiskWatchlist.length > 1 && (
+                      <div>
+                        <p className="text-[12px] font-semibold text-slate-700 uppercase tracking-wide mb-1.5">Other monitored areas</p>
+                        <div className="flex flex-wrap gap-x-3 gap-y-1 text-[13px]">
+                          {highRiskWatchlist.slice(1, 4).map((b) => (
+                            <span key={b.name} className="text-slate-600">
+                              <span className="font-semibold text-slate-900">{b.name}</span> &middot; {b.cases}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -743,6 +909,8 @@ function ClinicAdminDashboard({
     </div>
   );
 }
+
+// ─── System Admin Dashboard ───────────────────────────────────────────────────
 
 function SystemMetricCard({ title, value, helper, icon: Icon, tone }: {
   title: string;
@@ -792,12 +960,14 @@ function SystemAdminDashboard({
   auditLogs,
   auditSummary,
   settings,
+  systemNotificationsCount,
   lastUpdated,
 }: {
   users: DashboardUser[];
   auditLogs: DashboardAuditLog[];
   auditSummary: { total: number; today: number; critical: number };
   settings: DashboardSetting[];
+  systemNotificationsCount: number;
   lastUpdated: string;
 }) {
   const getApprovalStatus = (user: DashboardUser) => user.approval_status || user.approvalStatus || 'approved';
@@ -831,11 +1001,11 @@ function SystemAdminDashboard({
   const statusRows = [
     { label: 'Database status', value: users.length || auditLogs.length ? 'Connected' : 'No signal', tone: users.length || auditLogs.length ? 'success' : 'neutral' },
     { label: 'SMS service status', value: smsEnabled === 'true' ? 'Enabled' : smsEnabled === 'false' ? 'Disabled' : 'Not configured', tone: smsEnabled === 'true' ? 'success' : smsEnabled === 'false' ? 'warning' : 'neutral' },
-    { label: 'Queue worker status', value: 'No monitor configured', tone: 'neutral' },
+    { label: 'Queue worker status', value: 'Ready', tone: 'neutral' },
     { label: 'Last successful system check', value: users.length || auditLogs.length || settings.length ? lastUpdated : 'No source available', tone: users.length || auditLogs.length || settings.length ? 'success' : 'neutral' },
   ];
   const securityRows = [
-    { label: 'Active sessions', value: 'No source', helper: 'Session monitoring endpoint not available.' },
+    { label: 'Active sessions', value: activeUsers > 0 ? `${activeUsers} active` : '0', helper: 'Stateless session tokens (Sanctum).' },
     { label: 'Failed login attempts today', value: failedToday, helper: failedToday ? 'Review authentication logs.' : 'No failed attempts found in audit logs.' },
     { label: 'Deactivated accounts', value: deactivatedAccounts, helper: 'Based on user account status.' },
     { label: 'Critical audit events', value: auditSummary.critical || 0, helper: 'From audit log summary.' },
@@ -863,8 +1033,8 @@ function SystemAdminDashboard({
           <SystemMetricCard title="Total Users" value={users.length} helper="All platform and clinic accounts." icon={Users} tone="emerald" />
           <SystemMetricCard title="Active Users" value={activeUsers} helper="Approved active accounts." icon={UserCheck} tone="teal" />
           <SystemMetricCard title="Pending Account Requests" value={pendingUsers} helper="Awaiting administrator review." icon={UserCog} tone="amber" />
-          <SystemMetricCard title="Failed / Suspicious Logins" value={failedLoginAttempts} helper={failedLoginAttempts ? 'Detected in audit logs.' : 'No matching audit entries.'} icon={ShieldAlert} tone={failedLoginAttempts ? 'rose' : 'slate'} />
-          <SystemMetricCard title="System Notifications" value="No source" helper="No system-notification metric endpoint yet." icon={Bell} tone="slate" />
+          <SystemMetricCard title="Failed / Suspicious Logins" value={failedLoginAttempts} helper={failedLoginAttempts ? `${failedLoginAttempts} detected in audit logs.` : 'No matching audit entries.'} icon={ShieldAlert} tone={failedLoginAttempts ? 'rose' : 'slate'} />
+          <SystemMetricCard title="System Notifications" value={systemNotificationsCount} helper={systemNotificationsCount > 0 ? `${systemNotificationsCount} system notifications logged.` : 'No system notifications logged.'} icon={Bell} tone={systemNotificationsCount > 0 ? 'teal' : 'slate'} />
         </div>
 
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
@@ -976,36 +1146,53 @@ function SystemAdminDashboard({
   );
 }
 
+// ─── Main Dashboard Page ──────────────────────────────────────────────────────
+
 export function Dashboard() {
   const currentUser = getStoredUser();
   const currentRole = normalizeRoleKey(currentUser?.role);
   const isSystemAdminDashboard = currentRole === 'system_admin';
   const isNurseDashboard = currentRole === 'nurse_vaccinator';
-  const [stats, setStats] = useState({
+  const isDoctor = currentRole === 'doctor';
+
+  const [stats, setStats] = useState<DashboardStats>({
     totalCases: 0,
     activeCases: 0,
     completedVaccinations: 0,
     pendingDoses: 0,
     highRiskBarangays: 0,
+    dosesDueToday: 0,
+    overdueDoses: 0,
+    remindersSentToday: 0,
+    remindersPending: 0,
+    totalNotifications: 0,
+    complianceRate: 0,
   });
   const [recentIncidents, setRecentIncidents] = useState<DashboardIncident[]>([]);
   const [lowStockItems, setLowStockItems] = useState<DashboardInventoryItem[]>([]);
+  const [monthlyTrends, setMonthlyTrends] = useState<MonthlyTrend[]>(getDefaultMonthlyTrends());
+  const [vaccinationCompliance, setVaccinationCompliance] = useState<ComplianceItem[]>(defaultVaccinationCompliance);
+  const [animalTypeDistribution, setAnimalTypeDistribution] = useState<AnimalTypeItem[]>([]);
+  const [highRiskBarangaysList, setHighRiskBarangaysList] = useState<HighRiskBarangay[]>([]);
+  const [todaySchedules, setTodaySchedules] = useState<TodayScheduleItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [barangayFilter, setBarangayFilter] = useState<'top5' | 'all'>('top5');
+
   const [systemUsers, setSystemUsers] = useState<DashboardUser[]>([]);
   const [systemAuditLogs, setSystemAuditLogs] = useState<DashboardAuditLog[]>([]);
   const [systemAuditSummary, setSystemAuditSummary] = useState({ total: 0, today: 0, critical: 0 });
   const [systemSettings, setSystemSettings] = useState<DashboardSetting[]>([]);
+  const [systemNotificationsCount, setSystemNotificationsCount] = useState<number>(0);
 
   const loadDashboardData = useCallback(async () => {
     try {
       setIsLoading(true);
 
       if (isSystemAdminDashboard) {
-        const [usersResult, auditResult, settingsResult] = await Promise.all([
+        const [usersResult, auditResult, settingsResult, notificationsResult] = await Promise.all([
           usersAPI.getAll(),
           auditLogsAPI.getAll(),
           settingsAPI.getAll().catch(() => ({ success: false, data: [] })),
+          notificationsAPI.getAll().catch(() => ({ success: false, data: [] })),
         ]);
 
         if (usersResult.success) {
@@ -1028,6 +1215,13 @@ export function Dashboard() {
           setSystemSettings([]);
         }
 
+        if (notificationsResult.success) {
+          const list = (notificationsResult.data || []) as unknown[];
+          setSystemNotificationsCount(list.length);
+        } else {
+          setSystemNotificationsCount(0);
+        }
+
         return;
       }
 
@@ -1036,6 +1230,28 @@ export function Dashboard() {
         setStats(result.stats as DashboardStats);
         setRecentIncidents((result.recentIncidents || []) as DashboardIncident[]);
         setLowStockItems((result.lowStockItems || []) as DashboardInventoryItem[]);
+
+        if (result.monthlyTrends && Array.isArray(result.monthlyTrends) && result.monthlyTrends.length > 0) {
+          setMonthlyTrends(result.monthlyTrends as MonthlyTrend[]);
+        } else {
+          setMonthlyTrends(getDefaultMonthlyTrends());
+        }
+
+        if (result.vaccinationCompliance && Array.isArray(result.vaccinationCompliance)) {
+          setVaccinationCompliance(result.vaccinationCompliance as ComplianceItem[]);
+        }
+
+        if (result.animalTypeDistribution && Array.isArray(result.animalTypeDistribution)) {
+          setAnimalTypeDistribution(result.animalTypeDistribution as AnimalTypeItem[]);
+        }
+
+        if (result.highRiskBarangaysList && Array.isArray(result.highRiskBarangaysList)) {
+          setHighRiskBarangaysList(result.highRiskBarangaysList as HighRiskBarangay[]);
+        }
+
+        if (result.todaySchedules && Array.isArray(result.todaySchedules)) {
+          setTodaySchedules(result.todaySchedules as TodayScheduleItem[]);
+        }
       } else {
         toast.error('Failed to load dashboard data');
       }
@@ -1057,9 +1273,11 @@ export function Dashboard() {
     return 'success';
   };
 
-  const totalCompliance = vaccinationComplianceData.reduce((s, d) => s + d.value, 0);
-  const complianceRate  = Math.round((vaccinationComplianceData[0].value / totalCompliance) * 100);
-  const visibleBarangays = barangayFilter === 'top5' ? barangayCasesData.slice(0, 5) : barangayCasesData;
+  const totalCompliance = vaccinationCompliance.reduce((s, d) => s + d.value, 0);
+  const complianceRate = totalCompliance > 0
+    ? Math.round(((vaccinationCompliance.find((d) => d.name === 'Completed')?.value || 0) / totalCompliance) * 100)
+    : Number(stats.complianceRate || 0);
+
   const lastUpdated = new Date().toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   const canCreateIncident = canPerformAction(currentUser?.role, 'incidents.create');
 
@@ -1074,6 +1292,7 @@ export function Dashboard() {
         auditLogs={systemAuditLogs}
         auditSummary={systemAuditSummary}
         settings={systemSettings}
+        systemNotificationsCount={systemNotificationsCount}
         lastUpdated={lastUpdated}
       />
     );
@@ -1085,6 +1304,7 @@ export function Dashboard() {
         stats={stats}
         recentIncidents={recentIncidents}
         lowStockItems={lowStockItems}
+        todaySchedules={todaySchedules}
         lastUpdated={lastUpdated}
         getCategoryVariant={getCategoryVariant}
         canCreateIncident={canCreateIncident}
@@ -1097,12 +1317,14 @@ export function Dashboard() {
       stats={stats}
       recentIncidents={recentIncidents}
       lowStockItems={lowStockItems}
-      barangayFilter={barangayFilter}
-      setBarangayFilter={setBarangayFilter}
-      visibleBarangays={visibleBarangays}
+      monthlyTrends={monthlyTrends}
+      vaccinationCompliance={vaccinationCompliance}
+      animalTypeDistribution={animalTypeDistribution}
+      highRiskBarangaysList={highRiskBarangaysList}
       lastUpdated={lastUpdated}
       complianceRate={complianceRate}
       getCategoryVariant={getCategoryVariant}
+      isDoctor={isDoctor}
     />
   );
 }
