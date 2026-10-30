@@ -126,7 +126,7 @@ export function Sidebar() {
           </div>
           <div>
             <p className="text-[16px] font-extrabold leading-tight text-foreground">BITEMAP</p>
-            <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">Bite Incident Tracking</p>
+            <p className="text-xs text-muted-foreground leading-tight mt-0.5">Bite Incident Tracking</p>
           </div>
         </div>
       </div>
@@ -134,7 +134,7 @@ export function Sidebar() {
       <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
         {visibleMainNav.length > 0 && (
           <div>
-            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest px-4 mb-1.5">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest px-4 mb-1.5">
               Menu
             </p>
             <ul className="space-y-0.5">
@@ -147,7 +147,7 @@ export function Sidebar() {
 
         {visibleSystemNav.length > 0 && (
           <div>
-            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest px-4 mb-1.5">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest px-4 mb-1.5">
               General
             </p>
             <ul className="space-y-0.5">
@@ -160,13 +160,13 @@ export function Sidebar() {
       </nav>
 
       <div className="mx-3 mb-3 rounded-3xl p-4 text-white shadow-lg shadow-emerald-900/15" style={{ background: 'radial-gradient(circle at top right, rgba(52, 211, 153, 0.55), transparent 35%), linear-gradient(135deg, #078C55 0%, #05603A 100%)' }}>
-        <p className="text-xs font-bold mb-0.5">BITEMAP System</p>
-        <p className="text-[10px] text-white/75 leading-snug mb-3">
+        <p className="text-sm font-bold mb-0.5">BITEMAP System</p>
+        <p className="text-xs text-white/75 leading-snug mb-3">
           GIS-Based Anti-Rabies Vaccination Monitoring
         </p>
         <div className="flex items-center gap-1.5">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-300" />
-          <span className="text-[10px] font-semibold text-green-200">Role Access Active</span>
+          <span className="text-xs font-semibold text-green-200">Role Access Active</span>
         </div>
       </div>
 
@@ -202,7 +202,7 @@ export function Sidebar() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-foreground truncate">{displayName}</p>
-            <p className="text-[10px] text-muted-foreground truncate">{getRoleLabel(currentUser?.role)}</p>
+            <p className="text-xs text-muted-foreground truncate">{getRoleLabel(currentUser?.role)}</p>
           </div>
           <ChevronUp className={'w-4 h-4 shrink-0 text-slate-400 transition-transform ' + (isUserMenuOpen ? 'rotate-180' : '')} />
         </button>

@@ -40,7 +40,7 @@ export function Header({ title, breadcrumbs = [] }: HeaderProps) {
         {/* Left: Breadcrumbs & Page Title */}
         <div className="min-w-0 shrink-0">
           {breadcrumbs.length > 0 && (
-            <div className="mb-0.5 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+            <div className="mb-0.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               {breadcrumbs.map((crumb, i) => (
                 <div key={i} className="flex items-center gap-1.5">
                   <span>{crumb}</span>
@@ -79,7 +79,7 @@ export function Header({ title, breadcrumbs = [] }: HeaderProps) {
             >
               <Bell className={'w-4 h-4 ' + (alertCount > 0 ? 'text-destructive' : 'text-muted-foreground')} />
               {alertCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-5 h-5 px-1 rounded-full bg-destructive text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-background">
+                <span className="absolute -top-1.5 -right-1.5 min-w-5 h-5 px-1 rounded-full bg-destructive text-white text-[11px] font-bold flex items-center justify-center ring-2 ring-background">
                   {priorityCount > 9 ? '9+' : priorityCount}
                 </span>
               )}

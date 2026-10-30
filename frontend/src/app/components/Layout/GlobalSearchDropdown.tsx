@@ -485,8 +485,8 @@ export function GlobalSearchDropdown() {
             </button>
           )}
 
-          <kbd className="pointer-events-none hidden sm:inline-flex h-5 items-center gap-0.5 rounded border border-border bg-muted/80 px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-            <span className="text-[9px]">Ctrl</span>K
+          <kbd className="pointer-events-none hidden sm:inline-flex h-5 items-center gap-0.5 rounded border border-border bg-muted/80 px-1.5 font-mono text-xs font-medium text-muted-foreground">
+            <span className="text-[11px]">Ctrl</span>K
           </kbd>
         </div>
       </div>
@@ -520,7 +520,7 @@ export function GlobalSearchDropdown() {
             {hasResults &&
               Object.entries(groupedCategories).map(([category, items]) => (
                 <div key={category} className="py-2 first:pt-1 last:pb-1">
-                  <div className="px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                  <div className="px-3 py-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
                     {category}
                   </div>
                   <div className="space-y-0.5 mt-1">
@@ -577,22 +577,22 @@ export function GlobalSearchDropdown() {
           </div>
 
           {/* Bottom subtle shortcut hints */}
-          <div className="flex items-center justify-between border-t border-border/60 bg-muted/30 px-3.5 py-2 text-[11px] text-muted-foreground">
+          <div className="flex items-center justify-between border-t border-border/60 bg-muted/30 px-3.5 py-2 text-xs text-muted-foreground">
             <div className="flex items-center gap-2.5">
               <span className="flex items-center gap-1">
-                <kbd className="rounded border border-border bg-background px-1 py-0.5 font-mono text-[9px]">↑↓</kbd>
+                <kbd className="rounded border border-border bg-background px-1 py-0.5 font-mono text-[11px]">↑↓</kbd>
                 <span>navigate</span>
               </span>
               <span className="flex items-center gap-1">
-                <kbd className="rounded border border-border bg-background px-1 py-0.5 font-mono text-[9px]">↵</kbd>
+                <kbd className="rounded border border-border bg-background px-1 py-0.5 font-mono text-[11px]">↵</kbd>
                 <span>select</span>
               </span>
               <span className="flex items-center gap-1">
-                <kbd className="rounded border border-border bg-background px-1 py-0.5 font-mono text-[9px]">esc</kbd>
+                <kbd className="rounded border border-border bg-background px-1 py-0.5 font-mono text-[11px]">esc</kbd>
                 <span>close</span>
               </span>
             </div>
-            <span className="text-[10px] text-muted-foreground/75 font-medium">
+            <span className="text-xs text-muted-foreground/75 font-medium">
               Global Search
             </span>
           </div>

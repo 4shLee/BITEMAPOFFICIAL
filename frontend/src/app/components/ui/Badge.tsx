@@ -14,7 +14,7 @@ export function Badge({ children, variant = 'neutral', size = 'md' }: BadgeProps
   };
 
   const sizeStyles = {
-    sm: 'px-2.5 py-0.5 text-[11px]',
+    sm: 'px-2.5 py-0.5 text-xs',
     md: 'px-3 py-1 text-xs'
   };
 

@@ -527,7 +527,7 @@ function SystemNotificationsView({
               <div key={card.label} className="rounded-2xl border border-emerald-900/5 bg-white p-5 shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-[13px] font-semibold text-slate-600">{card.label}</p>
+                    <p className="text-sm font-semibold text-slate-600">{card.label}</p>
                     <p className="mt-2 text-3xl font-bold leading-none text-slate-950 tabular-nums">{card.value}</p>
                   </div>
                   <div className={'flex h-10 w-10 items-center justify-center rounded-2xl border ' + card.color}>
@@ -616,7 +616,7 @@ function SystemNotificationsView({
               <div className="hidden overflow-x-auto lg:block">
                 <table className="w-full">
                   <thead>
-                    <tr className="bg-slate-50 text-left text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                    <tr className="bg-slate-50 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
                       <th className="px-5 py-3">Severity</th>
                       <th className="px-5 py-3">Notification</th>
                       <th className="px-5 py-3">Category</th>
@@ -1139,7 +1139,7 @@ export function Notifications() {
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 id="notification-history-heading" className="text-base font-extrabold text-foreground">Notification History</h2>
                       {pendingCount > 0 && (
-                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">
+                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-700">
                           {pendingCount} pending
                         </span>
                       )}
@@ -1157,7 +1157,7 @@ export function Notifications() {
                         (filter === item ? 'border-primary/15 bg-card text-primary shadow-sm' : 'border-transparent text-muted-foreground hover:text-foreground')
                       }
                     >
-                      {item} <span className={(filter === item ? 'text-primary/80' : 'text-muted-foreground') + ' text-[10px]'}>({filterCounts[item]})</span>
+                      {item} <span className={(filter === item ? 'text-primary/80' : 'text-muted-foreground') + ' text-xs'}>({filterCounts[item]})</span>
                     </button>
                   ))}
                 </div>
@@ -1301,14 +1301,14 @@ export function Notifications() {
                               <UserRound className="h-4 w-4" />
                             </div>
                             <div className="min-w-0">
-                              <h3 className="break-words text-[13px] font-bold leading-5 text-foreground sm:text-sm">{group.patient}</h3>
-                              <p className="mt-0.5 flex items-center gap-0.5 text-[9px] tracking-tight text-muted-foreground sm:gap-1.5 sm:text-xs sm:tracking-normal"><Phone className="hidden h-3.5 w-3.5 shrink-0 sm:block" /> {group.contact || 'No contact number'}</p>
+                              <h3 className="break-words text-sm font-bold leading-5 text-foreground sm:text-sm">{group.patient}</h3>
+                              <p className="mt-0.5 flex items-center gap-0.5 text-xs tracking-tight text-muted-foreground sm:gap-1.5 sm:text-xs sm:tracking-normal"><Phone className="hidden h-3.5 w-3.5 shrink-0 sm:block" /> {group.contact || 'No contact number'}</p>
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-1.5 sm:justify-end">
-                            {group.overdue.length > 0 && <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-700 sm:px-2.5 sm:text-[11px]">{group.overdue.length} Overdue</span>}
-                            {group.dueToday.length > 0 && <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700 sm:px-2.5 sm:text-[11px]">{group.dueToday.length > 1 ? group.dueToday.length + ' Due Today' : 'Due Today'}</span>}
-                            {group.upcoming.length > 0 && <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700 sm:px-2.5 sm:text-[11px]">{group.upcoming.length} Upcoming</span>}
+                            {group.overdue.length > 0 && <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-bold text-rose-700 sm:px-2.5 sm:text-xs">{group.overdue.length} Overdue</span>}
+                            {group.dueToday.length > 0 && <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-bold text-amber-700 sm:px-2.5 sm:text-xs">{group.dueToday.length > 1 ? group.dueToday.length + ' Due Today' : 'Due Today'}</span>}
+                            {group.upcoming.length > 0 && <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700 sm:px-2.5 sm:text-xs">{group.upcoming.length} Upcoming</span>}
                           </div>
                         </div>
                       </div>
@@ -1316,10 +1316,10 @@ export function Notifications() {
                       <div className="space-y-3 px-2 py-3 sm:px-4 sm:py-3.5">
                         {group.overdue.length > 0 && (
                           <section className="overflow-hidden rounded-lg border border-rose-100 bg-rose-50/55">
-                            <p className="border-b border-rose-100 px-2 py-2 text-[11px] font-bold uppercase tracking-wider text-rose-700 sm:px-3">Overdue</p>
+                            <p className="border-b border-rose-100 px-2 py-2 text-xs font-bold uppercase tracking-wider text-rose-700 sm:px-3">Overdue</p>
                             <div className="divide-y divide-rose-100/80">
                               {group.overdue.map((dose) => (
-                                <div key={dose.id} data-schedule-row className="grid gap-0.5 px-2 py-2.5 text-[10px] sm:grid-cols-[4rem_minmax(7rem,1fr)_auto] sm:items-center sm:gap-3 sm:px-3 sm:text-xs">
+                                <div key={dose.id} data-schedule-row className="grid gap-0.5 px-2 py-2.5 text-xs sm:grid-cols-[4rem_minmax(7rem,1fr)_auto] sm:items-center sm:gap-3 sm:px-3 sm:text-xs">
                                   <span className="font-bold text-foreground">Day {dose.doseDay}</span>
                                   <span className="text-muted-foreground">{formatDate(dose.dueDate)}</span>
                                   <span className="whitespace-nowrap font-semibold text-rose-700 sm:text-right">{getDaysOverdue(dose.dueDate)} day{getDaysOverdue(dose.dueDate) !== 1 ? 's' : ''} overdue</span>
@@ -1330,10 +1330,10 @@ export function Notifications() {
                         )}
                         {group.dueToday.length > 0 && (
                           <section className="overflow-hidden rounded-lg border border-amber-100 bg-amber-50/55">
-                            <p className="border-b border-amber-100 px-2 py-2 text-[11px] font-bold uppercase tracking-wider text-amber-700 sm:px-3">Due Today</p>
+                            <p className="border-b border-amber-100 px-2 py-2 text-xs font-bold uppercase tracking-wider text-amber-700 sm:px-3">Due Today</p>
                             <div className="divide-y divide-amber-100/80">
                               {group.dueToday.map((dose) => (
-                                <div key={dose.id} data-schedule-row className="grid gap-0.5 px-2 py-2.5 text-[10px] sm:grid-cols-[4rem_minmax(7rem,1fr)_auto] sm:items-center sm:gap-3 sm:px-3 sm:text-xs">
+                                <div key={dose.id} data-schedule-row className="grid gap-0.5 px-2 py-2.5 text-xs sm:grid-cols-[4rem_minmax(7rem,1fr)_auto] sm:items-center sm:gap-3 sm:px-3 sm:text-xs">
                                   <span className="font-bold text-foreground">Day {dose.doseDay}</span>
                                   <span className="text-muted-foreground">{formatDate(dose.dueDate)}</span>
                                   <span className="font-semibold text-amber-700 sm:whitespace-nowrap sm:text-right">Due today</span>
@@ -1344,10 +1344,10 @@ export function Notifications() {
                         )}
                         {group.upcoming.length > 0 && (
                           <section className="overflow-hidden rounded-lg border border-emerald-100 bg-emerald-50/50">
-                            <p className="border-b border-emerald-100 px-2 py-2 text-[11px] font-bold uppercase tracking-wider text-emerald-700 sm:px-3">Upcoming</p>
+                            <p className="border-b border-emerald-100 px-2 py-2 text-xs font-bold uppercase tracking-wider text-emerald-700 sm:px-3">Upcoming</p>
                             <div className="divide-y divide-emerald-100/80">
                               {group.upcoming.map((dose) => (
-                                <div key={dose.id} data-schedule-row className="grid gap-0.5 px-2 py-2.5 text-[10px] sm:grid-cols-[4rem_minmax(7rem,1fr)_auto] sm:items-center sm:gap-3 sm:px-3 sm:text-xs">
+                                <div key={dose.id} data-schedule-row className="grid gap-0.5 px-2 py-2.5 text-xs sm:grid-cols-[4rem_minmax(7rem,1fr)_auto] sm:items-center sm:gap-3 sm:px-3 sm:text-xs">
                                   <span className="font-bold text-foreground">Day {dose.doseDay}</span>
                                   <span className="text-muted-foreground">{formatDate(dose.dueDate)}</span>
                                   <span className="font-semibold text-emerald-700 sm:whitespace-nowrap sm:text-right">In {getDaysUntil(dose.dueDate)} day{getDaysUntil(dose.dueDate) !== 1 ? 's' : ''}</span>
@@ -1364,10 +1364,10 @@ export function Notifications() {
                         </div>
                       )}
                       <div className="flex flex-col gap-2 border-t border-border/70 bg-muted/15 px-2 py-3 sm:flex-row sm:flex-wrap sm:px-4">
-                        {group.patientId && <Button type="button" variant="outline" size="sm" className="h-auto min-h-8 max-w-full !whitespace-normal break-words px-2 py-2 text-center text-[10px] leading-4 sm:text-xs" onClick={() => navigate('/patients/' + group.patientId)}>View Patient</Button>}
-                        {group.incidentId && <Button type="button" variant="outline" size="sm" className="h-auto min-h-8 max-w-full !whitespace-normal break-words px-2 py-2 text-center text-[10px] leading-4 sm:text-xs" onClick={() => navigate('/pep-schedule?incident_id=' + encodeURIComponent(group.incidentId || ''))}>Open PEP Schedule</Button>}
+                        {group.patientId && <Button type="button" variant="outline" size="sm" className="h-auto min-h-8 max-w-full !whitespace-normal break-words px-2 py-2 text-center text-xs leading-4 sm:text-xs" onClick={() => navigate('/patients/' + group.patientId)}>View Patient</Button>}
+                        {group.incidentId && <Button type="button" variant="outline" size="sm" className="h-auto min-h-8 max-w-full !whitespace-normal break-words px-2 py-2 text-center text-xs leading-4 sm:text-xs" onClick={() => navigate('/pep-schedule?incident_id=' + encodeURIComponent(group.incidentId || ''))}>Open PEP Schedule</Button>}
                         {canSendNotifications && (
-                          <Button type="button" size="sm" className="h-auto min-h-8 max-w-full !whitespace-normal break-words px-2 py-2 text-center text-[10px] leading-4 sm:ml-auto sm:text-xs" disabled={sending === group.key || !group.smsConsent || !/^(09|\+639)\d{9}$/.test(group.contact) || hasPendingReminder(group)} onClick={() => setConfirmationGroup(group)}>
+                          <Button type="button" size="sm" className="h-auto min-h-8 max-w-full !whitespace-normal break-words px-2 py-2 text-center text-xs leading-4 sm:ml-auto sm:text-xs" disabled={sending === group.key || !group.smsConsent || !/^(09|\+639)\d{9}$/.test(group.contact) || hasPendingReminder(group)} onClick={() => setConfirmationGroup(group)}>
                             <MessageSquare className="mr-2 hidden h-4 w-4 sm:block" /> {hasPendingReminder(group) ? (smsService.enabled ? 'Pending' : 'Queued') : group.overdue.length > 0 ? (smsService.enabled ? 'Send Follow-up Reminder' : 'Queue Follow-up Reminder') : (smsService.enabled ? 'Send Reminder' : 'Queue Reminder')}
                           </Button>
                         )}

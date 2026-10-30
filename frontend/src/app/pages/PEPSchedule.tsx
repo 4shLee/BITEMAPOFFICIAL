@@ -480,15 +480,15 @@ function PatientIncidentCombobox({ groups, selectedIncidentId, onSelect, loading
                       <span className="min-w-0 flex-1">
                         <span className="flex min-w-0 items-center justify-between gap-2">
                           <span className="min-w-0 truncate font-bold text-slate-900" title={group.patient}>{group.patient}</span>
-                          <span className="shrink-0 rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] font-extrabold text-emerald-800">Incident #{group.incidentId}</span>
+                          <span className="shrink-0 rounded-md bg-emerald-100 px-1.5 py-0.5 text-xs font-extrabold text-emerald-800">Incident #{group.incidentId}</span>
                         </span>
                         <span className="mt-1.5 flex min-w-0 items-center justify-between gap-2">
                           <span className="min-w-0 flex-1 truncate text-xs text-slate-500">
                             {group.contact_number || 'No contact number'}
                           </span>
                           <span className="flex shrink-0 items-center gap-1">
-                            <span className={'rounded-full border px-1.5 py-0.5 text-[10px] font-bold leading-none ' + scheduleCategoryTone(group.category)}>{group.category}</span>
-                            <span className={'rounded-full border px-1.5 py-0.5 text-[10px] font-bold leading-none ' + scheduleStatusTone(groupStatus)}>{groupStatus}</span>
+                            <span className={'rounded-full border px-1.5 py-0.5 text-xs font-bold leading-none ' + scheduleCategoryTone(group.category)}>{group.category}</span>
+                            <span className={'rounded-full border px-1.5 py-0.5 text-xs font-bold leading-none ' + scheduleStatusTone(groupStatus)}>{groupStatus}</span>
                           </span>
                         </span>
                       </span>

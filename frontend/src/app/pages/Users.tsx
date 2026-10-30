@@ -446,7 +446,7 @@ export function Users() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="bg-muted/50 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                <tr className="bg-muted/50 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                   <th className="text-left px-6 py-3">Name</th>
                   <th className="text-left px-6 py-3">Email</th>
                   <th className="text-left px-6 py-3">Role</th>

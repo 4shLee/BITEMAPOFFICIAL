@@ -234,7 +234,7 @@ export function IncidentFormModal({ incident, onClose }: IncidentFormModalProps)
                           </button>
                         ))}
                         <div className="px-4 py-2 border-t border-border bg-muted/30">
-                          <p className="text-[11px] text-muted-foreground">Select to auto-fill or keep typing a new name</p>
+                          <p className="text-xs text-muted-foreground">Select to auto-fill or keep typing a new name</p>
                         </div>
                       </div>
                     )}

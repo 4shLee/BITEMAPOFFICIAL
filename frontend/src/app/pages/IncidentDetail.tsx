@@ -74,7 +74,7 @@ function categoryVariant(category?: string) {
 function DetailItem({ label, value }: { label: string; value?: string | number | null }) {
   return (
     <div className="min-w-0">
-      <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
       <p className="mt-1 truncate text-sm font-semibold text-foreground" title={String(value || 'Not recorded')}>
         {value || 'Not recorded'}
       </p>

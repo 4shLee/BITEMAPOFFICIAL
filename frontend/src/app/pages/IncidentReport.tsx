@@ -268,7 +268,7 @@ function getBarangayCoordinates(barangay?: BarangayOption) {
 function ReadOnlyPatientItem({ label, value }: { label: string; value?: string | number | null }) {
   return (
     <div className="rounded-xl border border-border bg-white px-3 py-2.5">
-      <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
       <p className="mt-1 text-sm font-semibold text-foreground">{value || 'Not recorded'}</p>
     </div>
   );
@@ -1524,10 +1524,10 @@ export function IncidentReport() {
                       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                         <div className="font-bold text-sm text-foreground">{cat.label}</div>
                         <div className="flex flex-wrap justify-end gap-1">
-                          {isSuggested && <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">System Suggested</span>}
-                          {isConfirmed && <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white">Clinically Confirmed</span>}
-                          {isPendingOverride && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">Pending Override</span>}
-                          {!isSuggested && !isConfirmed && !isPendingOverride && <span className={'rounded-full px-2 py-0.5 text-[10px] font-bold ' + cat.badgeClass}>{cat.risk}</span>}
+                          {isSuggested && <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-700">System Suggested</span>}
+                          {isConfirmed && <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-xs font-bold text-white">Clinically Confirmed</span>}
+                          {isPendingOverride && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800">Pending Override</span>}
+                          {!isSuggested && !isConfirmed && !isPendingOverride && <span className={'rounded-full px-2 py-0.5 text-xs font-bold ' + cat.badgeClass}>{cat.risk}</span>}
                         </div>
                       </div>
                       <div className="text-xs text-muted-foreground leading-relaxed">{cat.desc}</div>
@@ -1642,7 +1642,7 @@ export function IncidentReport() {
                   setPendingPin({ latitude, longitude });
                 }}
               />
-              <p className="mt-2 text-[11px] font-medium leading-relaxed text-slate-600">{locationHelperText}</p>
+              <p className="mt-2 text-xs font-medium leading-relaxed text-slate-600">{locationHelperText}</p>
 
               <div className="mt-3 flex items-center gap-3 rounded-xl border border-emerald-100 bg-white/85 px-3 py-2.5">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
@@ -1651,7 +1651,7 @@ export function IncidentReport() {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs font-bold text-slate-700">Location Status</span>
-                    <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800">
+                    <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-800">
                       {locationPinStatus}
                     </span>
                   </div>

@@ -455,11 +455,11 @@ export function GISMap() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="rounded-2xl bg-slate-50 px-3 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Top Animal</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Top Animal</p>
                     <p className="mt-1 text-sm font-bold text-slate-900">{selectedData.top_animal_type}</p>
                   </div>
                   <div className="rounded-2xl bg-slate-50 px-3 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Risk Level</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Risk Level</p>
                     <p className="mt-1 text-sm font-bold text-slate-900">{selectedData.risk_level}</p>
                   </div>
                 </div>
@@ -523,7 +523,7 @@ export function GISMap() {
                 />
                 <span>
                   <span className="block text-xs font-bold text-slate-700">Show exact incident pins</span>
-                  <span className="mt-0.5 block text-[11px] text-slate-500">Separate staff-only layer</span>
+                  <span className="mt-0.5 block text-xs text-slate-500">Separate staff-only layer</span>
                 </span>
               </label>
             </div>

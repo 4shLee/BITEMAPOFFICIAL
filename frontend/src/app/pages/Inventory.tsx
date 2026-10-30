@@ -457,23 +457,23 @@ export function Inventory() {
                                 style={{ width: `${getStockPercentage(Number(item.current_stock || 0), Number(item.reorder_level || 0))}%` }}
                               ></div>
                             </div>
-                            <p className="text-[11px] font-medium text-muted-foreground">
+                            <p className="text-xs font-medium text-muted-foreground">
                               Reorder: {item.reorder_level}{item.critical_level ? ' | Critical: ' + item.critical_level : ''}
                             </p>
                             {totalBatches === 0 ? (
-                              <p className="text-[11px] font-semibold text-amber-700">
+                              <p className="text-xs font-semibold text-amber-700">
                                 No lot/batch recorded — click View Lots to enter lot no. &amp; expiry.
                               </p>
                             ) : usableBatches.length > 0 ? (
-                              <p className="text-[11px] font-semibold text-emerald-700">
+                              <p className="text-xs font-semibold text-emerald-700">
                                 Lot {activeLotNumber} ({usableBatches.length} usable lot{usableBatches.length === 1 ? '' : 's'})
                               </p>
                             ) : unexpiredBatches.length === 0 ? (
-                              <p className="text-[11px] font-semibold text-destructive">
+                              <p className="text-xs font-semibold text-destructive">
                                 All recorded lots expired — add a new batch.
                               </p>
                             ) : (
-                              <p className="text-[11px] font-semibold text-amber-700">
+                              <p className="text-xs font-semibold text-amber-700">
                                 Recorded lot(s) depleted (0 remaining) — restock a batch.
                               </p>
                             )}
