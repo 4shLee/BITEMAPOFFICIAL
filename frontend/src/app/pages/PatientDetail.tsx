@@ -266,8 +266,8 @@ export function PatientDetail() {
                       <p className="text-sm text-muted-foreground">No PEP schedule found.</p>
                     ) : pepSchedule.map((dose) => (
                       <div key={dose.id} className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2">
-                        <p className="text-xs font-extrabold text-emerald-900">Day {dose.dose_day}</p>
-                        <p className="text-xs font-semibold text-emerald-700">{formatDate(dose.scheduled_date)}</p>
+                        <p className="text-sm font-extrabold text-emerald-900">Day {dose.dose_day}</p>
+                        <p className="text-sm font-semibold text-emerald-700">{formatDate(dose.scheduled_date)}</p>
                         <Badge variant={getStatusVariant(dose.status)} size="sm">{dose.status}</Badge>
                       </div>
                     ))}

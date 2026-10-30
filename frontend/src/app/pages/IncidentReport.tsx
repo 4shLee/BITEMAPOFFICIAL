@@ -1113,11 +1113,11 @@ export function IncidentReport() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-4">
               <div>
                 <h2 className="text-base font-bold text-foreground">Patient Information</h2>
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-sm text-muted-foreground mt-1">
                   {isEditMode ? 'Review the patient information attached to this incident.' : 'Choose an existing patient or encode a new patient record.'}
                 </p>
               </div>
-              {!isEditMode && <div className="inline-flex w-fit rounded-xl bg-muted p-1 text-xs font-semibold">
+              {!isEditMode && <div className="inline-flex w-fit rounded-xl bg-muted p-1 text-sm font-semibold">
                 {(['existing', 'new'] as const).map((type) => (
                   <button
                     key={type}
@@ -1173,7 +1173,7 @@ export function IncidentReport() {
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <h3 className="text-sm font-bold text-foreground">Linked Patient Record</h3>
-                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
                       Patient profile details are managed in the Patient Registry.
                     </p>
                   </div>
@@ -1216,7 +1216,7 @@ export function IncidentReport() {
 
                 <section className="border-t border-border pt-4">
                   <h3 className="mb-1 text-sm font-bold text-foreground">C. Patient Residential Address</h3>
-                  <p className="mb-3 text-xs text-muted-foreground">This address is separate from the Barangay of Incident and does not affect the incident map pin.</p>
+                  <p className="mb-3 text-sm text-muted-foreground">This address is separate from the Barangay of Incident and does not affect the incident map pin.</p>
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     <Input label="House No. / Purok / Street *" placeholder="Enter house number, purok, subdivision, or street" value={formData.addressLine} onChange={(e) => updateField('addressLine', e.target.value)} error={errors.addressLine} />
                     <Input label="Barangay *" placeholder="Enter residential barangay" value={formData.residenceBarangay} onChange={(e) => updateField('residenceBarangay', e.target.value)} error={errors.residenceBarangay} />
@@ -1245,7 +1245,7 @@ export function IncidentReport() {
                 />
                 <span>
                   <span className="font-semibold">D. SMS Reminder Permission</span>
-                  <span className="block text-xs text-muted-foreground mt-0.5">Patient agrees to receive vaccination appointment reminders through SMS at the contact number provided. This choice does not affect treatment or PEP scheduling.</span>
+                  <span className="block text-sm text-muted-foreground mt-0.5">Patient agrees to receive vaccination appointment reminders through SMS at the contact number provided. This choice does not affect treatment or PEP scheduling.</span>
                   {(isEditMode || formData.patientType === 'existing') && <span className="mt-1 block text-xs font-medium text-emerald-700">Loaded from the selected patient record. Edit it from Patient Registry.</span>}
                 </span>
               </label>
@@ -1254,7 +1254,7 @@ export function IncidentReport() {
 
           <div className="bg-card border border-border rounded-2xl p-4 lg:p-5 shadow-sm">
             <h2 className="text-base font-bold text-foreground mb-1">Bite / Exposure Details</h2>
-            <p className="text-xs text-muted-foreground mb-4">Record the exposure details used for clinical workflow and PEP scheduling.</p>
+            <p className="text-sm text-muted-foreground mb-4">Record the exposure details used for clinical workflow and PEP scheduling.</p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
               <Input
@@ -1331,7 +1331,7 @@ export function IncidentReport() {
 
             <fieldset className="mt-5 border-t border-border pt-5">
               <legend className="px-1 text-sm font-extrabold text-foreground">Structured Exposure Assessment *</legend>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
                 Select every contact that occurred. The rule engine applies the highest safely supported WHO category; animal status and wound washing do not affect this suggestion.
               </p>
 
@@ -1363,7 +1363,7 @@ export function IncidentReport() {
                     />
                     <span className="min-w-0">
                       <span className="block text-sm font-bold text-foreground">{option.label}</span>
-                      <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">{option.helper}</span>
+                      <span className="mt-0.5 block text-sm leading-relaxed text-muted-foreground">{option.helper}</span>
                     </span>
                   </label>
                 ))}
@@ -1452,7 +1452,7 @@ export function IncidentReport() {
               </div>
               <div>
                 <h2 className="text-base font-bold text-foreground">Rule-Based WHO Exposure Classification with Clinical Confirmation</h2>
-                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
                   This deterministic suggestion supports review only. An authorized clinic professional remains responsible for the final category.
                 </p>
               </div>
@@ -1495,7 +1495,7 @@ export function IncidentReport() {
 
             <fieldset id="final-category-options" className="mt-4" aria-invalid={Boolean(errors.whoCategory || errors.whoCategoryConfirmed)}>
               <legend className="text-sm font-extrabold text-foreground">Final WHO Category *</legend>
-              <p className="mb-3 mt-1 text-xs text-muted-foreground">Select the category to be clinically confirmed. The system suggestion is not a diagnosis or treatment order.</p>
+              <p className="mb-3 mt-1 text-sm text-muted-foreground">Select the category to be clinically confirmed. The system suggestion is not a diagnosis or treatment order.</p>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                 {categoryCards.map((cat) => {
                   const displayedCategory = pendingWhoOverride?.category || formData.whoCategory;
@@ -1530,7 +1530,7 @@ export function IncidentReport() {
                           {!isSuggested && !isConfirmed && !isPendingOverride && <span className={'rounded-full px-2 py-0.5 text-xs font-bold ' + cat.badgeClass}>{cat.risk}</span>}
                         </div>
                       </div>
-                      <div className="text-xs text-muted-foreground leading-relaxed">{cat.desc}</div>
+                      <div className="text-sm text-muted-foreground leading-relaxed">{cat.desc}</div>
                     </label>
                   );
                 })}
@@ -1705,7 +1705,7 @@ export function IncidentReport() {
               <CalendarDays className="h-4 w-4 text-primary" />
               <h3 className="text-base font-bold text-foreground">Dose Schedule</h3>
             </div>
-            <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
+            <p className="mb-3 text-sm leading-relaxed text-muted-foreground">
               Schedule based on PEP Start Date. Changing Date of Incident does not move an established schedule.
             </p>
             {doseSchedulePreview.length === 0 ? (
@@ -1715,7 +1715,7 @@ export function IncidentReport() {
             ) : (
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-5 xl:grid-cols-1">
                 {doseSchedulePreview.map((dose) => (
-                  <div key={dose.day} className="flex items-center justify-between rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs">
+                  <div key={dose.day} className="flex items-center justify-between rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm">
                     <span className="font-extrabold text-emerald-900">Day {dose.day}</span>
                     <span className="font-semibold text-emerald-700">{dose.date}</span>
                   </div>
@@ -1727,11 +1727,11 @@ export function IncidentReport() {
           <div className="rounded-2xl border border-border bg-card p-4 shadow-sm xl:sticky xl:top-24">
             <div className="mb-3">
               <h3 className="text-base font-bold text-foreground">Incident Summary</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">Review key values before saving.</p>
+              <p className="text-sm text-muted-foreground mt-0.5">Review key values before saving.</p>
             </div>
             <div className="divide-y divide-border rounded-xl border border-border overflow-hidden">
               {summaryItems.map((item) => (
-                <div key={item.label} className="grid grid-cols-[110px_minmax(0,1fr)] gap-3 bg-white px-3 py-2.5 text-xs">
+                <div key={item.label} className="grid grid-cols-[110px_minmax(0,1fr)] gap-3 bg-white px-3 py-2.5 text-sm">
                   <span className="font-semibold text-slate-500">{item.label}</span>
                   <span className="truncate font-semibold text-slate-900">{item.value}</span>
                 </div>

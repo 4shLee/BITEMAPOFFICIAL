@@ -341,7 +341,7 @@ export function Inventory() {
           <div className="flex flex-col gap-4 border-b border-border px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h2 className="text-base font-extrabold text-foreground">Current Stock</h2>
-              <p className="mt-0.5 text-xs font-medium text-muted-foreground">
+              <p className="mt-0.5 text-sm font-medium text-muted-foreground">
                 <span className="font-semibold text-foreground">Product</span> = catalog item. <span className="font-semibold text-foreground">Lot / Batch</span> = dated vials with lot number, expiry date, and quantity (required for PEP Record Dose).
               </p>
             </div>
@@ -387,7 +387,7 @@ export function Inventory() {
                 <option value="Expired">Expired</option>
               </select>
               {canCreateInventory && (
-                <Button variant="primary" size="sm" onClick={handleCreate}>
+                <Button variant="primary" size="md" onClick={handleCreate}>
                   <Plus className="h-4 w-4" />
                   Add Product
                 </Button>
@@ -439,7 +439,7 @@ export function Inventory() {
                         <td className="px-4 py-3.5">
                           <p className="text-sm font-semibold text-foreground">{item.item_name}</p>
                           {displayBrand && (
-                            <p className="mt-0.5 text-xs font-medium text-muted-foreground">Brand: {displayBrand}</p>
+                            <p className="mt-0.5 text-sm font-medium text-muted-foreground">Brand: {displayBrand}</p>
                           )}
                         </td>
                         <td className="px-4 py-3.5 text-sm text-muted-foreground">{item.item_type}</td>
@@ -497,7 +497,7 @@ export function Inventory() {
                             {status}
                           </Badge>
                         </td>
-                        <td className="px-4 py-3.5 text-xs text-muted-foreground whitespace-nowrap">
+                        <td className="px-4 py-3.5 text-sm text-muted-foreground whitespace-nowrap">
                           {item.last_updated ? new Date(item.last_updated).toLocaleString() : '-'}
                         </td>
                         <td className="px-4 py-3.5">
@@ -505,7 +505,7 @@ export function Inventory() {
                             <button
                               type="button"
                               onClick={() => handleViewBatches(item)}
-                              className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full border border-accent/20 bg-accent-bg px-3 text-xs font-semibold text-accent shadow-sm transition-colors hover:border-accent/40 hover:bg-accent-bg/80"
+                              className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full border border-accent/20 bg-accent-bg px-3 text-sm font-semibold text-accent shadow-sm transition-colors hover:border-accent/40 hover:bg-accent-bg/80"
                               title="View Lots / Batches"
                               aria-label="View inventory batches"
                             >
@@ -534,7 +534,7 @@ export function Inventory() {
                                         type="button"
                                         role="menuitem"
                                         onClick={() => handleAddBatch(item)}
-                                        className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-semibold text-foreground transition-colors hover:bg-muted"
+                                        className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-sm font-semibold text-foreground transition-colors hover:bg-muted"
                                       >
                                         <Plus className="h-3.5 w-3.5 text-primary" />
                                         <span>Add Batch / Restock</span>
@@ -545,7 +545,7 @@ export function Inventory() {
                                         type="button"
                                         role="menuitem"
                                         onClick={() => handleAdjustStock(item)}
-                                        className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-semibold text-foreground transition-colors hover:bg-muted"
+                                        className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-sm font-semibold text-foreground transition-colors hover:bg-muted"
                                       >
                                         <SlidersHorizontal className="h-3.5 w-3.5 text-primary" />
                                         <span>{isNurseInventoryView ? 'Record Usage' : 'Adjust Stock'}</span>
@@ -556,7 +556,7 @@ export function Inventory() {
                                         type="button"
                                         role="menuitem"
                                         onClick={() => handleEdit(item)}
-                                        className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs font-semibold text-foreground transition-colors hover:bg-muted"
+                                        className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-sm font-semibold text-foreground transition-colors hover:bg-muted"
                                       >
                                         <Edit className="h-3.5 w-3.5 text-primary" />
                                         <span>Edit Product</span>
@@ -567,7 +567,7 @@ export function Inventory() {
                                         type="button"
                                         role="menuitem"
                                         onClick={() => handleRequestDeleteProduct(item)}
-                                        className="flex w-full items-center gap-2.5 border-t border-border/60 px-3.5 py-2 text-left text-xs font-semibold text-destructive transition-colors hover:bg-destructive-bg/50"
+                                        className="flex w-full items-center gap-2.5 border-t border-border/60 px-3.5 py-2 text-left text-sm font-semibold text-destructive transition-colors hover:bg-destructive-bg/50"
                                       >
                                         <Trash2 className="h-3.5 w-3.5 text-destructive" />
                                         <span>Delete Product</span>
@@ -605,7 +605,7 @@ export function Inventory() {
                   >
                     Previous
                   </Button>
-                  <span className="rounded-full border border-border bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
+                  <span className="rounded-full border border-border bg-muted px-3 py-1 text-sm font-semibold text-muted-foreground">
                     Page {safeCurrentPage} of {totalPages}
                   </span>
                   <Button
@@ -685,7 +685,7 @@ export function Inventory() {
               </div>
             </div>
 
-            <div className="space-y-3 px-6 py-4 text-xs">
+            <div className="space-y-3 px-6 py-4 text-sm">
               <div className="grid grid-cols-1 gap-2 rounded-2xl border border-border bg-muted/40 p-3.5 sm:grid-cols-2">
                 <div>
                   <span className="font-semibold text-muted-foreground">Product Name:</span>

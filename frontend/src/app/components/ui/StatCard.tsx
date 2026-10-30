@@ -25,7 +25,7 @@ export function StatCard({
     <div className="rounded-3xl border border-border/80 bg-card p-5 shadow-sm shadow-slate-900/5 transition-all hover:-translate-y-0.5 hover:shadow-md hover:shadow-slate-900/8">
       <div className="flex items-start justify-between">
         <div className="flex-1">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
+          <p className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
           <p className="mb-1 text-3xl font-extrabold tracking-tight text-foreground">{value}</p>
           {trend && (
             <div className="flex items-center gap-1 text-xs">

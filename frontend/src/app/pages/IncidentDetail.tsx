@@ -85,7 +85,7 @@ function DetailItem({ label, value }: { label: string; value?: string | number |
 function ClinicalRow({ label, value }: { label: string; value?: string | number | null }) {
   return (
     <div className="grid grid-cols-[145px_minmax(0,1fr)] gap-3 border-b border-border/70 py-2 last:border-0">
-      <span className="text-xs font-semibold text-muted-foreground">{label}</span>
+      <span className="text-sm font-semibold text-muted-foreground">{label}</span>
       <span className="text-sm font-semibold text-foreground">{value || 'Not recorded'}</span>
     </div>
   );
@@ -324,8 +324,8 @@ export function IncidentDetail() {
                     ) : (
                       pepSchedules.map((dose) => (
                         <div key={dose.id} className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2">
-                          <p className="text-xs font-extrabold text-emerald-900">Day {dose.dose_day}</p>
-                          <p className="text-xs font-semibold text-emerald-700">{dose.scheduled_date}</p>
+                          <p className="text-sm font-extrabold text-emerald-900">Day {dose.dose_day}</p>
+                          <p className="text-sm font-semibold text-emerald-700">{dose.scheduled_date}</p>
                         </div>
                       ))
                     )}
@@ -355,7 +355,7 @@ export function IncidentDetail() {
                     {incident.who_category_confirmer?.name && <ClinicalRow label="Confirmed By" value={incident.who_category_confirmer.name} />}
                     {incident.who_category_confirmed_at && <ClinicalRow label="Confirmed At" value={formatConfirmationDate(incident.who_category_confirmed_at)} />}
                   </div>
-                  <p className="mt-3 text-xs font-semibold leading-relaxed text-emerald-800">
+                  <p className="mt-3 text-sm font-semibold leading-relaxed text-emerald-800">
                     {whoGuidance[incident.who_category] || 'WHO category guidance is unavailable for this record.'} The record reflects clinical confirmation and does not replace professional judgment.
                   </p>
                 </div>

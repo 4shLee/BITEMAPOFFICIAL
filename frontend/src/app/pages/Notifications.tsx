@@ -583,8 +583,8 @@ function SystemNotificationsView({
 
         <div className="overflow-hidden rounded-2xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
           <div className="border-b border-slate-100 px-5 py-4">
-            <h2 className="text-sm font-bold text-slate-950">Platform Alert Log</h2>
-            <p className="mt-0.5 text-xs text-slate-500">Technical alerts, security notices, access-control events, and platform warnings.</p>
+            <h2 className="text-base font-bold text-slate-950">Platform Alert Log</h2>
+            <p className="mt-0.5 text-sm text-slate-500">Technical alerts, security notices, access-control events, and platform warnings.</p>
           </div>
 
           {loading ? (
@@ -641,10 +641,10 @@ function SystemNotificationsView({
                           </td>
                           <td className="max-w-xl px-5 py-4">
                             <p className="text-sm font-bold text-slate-950">{notification.title}</p>
-                            <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{notification.description}</p>
+                            <p className="mt-1 line-clamp-2 text-sm leading-5 text-slate-500">{notification.description}</p>
                           </td>
                           <td className="px-5 py-4 text-sm font-semibold text-slate-700">{notification.category}</td>
-                          <td className="whitespace-nowrap px-5 py-4 text-xs text-slate-500">{formatDateTime(notification.timestamp) || 'Timestamp unavailable'}</td>
+                          <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-500">{formatDateTime(notification.timestamp) || 'Timestamp unavailable'}</td>
                           <td className="px-5 py-4">
                             <span className={'rounded-full px-2.5 py-1 text-xs font-bold ' + (notification.status === 'resolved' ? 'bg-emerald-50 text-emerald-700' : notification.status === 'unread' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600')}>
                               {statusLabel}
@@ -693,7 +693,7 @@ function SystemNotificationsView({
                             <span className={'rounded-full px-2.5 py-1 text-xs font-bold ' + (notification.status === 'resolved' ? 'bg-emerald-50 text-emerald-700' : notification.status === 'unread' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600')}>{statusLabel}</span>
                           </div>
                           <p className="text-sm font-bold text-slate-950">{notification.title}</p>
-                          <p className="mt-1 text-xs leading-5 text-slate-500">{notification.description}</p>
+                          <p className="mt-1 text-sm leading-5 text-slate-500">{notification.description}</p>
                           <p className="mt-2 text-xs text-slate-400">{formatReadableDateTime(notification.timestamp) || 'Timestamp unavailable'}</p>
                           <div className="mt-3 flex flex-wrap gap-2">
                             {notification.status === 'unread' && (
@@ -728,7 +728,7 @@ function SystemNotificationsView({
                 <Button type="button" variant="outline" size="sm" onClick={() => setSystemPage((page: number) => Math.max(1, page - 1))} disabled={safeSystemPage === 1}>
                   Previous
                 </Button>
-                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-bold text-slate-600">
                   Page {safeSystemPage} of {systemTotalPages}
                 </span>
                 <Button type="button" variant="outline" size="sm" onClick={() => setSystemPage((page: number) => Math.min(systemTotalPages, page + 1))} disabled={safeSystemPage === systemTotalPages}>
@@ -1120,7 +1120,7 @@ export function Notifications() {
                       <Icon className="h-5 w-5" />
                     </div>
                   </div>
-                  {card.description && <p className="mt-2 text-xs leading-5 text-muted-foreground">{card.description}</p>}
+                  {card.description && <p className="mt-2 text-sm leading-5 text-muted-foreground">{card.description}</p>}
                 </div>
               );
             })}
@@ -1144,10 +1144,10 @@ export function Notifications() {
                         </span>
                       )}
                     </div>
-                    <p className="mt-0.5 text-xs font-medium text-muted-foreground">SMS delivery records linked to patient vaccination schedules.</p>
+                    <p className="mt-0.5 text-sm font-medium text-muted-foreground">SMS delivery records linked to patient vaccination schedules.</p>
                   </div>
                 </div>
-                <div className="flex max-w-full overflow-x-auto rounded-xl border border-border bg-muted/60 p-1 text-xs">
+                <div className="flex max-w-full overflow-x-auto rounded-xl border border-border bg-muted/60 p-1 text-sm">
                   {(['all', 'pending', 'sent', 'failed'] as const).map((item) => (
                     <button
                       key={item}
@@ -1196,14 +1196,14 @@ export function Notifications() {
                             {patientName ? patientName + ' • ' : ''}{notification.recipient}
                           </p>
                           <h3 className="mt-2 text-sm font-bold text-foreground">{patientName}</h3>
-                          <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-3 text-xs sm:grid-cols-4">
+                          <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-3 text-sm sm:grid-cols-4">
                             <div><p className="font-semibold uppercase tracking-wide text-muted-foreground">Dose</p><p className="mt-1 font-medium text-foreground">{schedule ? 'Day ' + schedule.dose_day : 'PEP Dose'}</p></div>
                             <div><p className="font-semibold uppercase tracking-wide text-muted-foreground">Reminder Type</p><p className="mt-1 font-medium text-foreground">{reminderType}</p></div>
                             <div><p className="font-semibold uppercase tracking-wide text-muted-foreground">Scheduled</p><p className="mt-1 font-medium text-foreground">{schedule ? formatDate(schedule.scheduled_date) : 'Not linked'}</p></div>
                             <div><p className="font-semibold uppercase tracking-wide text-muted-foreground">Created</p><p className="mt-1 font-medium text-foreground">{getTimestampLabel(notification)}</p></div>
                           </div>
                           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
-                            <p className={'text-xs font-medium ' + (status === 'Sent' ? 'text-emerald-700' : status === 'Failed' ? 'text-destructive' : 'text-amber-700')}>
+                            <p className={'text-sm font-medium ' + (status === 'Sent' ? 'text-emerald-700' : status === 'Failed' ? 'text-destructive' : 'text-amber-700')}>
                               {status === 'Sent' ? 'Accepted by SMS gateway (awaiting handset delivery).' : status === 'Failed' ? 'SMS delivery failed.' : smsService.enabled ? 'SMS is pending dispatch.' : 'Reminder queued in simulation mode.'}
                             </p>
                             {canSendNotifications && status === 'Pending' && (
@@ -1242,7 +1242,7 @@ export function Notifications() {
                       >
                         Previous
                       </Button>
-                      <span className="rounded-full border border-border bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
+                      <span className="rounded-full border border-border bg-muted px-3 py-1 text-sm font-semibold text-muted-foreground">
                         Page {safeCurrentPage} of {totalPages}
                       </span>
                       <Button
@@ -1270,7 +1270,7 @@ export function Notifications() {
                   </div>
                   <div className="min-w-0">
                     <h2 id="upcoming-reminders-heading" className="text-base font-extrabold text-foreground">Upcoming Reminders</h2>
-                    <p className="mt-0.5 text-xs font-medium text-muted-foreground">Overdue, due today, and upcoming doses within seven days.</p>
+                    <p className="mt-0.5 text-sm font-medium text-muted-foreground">Overdue, due today, and upcoming doses within seven days.</p>
                   </div>
                 </div>
                 {canSendNotifications && (
@@ -1302,7 +1302,7 @@ export function Notifications() {
                             </div>
                             <div className="min-w-0">
                               <h3 className="break-words text-sm font-bold leading-5 text-foreground sm:text-sm">{group.patient}</h3>
-                              <p className="mt-0.5 flex items-center gap-0.5 text-xs tracking-tight text-muted-foreground sm:gap-1.5 sm:text-xs sm:tracking-normal"><Phone className="hidden h-3.5 w-3.5 shrink-0 sm:block" /> {group.contact || 'No contact number'}</p>
+                              <p className="mt-0.5 flex items-center gap-0.5 text-sm tracking-tight text-muted-foreground sm:gap-1.5 sm:text-sm sm:tracking-normal"><Phone className="hidden h-3.5 w-3.5 shrink-0 sm:block" /> {group.contact || 'No contact number'}</p>
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-1.5 sm:justify-end">
@@ -1319,7 +1319,7 @@ export function Notifications() {
                             <p className="border-b border-rose-100 px-2 py-2 text-xs font-bold uppercase tracking-wider text-rose-700 sm:px-3">Overdue</p>
                             <div className="divide-y divide-rose-100/80">
                               {group.overdue.map((dose) => (
-                                <div key={dose.id} data-schedule-row className="grid gap-0.5 px-2 py-2.5 text-xs sm:grid-cols-[4rem_minmax(7rem,1fr)_auto] sm:items-center sm:gap-3 sm:px-3 sm:text-xs">
+                                <div key={dose.id} data-schedule-row className="grid gap-0.5 px-2 py-2.5 text-sm sm:grid-cols-[4rem_minmax(7rem,1fr)_auto] sm:items-center sm:gap-3 sm:px-3 sm:text-sm">
                                   <span className="font-bold text-foreground">Day {dose.doseDay}</span>
                                   <span className="text-muted-foreground">{formatDate(dose.dueDate)}</span>
                                   <span className="whitespace-nowrap font-semibold text-rose-700 sm:text-right">{getDaysOverdue(dose.dueDate)} day{getDaysOverdue(dose.dueDate) !== 1 ? 's' : ''} overdue</span>
@@ -1333,7 +1333,7 @@ export function Notifications() {
                             <p className="border-b border-amber-100 px-2 py-2 text-xs font-bold uppercase tracking-wider text-amber-700 sm:px-3">Due Today</p>
                             <div className="divide-y divide-amber-100/80">
                               {group.dueToday.map((dose) => (
-                                <div key={dose.id} data-schedule-row className="grid gap-0.5 px-2 py-2.5 text-xs sm:grid-cols-[4rem_minmax(7rem,1fr)_auto] sm:items-center sm:gap-3 sm:px-3 sm:text-xs">
+                                <div key={dose.id} data-schedule-row className="grid gap-0.5 px-2 py-2.5 text-sm sm:grid-cols-[4rem_minmax(7rem,1fr)_auto] sm:items-center sm:gap-3 sm:px-3 sm:text-sm">
                                   <span className="font-bold text-foreground">Day {dose.doseDay}</span>
                                   <span className="text-muted-foreground">{formatDate(dose.dueDate)}</span>
                                   <span className="font-semibold text-amber-700 sm:whitespace-nowrap sm:text-right">Due today</span>
@@ -1347,7 +1347,7 @@ export function Notifications() {
                             <p className="border-b border-emerald-100 px-2 py-2 text-xs font-bold uppercase tracking-wider text-emerald-700 sm:px-3">Upcoming</p>
                             <div className="divide-y divide-emerald-100/80">
                               {group.upcoming.map((dose) => (
-                                <div key={dose.id} data-schedule-row className="grid gap-0.5 px-2 py-2.5 text-xs sm:grid-cols-[4rem_minmax(7rem,1fr)_auto] sm:items-center sm:gap-3 sm:px-3 sm:text-xs">
+                                <div key={dose.id} data-schedule-row className="grid gap-0.5 px-2 py-2.5 text-sm sm:grid-cols-[4rem_minmax(7rem,1fr)_auto] sm:items-center sm:gap-3 sm:px-3 sm:text-sm">
                                   <span className="font-bold text-foreground">Day {dose.doseDay}</span>
                                   <span className="text-muted-foreground">{formatDate(dose.dueDate)}</span>
                                   <span className="font-semibold text-emerald-700 sm:whitespace-nowrap sm:text-right">In {getDaysUntil(dose.dueDate)} day{getDaysUntil(dose.dueDate) !== 1 ? 's' : ''}</span>
@@ -1364,10 +1364,10 @@ export function Notifications() {
                         </div>
                       )}
                       <div className="flex flex-col gap-2 border-t border-border/70 bg-muted/15 px-2 py-3 sm:flex-row sm:flex-wrap sm:px-4">
-                        {group.patientId && <Button type="button" variant="outline" size="sm" className="h-auto min-h-8 max-w-full !whitespace-normal break-words px-2 py-2 text-center text-xs leading-4 sm:text-xs" onClick={() => navigate('/patients/' + group.patientId)}>View Patient</Button>}
-                        {group.incidentId && <Button type="button" variant="outline" size="sm" className="h-auto min-h-8 max-w-full !whitespace-normal break-words px-2 py-2 text-center text-xs leading-4 sm:text-xs" onClick={() => navigate('/pep-schedule?incident_id=' + encodeURIComponent(group.incidentId || ''))}>Open PEP Schedule</Button>}
+                        {group.patientId && <Button type="button" variant="outline" size="sm" className="h-auto min-h-8 max-w-full !whitespace-normal break-words px-2 py-2 text-center text-sm leading-4 sm:text-sm" onClick={() => navigate('/patients/' + group.patientId)}>View Patient</Button>}
+                        {group.incidentId && <Button type="button" variant="outline" size="sm" className="h-auto min-h-8 max-w-full !whitespace-normal break-words px-2 py-2 text-center text-sm leading-4 sm:text-sm" onClick={() => navigate('/pep-schedule?incident_id=' + encodeURIComponent(group.incidentId || ''))}>Open PEP Schedule</Button>}
                         {canSendNotifications && (
-                          <Button type="button" size="sm" className="h-auto min-h-8 max-w-full !whitespace-normal break-words px-2 py-2 text-center text-xs leading-4 sm:ml-auto sm:text-xs" disabled={sending === group.key || !group.smsConsent || !/^(09|\+639)\d{9}$/.test(group.contact) || hasPendingReminder(group)} onClick={() => setConfirmationGroup(group)}>
+                          <Button type="button" size="sm" className="h-auto min-h-8 max-w-full !whitespace-normal break-words px-2 py-2 text-center text-sm leading-4 sm:ml-auto sm:text-sm" disabled={sending === group.key || !group.smsConsent || !/^(09|\+639)\d{9}$/.test(group.contact) || hasPendingReminder(group)} onClick={() => setConfirmationGroup(group)}>
                             <MessageSquare className="mr-2 hidden h-4 w-4 sm:block" /> {hasPendingReminder(group) ? (smsService.enabled ? 'Pending' : 'Queued') : group.overdue.length > 0 ? (smsService.enabled ? 'Send Follow-up Reminder' : 'Queue Follow-up Reminder') : (smsService.enabled ? 'Send Reminder' : 'Queue Reminder')}
                           </Button>
                         )}
@@ -1482,7 +1482,7 @@ export function Notifications() {
               ))}
             </fieldset>
 
-            <div className="mt-4 grid gap-2 rounded-xl border border-border bg-muted/20 p-3 text-xs sm:grid-cols-2">
+            <div className="mt-4 grid gap-2 rounded-xl border border-border bg-muted/20 p-3 text-sm sm:grid-cols-2">
               <p><span className="font-semibold text-foreground">Selected scope:</span> {bulkScope === 'overdue' ? 'Overdue only' : bulkScope === 'due_today' ? 'Due Today only' : 'Overdue and Due Today'}</p>
               <p><span className="font-semibold text-foreground">Current SMS mode:</span> {smsService.enabled ? 'SMS Service Enabled' : 'Simulation Mode'}</p>
               <p><span className="font-semibold text-foreground">Eligible patients:</span> {bulkTargetCount}</p>

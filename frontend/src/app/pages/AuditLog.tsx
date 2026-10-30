@@ -223,7 +223,7 @@ export function AuditLog() {
         <div className="bg-card border border-border rounded-lg p-6">
           <div className="space-y-4">
             <div>
-              <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Search Activity Logs</label>
+              <label className="mb-1.5 block text-sm font-semibold text-foreground">Search Activity Logs</label>
               <div className="relative">
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <input
@@ -289,7 +289,7 @@ export function AuditLog() {
           <div className="max-h-[620px] overflow-auto">
             <table className="w-full">
               <thead className="sticky top-0 z-10">
-                <tr className="bg-muted text-xs font-medium text-muted-foreground">
+                <tr className="bg-muted/60 text-xs font-bold uppercase tracking-wide text-muted-foreground">
                   <th className="text-left px-6 py-3">Timestamp</th>
                   <th className="text-left px-6 py-3">User</th>
                   <th className="text-left px-6 py-3">Role</th>
@@ -307,14 +307,14 @@ export function AuditLog() {
                   <tr><td colSpan={8} className="px-6 py-10 text-center text-sm text-muted-foreground">No audit logs found.</td></tr>
                 ) : logs.map((log) => (
                   <tr key={log.id} className="hover:bg-muted/50 transition-colors">
-                    <td className="px-6 py-4 text-xs text-muted-foreground font-mono whitespace-nowrap">{formatManilaTimestamp(log.timestamp)}</td>
+                    <td className="px-6 py-4 text-sm text-muted-foreground font-mono whitespace-nowrap">{formatManilaTimestamp(log.timestamp)}</td>
                     <td className="px-6 py-4 text-sm font-medium text-foreground whitespace-nowrap">{log.user_name}</td>
                     <td className="px-6 py-4"><Badge variant={getRoleVariant(log.user_role)} size="sm">{getRoleLabel(log.user_role)}</Badge></td>
                     <td className="px-6 py-4 text-sm text-foreground whitespace-nowrap">{toTitleCaseAction(log.action)}</td>
                     <td className="px-6 py-4"><Badge variant="neutral" size="sm">{log.module}</Badge></td>
-                    <td className="px-6 py-4 text-xs text-muted-foreground">{log.record_id || '-'}</td>
+                    <td className="px-6 py-4 text-sm text-muted-foreground">{log.record_id || '-'}</td>
                     <td className="px-6 py-4 text-sm text-muted-foreground min-w-[260px]">{log.description || '-'}</td>
-                    <td className="px-6 py-4 text-xs text-muted-foreground font-mono">{log.ip_address || '-'}</td>
+                    <td className="px-6 py-4 text-sm text-muted-foreground font-mono">{log.ip_address || '-'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -342,7 +342,7 @@ export function AuditLog() {
                   onClick={() => setCurrentPage(page)}
                   disabled={loading}
                   className={
-                    'h-8 min-w-8 rounded-lg border px-3 text-xs font-semibold transition-colors ' +
+                    'h-8 min-w-8 rounded-lg border px-3 text-sm font-semibold transition-colors ' +
                     (page === pagination.current_page
                       ? 'border-primary bg-primary-bg text-primary'
                       : 'border-border bg-card text-muted-foreground hover:border-primary/30 hover:bg-primary-bg hover:text-primary')

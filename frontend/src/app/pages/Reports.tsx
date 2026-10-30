@@ -267,7 +267,7 @@ export function Reports() {
             <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
               <div className="px-6 py-4 border-b border-border flex items-center gap-3">
                 <FileText className="w-5 h-5 text-primary" />
-                <h2 className="text-sm font-semibold text-foreground">Report Preview</h2>
+                <h2 className="text-base font-bold text-foreground">Report Preview</h2>
                 {preview && (
                   <span className="ml-auto text-xs font-medium text-success bg-success-bg px-2 py-0.5 rounded-full flex items-center gap-1">
                     <CheckCircle className="w-3 h-3" /> Ready
@@ -287,7 +287,7 @@ export function Reports() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
                       {previewSummary.map((item) => (
                         <div key={item.label} className="border border-border rounded-lg px-4 py-3 bg-muted/20">
-                          <p className="text-xs text-muted-foreground mb-1">{item.label}</p>
+                          <p className="text-sm font-medium text-muted-foreground mb-1">{item.label}</p>
                           <p className="text-lg font-semibold text-foreground">{item.value}</p>
                         </div>
                       ))}
@@ -309,7 +309,7 @@ export function Reports() {
                     <div className="overflow-x-auto border border-border rounded-lg mb-4">
                       <table className="w-full min-w-[760px]">
                         <thead>
-                          <tr className="bg-muted text-xs font-medium text-muted-foreground">
+                          <tr className="bg-muted/60 text-xs font-bold uppercase tracking-wide text-muted-foreground">
                             {previewTable?.headers.map((header) => (
                               <th key={header} className="text-left px-4 py-2">{header}</th>
                             ))}
@@ -325,7 +325,7 @@ export function Reports() {
                           ) : previewTable.rows.map((row, rowIndex) => (
                             <tr key={rowIndex}>
                               {row.map((cell, cellIndex) => (
-                                <td key={cellIndex} className="px-4 py-2 text-xs text-muted-foreground whitespace-nowrap">{cell}</td>
+                                <td key={cellIndex} className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">{cell}</td>
                               ))}
                             </tr>
                           ))}
@@ -334,7 +334,7 @@ export function Reports() {
                     </div>
 
                     {visiblePreviewRowCount > 0 && (
-                      <p className="text-xs text-muted-foreground text-center border-t border-border pt-4">
+                      <p className="text-sm text-muted-foreground text-center border-t border-border pt-4">
                         Showing first {visiblePreviewRowCount} of {preview.row_count} row{preview.row_count !== 1 ? 's' : ''}. Download includes the full report.
                       </p>
                     )}
@@ -358,7 +358,7 @@ export function Reports() {
 
           <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
             <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-              <h2 className="text-sm font-semibold text-foreground mb-4">Report Configuration</h2>
+              <h2 className="text-base font-bold text-foreground mb-4">Report Configuration</h2>
               <div className="space-y-4">
                 <Select
                   label="Report Type"

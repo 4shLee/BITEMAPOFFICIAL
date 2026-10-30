@@ -144,8 +144,8 @@ function SettingsCard({ title, description, icon: Icon, tone, children }: { titl
           <Icon className="h-5 w-5" />
         </div>
         <div>
-          <h2 className="text-sm font-bold text-foreground">{title}</h2>
-          <p className="text-xs text-muted-foreground">{description}</p>
+          <h2 className="text-base font-bold text-foreground">{title}</h2>
+          <p className="text-sm text-muted-foreground">{description}</p>
         </div>
       </div>
       {children}
@@ -158,7 +158,7 @@ function ToggleRow({ title, description, checked, onChange, disabled = false }: 
     <div className="flex items-center justify-between gap-4 border-b border-border py-2.5 last:border-0">
       <div>
         <p className="text-sm font-semibold text-foreground">{title}</p>
-        <p className="text-xs leading-5 text-muted-foreground">{description}</p>
+        <p className="text-sm leading-5 text-muted-foreground">{description}</p>
       </div>
       <Toggle checked={checked} onChange={onChange} disabled={disabled} />
     </div>
@@ -473,7 +473,7 @@ export function Settings() {
 
           <div className="sticky bottom-3 z-10 rounded-2xl border border-emerald-900/5 bg-white/95 px-4 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.06)] backdrop-blur">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs font-medium text-muted-foreground">
+              <p className="text-sm font-medium text-muted-foreground">
                 {hasChanges ? 'Unsaved changes are ready to apply.' : 'No unsaved changes.'}
               </p>
               <div className="flex flex-wrap items-center gap-2">
@@ -521,7 +521,7 @@ export function Settings() {
           <div className="space-y-4">
             <Input label="Test Recipient Phone Number" value={testSmsForm.phone} onChange={(event) => setTestSmsForm((current) => ({ ...current, phone: event.target.value }))} placeholder="09XXXXXXXXX" />
             <div>
-              <label className="mb-1.5 block text-xs font-semibold text-foreground">Message Preview</label>
+              <label className="mb-1.5 block text-sm font-semibold text-foreground">Message Preview</label>
               <textarea
                 value={testSmsForm.message}
                 onChange={(event) => setTestSmsForm((current) => ({ ...current, message: event.target.value }))}

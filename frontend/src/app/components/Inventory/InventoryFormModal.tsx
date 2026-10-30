@@ -188,7 +188,7 @@ export function InventoryFormModal({
             <h2 className="text-lg font-extrabold text-foreground">
               {item ? 'Edit Inventory Product' : 'Add Inventory Product'}
             </h2>
-            <p className="mt-0.5 text-xs font-medium text-muted-foreground">
+            <p className="mt-0.5 text-sm font-medium text-muted-foreground">
               {item
                 ? 'Update the master product details and reorder level.'
                 : 'Step 1: Select the clinic product. Step 2: Record a Lot/Batch (lot number, expiry date, and quantity) for dose administration.'}
@@ -344,7 +344,7 @@ export function InventoryFormModal({
             )}
 
             <div>
-              <label className="block text-xs font-medium text-foreground mb-2">
+              <label className="block text-sm font-semibold text-foreground mb-2">
                 Description / Notes (Optional)
               </label>
               <textarea

@@ -228,7 +228,7 @@ export function IncidentListPage() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="bg-muted text-xs font-medium text-muted-foreground">
+                <tr className="bg-muted/60 text-xs font-bold uppercase tracking-wide text-muted-foreground">
                   <th className="text-left px-6 py-3">Patient Name</th>
                   <th className="text-left px-6 py-3">Date of Incident</th>
                   <th className="text-left px-6 py-3">Animal Type</th>
@@ -336,7 +336,7 @@ export function IncidentListPage() {
                             <>
                               <button
                                 onClick={() => handleReview(incident)}
-                                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-primary/20 bg-primary/10 px-3 text-xs font-semibold leading-none text-primary shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/15"
+                                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-primary/20 bg-primary/10 px-3 text-sm font-semibold leading-none text-primary shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/15"
                                 title="Review Incident"
                               >
                                 <Stethoscope className="w-4 h-4" />
@@ -344,7 +344,7 @@ export function IncidentListPage() {
                               </button>
                               <button
                                 onClick={() => handlePepRecommendation(incident)}
-                                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-accent/20 bg-accent-bg px-3 text-xs font-semibold leading-none text-accent shadow-sm transition-colors hover:border-accent/40"
+                                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-accent/20 bg-accent-bg px-3 text-sm font-semibold leading-none text-accent shadow-sm transition-colors hover:border-accent/40"
                                 title="PEP Recommendation"
                               >
                                 <ClipboardCheck className="w-4 h-4" />

@@ -90,7 +90,7 @@ const initialFormData: PatientFormData = {
 function SummaryRow({ label, value }: { label: string; value?: string | number | null }) {
   const displayValue = value === null || value === undefined || value === '' ? 'Not provided' : value;
   return (
-    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 bg-white px-3 py-2.5 text-xs">
+    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 bg-white px-3 py-2.5 text-sm">
       <span className="font-semibold text-slate-500">{label}</span>
       <span className="truncate font-semibold text-slate-900">{displayValue}</span>
     </div>
@@ -348,7 +348,7 @@ export function PatientRecordForm() {
               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h2 className="text-base font-bold text-foreground">Patient Information</h2>
-                  <p className="mt-1 text-xs text-muted-foreground">
+                  <p className="mt-1 text-sm text-muted-foreground">
                     Encode the patient profile used by the registry, incident records, PEP schedules, and reminders.
                   </p>
                 </div>
@@ -380,7 +380,7 @@ export function PatientRecordForm() {
 
               <section className="mt-5 border-t border-border pt-4">
                 <h3 className="mb-1 text-sm font-bold text-foreground">C. Patient Residential Address</h3>
-                <p className="mb-3 text-xs text-muted-foreground">This is the patient's residence and is separate from the location of an animal-bite incident.</p>
+                <p className="mb-3 text-sm text-muted-foreground">This is the patient's residence and is separate from the location of an animal-bite incident.</p>
                 {formData.legacyAddress && !formData.addressLine && (
                   <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">Legacy address on file: {formData.legacyAddress}</p>
                 )}
@@ -388,7 +388,7 @@ export function PatientRecordForm() {
                   <Input label="House No. / Purok / Street *" placeholder="Enter house number, purok, subdivision, or street" value={formData.addressLine} onChange={(event) => updateField('addressLine', event.target.value)} error={errors.addressLine} />
 
                   <div ref={barangayContainerRef} className="relative w-full">
-                    <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                    <label className="mb-1.5 block text-sm font-semibold text-foreground">
                       Barangay *
                     </label>
                     <div className="relative">
@@ -491,7 +491,7 @@ export function PatientRecordForm() {
                 </div>
                 <div>
                   <h2 className="text-base font-bold text-foreground">D. SMS Reminder Permission</h2>
-                  <p className="mt-0.5 text-xs text-muted-foreground">Patient messaging permission only; treatment and clinic monitoring remain unaffected.</p>
+                  <p className="mt-0.5 text-sm text-muted-foreground">Patient messaging permission only; treatment and clinic monitoring remain unaffected.</p>
                 </div>
               </div>
               <div>
@@ -504,7 +504,7 @@ export function PatientRecordForm() {
                   />
                   <span>
                     <span className="font-semibold">SMS Reminder Permission</span>
-                    <span className="mt-0.5 block text-xs text-muted-foreground">Patient agrees to receive vaccination appointment reminders through SMS at the contact number provided. This choice does not affect treatment or PEP scheduling.</span>
+                    <span className="mt-0.5 block text-sm text-muted-foreground">Patient agrees to receive vaccination appointment reminders through SMS at the contact number provided. This choice does not affect treatment or PEP scheduling.</span>
                   </span>
                 </label>
               </div>
@@ -517,7 +517,7 @@ export function PatientRecordForm() {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-foreground">Patient Summary</h3>
-                  <p className="mt-0.5 text-xs text-muted-foreground">Review before saving.</p>
+                  <p className="mt-0.5 text-sm text-muted-foreground">Review before saving.</p>
                 </div>
               </div>
               <div className="overflow-hidden rounded-xl border border-border">

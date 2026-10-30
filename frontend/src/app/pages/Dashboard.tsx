@@ -200,7 +200,7 @@ function NurseKpiCard({ title, value, helper, icon: Icon, tone }: {
           <Icon className="w-5 h-5" />
         </div>
       </div>
-      <p className="mt-2.5 text-xs font-normal leading-snug text-slate-500">{helper}</p>
+      <p className="mt-2.5 text-sm font-normal leading-snug text-slate-500">{helper}</p>
     </div>
   );
 }
@@ -291,7 +291,7 @@ function NurseDashboard({
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <h2 className="text-base font-bold text-slate-950">Today's PEP Schedule</h2>
-                <p className="text-xs font-normal text-slate-500 mt-0.5">Patients due for vaccination or schedule review today</p>
+                <p className="text-sm font-normal text-slate-500 mt-0.5">Patients due for vaccination or schedule review today</p>
               </div>
               <Link to="/pep-schedule" className="text-sm text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">
                 Open schedule <ChevronRight className="w-3 h-3" />
@@ -311,7 +311,7 @@ function NurseDashboard({
                   <div key={row.id} className="px-6 py-3.5 flex items-center justify-between gap-4 hover:bg-emerald-50/40 transition-colors">
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-slate-900 truncate">{row.patient}</p>
-                      <p className="text-xs font-normal text-slate-500 mt-0.5">{row.dose} dose - {row.time || 'Clinic Hours'}</p>
+                      <p className="text-sm font-normal text-slate-500 mt-0.5">{row.dose} dose - {row.time || 'Clinic Hours'}</p>
                     </div>
                     <Badge variant={row.status === 'Clear' ? 'success' : row.status === 'Due today' ? 'warning' : 'info'}>
                       {row.status}
@@ -325,7 +325,7 @@ function NurseDashboard({
           <div className="rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
             <div className="px-6 pt-4 pb-3 border-b border-slate-100">
               <h2 className="text-base font-bold text-slate-950">Reminder Status</h2>
-              <p className="text-xs font-normal text-slate-500 mt-0.5">SMS reminder activity today</p>
+              <p className="text-sm font-normal text-slate-500 mt-0.5">SMS reminder activity today</p>
             </div>
             <div className="p-5 space-y-3.5">
               {[
@@ -364,7 +364,7 @@ function NurseDashboard({
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <h2 className="text-base font-bold text-slate-950">Recent Incidents</h2>
-                <p className="text-xs font-normal text-slate-500 mt-0.5">Latest cases for clinic encoding and follow-up</p>
+                <p className="text-sm font-normal text-slate-500 mt-0.5">Latest cases for clinic encoding and follow-up</p>
               </div>
               {canCreateIncident && (
                 <Link to="/incidents/new" className="text-sm text-emerald-700 font-bold flex items-center gap-1 hover:underline">
@@ -419,7 +419,7 @@ function NurseDashboard({
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <h2 className="text-base font-bold text-slate-950">Vaccine & Supply Status</h2>
-                <p className="text-xs font-normal text-slate-500 mt-0.5">Low and critical stock watchlist</p>
+                <p className="text-sm font-normal text-slate-500 mt-0.5">Low and critical stock watchlist</p>
               </div>
               <Link to="/inventory" className="text-sm text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">
                 Inventory <ChevronRight className="w-3 h-3" />
@@ -448,7 +448,7 @@ function NurseDashboard({
                         {STATUS_LABEL[status] || 'Low Stock'}
                       </span>
                     </div>
-                    <p className="text-xs font-normal text-slate-500">
+                    <p className="text-sm font-normal text-slate-500">
                       <span className="font-semibold text-slate-900 tabular-nums">{stock}</span> {unit} remaining
                     </p>
                   </div>
@@ -461,7 +461,7 @@ function NurseDashboard({
         <div className="overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
           <div className="px-6 py-4 border-b border-slate-100">
             <h2 className="text-base font-bold text-slate-950">Recent Notifications / SMS Reminders</h2>
-            <p className="text-xs font-normal text-slate-500 mt-0.5">Quick activity summary for patient reminders</p>
+            <p className="text-sm font-normal text-slate-500 mt-0.5">Quick activity summary for patient reminders</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-100">
             {[
@@ -475,7 +475,7 @@ function NurseDashboard({
                 </div>
                 <div>
                   <p className="text-[22px] font-semibold leading-none text-slate-950 tabular-nums">{item.value}</p>
-                  <p className="mt-1 text-xs font-normal text-slate-500">{item.label}</p>
+                  <p className="mt-1 text-sm font-normal text-slate-500">{item.label}</p>
                 </div>
               </div>
             ))}
@@ -591,9 +591,9 @@ function ClinicAdminDashboard({
             <div className="px-6 py-4 border-b border-slate-100 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <h2 className="text-base font-bold text-slate-950">Monthly Bite Incident Trends</h2>
-                <p className="text-xs font-normal text-slate-500 mt-0.5">Cases reported vs. vaccinated for the last 6 months</p>
+                <p className="text-sm font-normal text-slate-500 mt-0.5">Cases reported vs. vaccinated for the last 6 months</p>
               </div>
-              <div className="flex flex-wrap items-center gap-3 text-xs font-medium text-slate-500">
+              <div className="flex flex-wrap items-center gap-3 text-sm font-medium text-slate-500">
                 <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#64748B' }} /> Bite Cases</span>
                 <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#0D9488' }} /> Vaccinated</span>
               </div>
@@ -624,7 +624,7 @@ function ClinicAdminDashboard({
           <div className="overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
             <div className="px-6 py-4 border-b border-slate-100">
               <h2 className="text-base font-bold text-slate-950">Vaccination Compliance</h2>
-              <p className="text-xs font-normal text-slate-500 mt-0.5">Current PEP cycle status</p>
+              <p className="text-sm font-normal text-slate-500 mt-0.5">Current PEP cycle status</p>
             </div>
             <div className="px-5 py-4">
               <div className="flex justify-center">
@@ -658,11 +658,11 @@ function ClinicAdminDashboard({
               <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
                 {vaccinationCompliance.map((item) => (
                   <div key={item.name} className="flex items-center justify-between gap-3">
-                    <span className="flex items-center gap-2 text-xs font-medium text-slate-500">
+                    <span className="flex items-center gap-2 text-sm font-medium text-slate-500">
                       <span className="w-2 h-2 rounded-full shrink-0" style={{ background: item.color }} />
                       {item.name}
                     </span>
-                    <span className="text-xs font-semibold text-slate-900 tabular-nums">{item.value}</span>
+                    <span className="text-sm font-semibold text-slate-900 tabular-nums">{item.value}</span>
                   </div>
                 ))}
                 {!hasComplianceData && (
@@ -678,7 +678,7 @@ function ClinicAdminDashboard({
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-base font-bold text-slate-950">Recent Incidents</h2>
-                <p className="text-xs font-normal text-slate-500 mt-0.5">Latest 5 bite cases reported</p>
+                <p className="text-sm font-normal text-slate-500 mt-0.5">Latest 5 bite cases reported</p>
               </div>
               <Link to="/incidents" className="text-sm text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">
                 View all incidents <ChevronRight className="w-3 h-3" />
@@ -707,11 +707,11 @@ function ClinicAdminDashboard({
                   <tbody className="divide-y divide-slate-100">
                     {recentIncidentRows.map((incident) => (
                       <tr key={incident.id} className="hover:bg-emerald-50/40 transition-colors">
-                        <td className="px-5 py-3 text-xs text-slate-500 whitespace-nowrap">
+                        <td className="px-5 py-3 text-sm text-slate-500 whitespace-nowrap">
                           {incident.incident_date ? new Date(incident.incident_date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}
                         </td>
                         <td className="px-5 py-3 text-sm font-semibold text-slate-900">{incident.patient?.full_name || '-'}</td>
-                        <td className="px-5 py-3 text-xs text-slate-500">{incident.barangay?.name || '-'}</td>
+                        <td className="px-5 py-3 text-sm text-slate-500">{incident.barangay?.name || '-'}</td>
                         <td className="px-5 py-3"><Badge variant={getCategoryVariant(incident.who_category)}>{incident.who_category?.replace('Category ', 'Cat ') || '-'}</Badge></td>
                         <td className="px-5 py-3"><Badge variant={incident.status === 'Active' ? 'info' : 'success'}>{incident.status || '-'}</Badge></td>
                       </tr>
@@ -727,7 +727,7 @@ function ClinicAdminDashboard({
               <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-base font-bold text-slate-950">Vaccine & Supply Status</h2>
-                  <p className="text-xs font-normal text-slate-500 mt-0.5">Low and critical stock watchlist</p>
+                  <p className="text-sm font-normal text-slate-500 mt-0.5">Low and critical stock watchlist</p>
                 </div>
                 <Link to="/inventory" className="text-sm text-emerald-700 font-bold flex items-center gap-0.5 hover:underline">
                   Inventory <ChevronRight className="w-3 h-3" />
@@ -756,7 +756,7 @@ function ClinicAdminDashboard({
                           {STATUS_LABEL[status] || 'Low Stock'}
                         </span>
                       </div>
-                      <p className="mt-1 text-xs text-slate-500"><span className="font-semibold text-slate-900 tabular-nums">{stock}</span> {unit} remaining</p>
+                      <p className="mt-1 text-sm text-slate-500"><span className="font-semibold text-slate-900 tabular-nums">{stock}</span> {unit} remaining</p>
                     </div>
                   );
                 })}
@@ -769,7 +769,7 @@ function ClinicAdminDashboard({
               <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-base font-bold text-slate-950">GIS Overview</h2>
-                  <p className="text-xs font-normal text-slate-500 mt-0.5">Geographic incident monitoring</p>
+                  <p className="text-sm font-normal text-slate-500 mt-0.5">Geographic incident monitoring</p>
                 </div>
                 <Link to="/gis-map" className="text-sm text-emerald-700 font-bold flex items-center gap-0.5 hover:underline whitespace-nowrap">
                   View GIS map <ChevronRight className="w-3 h-3" />
@@ -822,7 +822,7 @@ function ClinicAdminDashboard({
           <div className="overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
             <div className="px-6 py-4 border-b border-slate-100">
               <h2 className="text-base font-bold text-slate-950">Biting Animal Types</h2>
-              <p className="text-xs font-normal text-slate-500 mt-0.5">Distribution of reported incidents</p>
+              <p className="text-sm font-normal text-slate-500 mt-0.5">Distribution of reported incidents</p>
             </div>
             <div className="px-5 py-4 space-y-4">
               {animalTypeDistribution.length === 0 ? (
@@ -841,7 +841,7 @@ function ClinicAdminDashboard({
                         <span className="w-2 h-2 rounded-full" style={{ background: animal.color }} />
                         {animal.type}
                       </span>
-                      <span className="text-xs text-slate-500 tabular-nums">{animal.count} / {animal.pct}%</span>
+                      <span className="text-sm text-slate-500 tabular-nums">{animal.count} / {animal.pct}%</span>
                     </div>
                     <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
                       <div className="h-full rounded-full" style={{ width: `${Math.max(4, animal.pct)}%`, background: animal.color }} />
@@ -857,7 +857,7 @@ function ClinicAdminDashboard({
               <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-base font-bold text-slate-950">GIS Overview</h2>
-                  <p className="text-xs font-normal text-slate-500 mt-0.5">Geographic incident monitoring</p>
+                  <p className="text-sm font-normal text-slate-500 mt-0.5">Geographic incident monitoring</p>
                 </div>
                 <Link to="/gis-map" className="text-sm text-emerald-700 font-bold flex items-center gap-0.5 hover:underline whitespace-nowrap">
                   View GIS map <ChevronRight className="w-3 h-3" />
@@ -938,7 +938,7 @@ function SystemMetricCard({ title, value, helper, icon: Icon, tone }: {
           <Icon className="h-5 w-5" />
         </div>
       </div>
-      <p className="mt-3 text-xs leading-snug text-slate-500">{helper}</p>
+      <p className="mt-3 text-sm leading-snug text-slate-500">{helper}</p>
     </div>
   );
 }
@@ -948,7 +948,7 @@ function SystemPanel({ title, helper, children }: { title: string; helper?: stri
     <div className="overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
       <div className="border-b border-slate-100 px-6 py-4">
         <h2 className="text-base font-bold text-slate-950">{title}</h2>
-        {helper && <p className="mt-0.5 text-xs text-slate-500">{helper}</p>}
+        {helper && <p className="mt-0.5 text-sm text-slate-500">{helper}</p>}
       </div>
       <div className="p-5">{children}</div>
     </div>
@@ -1057,11 +1057,11 @@ function SystemAdminDashboard({
                     <tbody className="divide-y divide-slate-100">
                       {recentActivity.map((log) => (
                         <tr key={log.id} className="hover:bg-emerald-50/40">
-                          <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">{log.timestamp ? new Date(log.timestamp).toLocaleString() : '-'}</td>
+                          <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-500">{log.timestamp ? new Date(log.timestamp).toLocaleString() : '-'}</td>
                           <td className="px-4 py-3 text-sm font-semibold text-slate-900">{log.user_name || 'System'}</td>
-                          <td className="px-4 py-3 text-xs text-slate-500">{getRoleLabel(log.user_role)}</td>
-                          <td className="px-4 py-3 text-xs font-semibold text-slate-700">{log.action || '-'}</td>
-                          <td className="px-4 py-3 text-xs text-slate-500">{log.module || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-slate-500">{getRoleLabel(log.user_role)}</td>
+                          <td className="px-4 py-3 text-sm font-semibold text-slate-700">{log.action || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-slate-500">{log.module || '-'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1077,7 +1077,7 @@ function SystemAdminDashboard({
                 <div key={role.key}>
                   <div className="mb-1.5 flex items-center justify-between">
                     <span className="text-sm font-semibold text-slate-800">{role.label}</span>
-                    <span className="text-xs font-bold text-slate-500 tabular-nums">{role.count}</span>
+                    <span className="text-sm font-bold text-slate-500 tabular-nums">{role.count}</span>
                   </div>
                   <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
                     <div className="h-full rounded-full bg-emerald-600" style={{ width: `${Math.max(4, (role.count / maxRoleCount) * 100)}%` }} />
@@ -1113,7 +1113,7 @@ function SystemAdminDashboard({
                     <p className="text-sm font-semibold text-slate-700">{row.label}</p>
                     <p className="text-[18px] font-bold text-slate-950 tabular-nums">{row.value}</p>
                   </div>
-                  <p className="mt-1 text-xs text-slate-500">{row.helper}</p>
+                  <p className="mt-1 text-sm text-slate-500">{row.helper}</p>
                 </div>
               ))}
             </div>

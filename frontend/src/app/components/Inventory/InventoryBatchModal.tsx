@@ -151,7 +151,7 @@ export function InventoryBatchModal({
             <h2 className="text-lg font-extrabold text-foreground">
               {mode === 'add' ? 'Add Batch / Restock' : 'Inventory Lots / Batches'}
             </h2>
-            <p className="mt-0.5 text-xs font-medium text-muted-foreground">
+            <p className="mt-0.5 text-sm font-medium text-muted-foreground">
               {mode === 'add'
                 ? 'Record lot number, expiry date, and quantity received for a vaccine or supply product.'
                 : selectedItem?.item_name}
@@ -248,7 +248,7 @@ export function InventoryBatchModal({
               />
 
               <div>
-                <label className="mb-1.5 block text-xs font-semibold text-foreground">Notes</label>
+                <label className="mb-1.5 block text-sm font-semibold text-foreground">Notes</label>
                 <textarea
                   value={formData.notes}
                   onChange={(event) => setFormData({ ...formData, notes: event.target.value })}
@@ -364,7 +364,7 @@ export function InventoryBatchModal({
                             <button
                               type="button"
                               onClick={() => setConfirmingDeleteBatch(batch)}
-                              className="inline-flex h-8 items-center gap-1 rounded-full border border-destructive/25 bg-destructive-bg px-2.5 text-xs font-semibold text-destructive transition-colors hover:border-destructive/50 hover:bg-destructive-bg/80"
+                              className="inline-flex h-8 items-center gap-1 rounded-full border border-destructive/25 bg-destructive-bg px-2.5 text-sm font-semibold text-destructive transition-colors hover:border-destructive/50 hover:bg-destructive-bg/80"
                               title={`Delete lot ${batch.batch_number}`}
                               aria-label={`Delete batch ${batch.batch_number}`}
                             >

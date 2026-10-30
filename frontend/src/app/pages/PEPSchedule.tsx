@@ -828,10 +828,10 @@ export function PEPSchedule() {
 
   const renderDoseAction = (dose: Dose) => {
     if (dose.status === 'completed_late') {
-      return <span className="text-xs font-bold text-amber-700">Recorded Late</span>;
+      return <span className="text-sm font-bold text-amber-700">Recorded Late</span>;
     }
     if (dose.status === 'completed') {
-      return <span className="text-xs font-bold text-emerald-700">Recorded</span>;
+      return <span className="text-sm font-bold text-emerald-700">Recorded</span>;
     }
     if (dose.status === 'due_today' || dose.status === 'overdue' || dose.status === 'missed') {
       return (
@@ -862,7 +862,7 @@ export function PEPSchedule() {
         </Button>
       );
     }
-    return <span className="text-xs font-semibold text-muted-foreground">No action</span>;
+    return <span className="text-sm font-semibold text-muted-foreground">No action</span>;
   };
 
   return (
@@ -873,7 +873,7 @@ export function PEPSchedule() {
         <div className="mx-auto max-w-[1480px] space-y-4">
           <div className="rounded-2xl border border-border bg-white p-4 shadow-sm">
             <label className="block text-sm font-bold text-foreground">Patient Schedule</label>
-            <p className="mt-0.5 text-xs text-muted-foreground">Select a patient incident to view the PEP schedule.</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">Select a patient incident to view the PEP schedule.</p>
             <PatientIncidentCombobox
               groups={groups}
               selectedIncidentId={selectedIncidentId}
@@ -925,10 +925,10 @@ export function PEPSchedule() {
                   <Syringe className="h-4 w-4 text-primary" />
                   <h3 className="text-base font-extrabold text-foreground">Dose Schedule</h3>
                 </div>
-                <p className="mb-3 text-xs font-medium text-muted-foreground">
+                <p className="mb-3 text-sm font-medium text-muted-foreground">
                   Dose dates are recalculated when the incident date is corrected. Completed dose records keep their administration history.
                 </p>
-                <p className="mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700">
+                <p className="mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">
                   Missed doses are flagged for follow-up. Staff may record a late dose or manually reschedule according to clinic protocol.
                 </p>
                 {overdueDoses > 0 && (
@@ -946,7 +946,7 @@ export function PEPSchedule() {
                         <Badge variant={statusVariant(dose.status)} size="sm">{statusLabel(dose.status)}</Badge>
                       </div>
                       <p className="text-base font-extrabold text-foreground">Day {dose.day}</p>
-                      <p className="mt-1 text-xs font-semibold text-muted-foreground">{formatDate(dose.date)}</p>
+                      <p className="mt-1 text-sm font-semibold text-muted-foreground">{formatDate(dose.date)}</p>
                       <div className="mt-3">{renderDoseAction(dose)}</div>
                     </div>
                   ))}
@@ -987,7 +987,7 @@ export function PEPSchedule() {
                     <div className="flex items-center justify-between"><span className="text-emerald-700">Dose</span><span className="font-bold text-emerald-950">Day {nextDose.day}</span></div>
                     <div className="flex items-center justify-between"><span className="text-emerald-700">Due Date</span><span className="font-bold text-emerald-950">{formatDate(nextDose.date)}</span></div>
                     <div className="flex items-center gap-2 text-emerald-900"><Phone className="h-4 w-4" /> {schedule.contact_number || 'No contact number'}</div>
-                    <p className="text-xs font-medium text-emerald-700">SMS Reminder Permission: {schedule.smsConsent ? 'Enabled' : 'Disabled'}</p>
+                    <p className="text-sm font-medium text-emerald-700">SMS Reminder Permission: {schedule.smsConsent ? 'Enabled' : 'Disabled'}</p>
                     {canSendNotifications && (
                       <Button type="button" className="mt-2 w-full" onClick={() => handleSendReminder(nextDose)} disabled={!schedule.contact_number || !schedule.smsConsent}>
                         <MessageSquare className="h-4 w-4" />
@@ -1013,7 +1013,7 @@ export function PEPSchedule() {
               <div className="overflow-x-auto xl:overflow-visible">
                 <table className="w-full">
                   <thead>
-                    <tr className="bg-muted/60 text-xs font-semibold text-muted-foreground">
+                    <tr className="bg-muted/60 text-xs font-bold uppercase tracking-wide text-muted-foreground">
                       <th className="w-[8%] px-3 py-3 text-left">Dose</th>
                       <th className="w-[13%] px-3 py-3 text-left">Scheduled Date</th>
                       <th className="w-[14%] px-3 py-3 text-left">Date Administered</th>
@@ -1092,7 +1092,7 @@ export function PEPSchedule() {
                 {doseSubmitAttempted && !recordForm.administeredDate && <p className="mt-1 text-xs font-medium text-destructive">Date administered is required.</p>}
               </div>
               <div>
-                <label htmlFor="dose-route" className="mb-1.5 block text-xs font-medium text-foreground">Administration Route *</label>
+                <label htmlFor="dose-route" className="mb-1.5 block text-sm font-semibold text-foreground">Administration Route *</label>
                 <select
                   id="dose-route"
                   value={recordForm.administrationRoute}
@@ -1109,7 +1109,7 @@ export function PEPSchedule() {
                 {doseSubmitAttempted && !recordForm.administrationRoute && <p className="mt-1 text-xs font-medium text-destructive">Administration route is required.</p>}
               </div>
               <div>
-                <label htmlFor="dose-vaccine" className="mb-1.5 block text-xs font-medium text-foreground">Vaccine Product *</label>
+                <label htmlFor="dose-vaccine" className="mb-1.5 block text-sm font-semibold text-foreground">Vaccine Product *</label>
                 <select
                   id="dose-vaccine"
                   value={recordForm.inventoryItemId}
@@ -1136,7 +1136,7 @@ export function PEPSchedule() {
                 {doseSubmitAttempted && inventoryOptionsLoaded && !recordForm.inventoryItemId && eligibleVaccineProducts.length > 0 && <p className="mt-1 text-xs font-medium text-destructive">Vaccine product is required.</p>}
               </div>
               <div>
-                <label htmlFor="dose-batch" className="mb-1.5 block text-xs font-medium text-foreground">Vaccine Lot / Batch *</label>
+                <label htmlFor="dose-batch" className="mb-1.5 block text-sm font-semibold text-foreground">Vaccine Lot / Batch *</label>
                 <select
                   id="dose-batch"
                   value={recordForm.inventoryBatchId}
@@ -1238,7 +1238,7 @@ export function PEPSchedule() {
               )}
               <Input label="Administered By" value={currentUser?.name || currentUser?.full_name || ''} readOnly />
               <div>
-                <label htmlFor="dose-remarks" className="mb-1.5 block text-xs font-medium text-foreground">Remarks (optional)</label>
+                <label htmlFor="dose-remarks" className="mb-1.5 block text-sm font-semibold text-foreground">Remarks (optional)</label>
                 <input
                   id="dose-remarks"
                   type="text"
@@ -1278,7 +1278,7 @@ export function PEPSchedule() {
               <Input label="Original Scheduled Date" value={formatDate(rescheduleDose.date)} disabled />
               <Input label="New Scheduled Date" type="date" min={todayKey()} value={rescheduleForm.scheduledDate} onChange={(event) => setRescheduleForm((current) => ({ ...current, scheduledDate: event.target.value }))} required />
               <div>
-                <label className="mb-1.5 block text-xs font-medium text-foreground">Reason for Reschedule</label>
+                <label className="mb-1.5 block text-sm font-semibold text-foreground">Reason for Reschedule</label>
                 <textarea
                   value={rescheduleForm.reason}
                   onChange={(event) => setRescheduleForm((current) => ({ ...current, reason: event.target.value }))}

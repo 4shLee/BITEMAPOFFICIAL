@@ -395,7 +395,7 @@ export function GISMap() {
         <div className="overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
           <div className="border-b border-slate-100 px-5 py-4">
             <h2 className="text-base font-extrabold text-slate-950">Barangay Incident Heatmap</h2>
-            <p className="mt-0.5 text-xs font-medium text-slate-500">Click a barangay marker to inspect incident density, risk, and PEP compliance.</p>
+            <p className="mt-0.5 text-sm font-medium text-slate-500">Click a barangay marker to inspect incident density, risk, and PEP compliance.</p>
           </div>
           <div className="relative h-[520px] md:h-[620px] xl:h-[min(720px,calc(100vh-185px))] xl:min-h-[650px]">
             <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
@@ -440,7 +440,7 @@ export function GISMap() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <h2 className="truncate text-lg font-extrabold text-slate-950">{selectedData.barangay_name}</h2>
-                    <p className="mt-0.5 text-xs font-medium text-slate-500">Barangay Analysis</p>
+                    <p className="mt-0.5 text-sm font-medium text-slate-500">Barangay Analysis</p>
                   </div>
                   <Badge variant={getRiskVariant(selectedData.risk_level)}>{selectedData.risk_level}</Badge>
                 </div>
@@ -466,7 +466,7 @@ export function GISMap() {
 
                 <div>
                   <div className="mb-2 flex items-center justify-between">
-                    <p className="text-xs font-semibold text-slate-500">PEP Compliance Rate</p>
+                    <p className="text-sm font-semibold text-slate-500">PEP Compliance Rate</p>
                     <span className="text-sm font-bold text-slate-950">{selectedData.pep_compliance_rate}%</span>
                   </div>
                   <div className="h-2 overflow-hidden rounded-full bg-slate-100">
@@ -486,7 +486,7 @@ export function GISMap() {
           </div>
 
           <div className="rounded-3xl border border-emerald-900/5 bg-white p-5 shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
-            <h3 className="text-sm font-extrabold text-slate-950">Filters</h3>
+            <h3 className="text-base font-extrabold text-slate-950">Filters</h3>
             <div className="mt-4 space-y-3">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-1">
                 <Input
@@ -522,7 +522,7 @@ export function GISMap() {
                   className="h-4 w-4 rounded border-slate-300 text-teal-700"
                 />
                 <span>
-                  <span className="block text-xs font-bold text-slate-700">Show exact incident pins</span>
+                  <span className="block text-sm font-bold text-slate-700">Show exact incident pins</span>
                   <span className="mt-0.5 block text-xs text-slate-500">Separate staff-only layer</span>
                 </span>
               </label>
@@ -530,19 +530,19 @@ export function GISMap() {
           </div>
 
           <div className="rounded-3xl border border-emerald-900/5 bg-white p-5 shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
-            <h3 className="text-sm font-extrabold text-slate-950">Legend</h3>
+            <h3 className="text-base font-extrabold text-slate-950">Legend</h3>
             <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3 xl:grid-cols-1">
               <div className="flex items-center gap-2">
                 <div className="h-4 w-4 shrink-0 rounded bg-[#16A34A]"></div>
-                <span className="text-xs font-medium text-slate-500">0-10 incidents</span>
+                <span className="text-sm font-medium text-slate-500">0-10 incidents</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="h-4 w-4 shrink-0 rounded bg-[#F2C94C]"></div>
-                <span className="text-xs font-medium text-slate-500">11-20 incidents</span>
+                <span className="text-sm font-medium text-slate-500">11-20 incidents</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="h-4 w-4 shrink-0 rounded bg-[#DC2626]"></div>
-                <span className="text-xs font-medium text-slate-500">21+ incidents</span>
+                <span className="text-sm font-medium text-slate-500">21+ incidents</span>
               </div>
             </div>
           </div>

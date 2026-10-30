@@ -145,7 +145,7 @@ export function StockAdjustmentModal({ item, onClose, mode = 'adjust' }: StockAd
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <div>
             <h2 className="text-lg font-extrabold text-foreground">{isUsageMode ? 'Record Stock Usage' : 'Adjust Stock'}</h2>
-            <p className="text-xs font-medium text-muted-foreground">
+            <p className="text-sm font-medium text-muted-foreground">
               {isUsageMode
                 ? `Record usage or dispensing for ${item.item_name}.`
                 : `Record stock deductions, wastage, or count corrections for ${item.item_name}.`}
@@ -250,7 +250,7 @@ export function StockAdjustmentModal({ item, onClose, mode = 'adjust' }: StockAd
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs font-semibold text-foreground">
+              <label className="mb-1.5 block text-sm font-semibold text-foreground">
                 Notes / Reason {REQUIRES_REASON.includes(formData.transaction_type) ? '*' : '(Optional)'}
               </label>
               <textarea

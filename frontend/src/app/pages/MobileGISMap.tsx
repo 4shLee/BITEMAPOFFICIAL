@@ -65,7 +65,7 @@ export function MobileGISMap() {
         {showFilters && (
           <div className="mt-3 pt-3 border-t border-border space-y-2">
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Period</label>
+              <label className="text-sm font-semibold text-foreground mb-1 block">Period</label>
               <select
                 value={dateRange}
                 onChange={(e) => setDateRange(e.target.value)}
@@ -78,7 +78,7 @@ export function MobileGISMap() {
               </select>
             </div>
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Animal Type</label>
+              <label className="text-sm font-semibold text-foreground mb-1 block">Animal Type</label>
               <select
                 value={animalType}
                 onChange={(e) => setAnimalType(e.target.value)}

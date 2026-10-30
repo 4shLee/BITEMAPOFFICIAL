@@ -421,7 +421,7 @@ export function Users() {
                 <s.icon className={'w-4.5 h-4.5 ' + s.color} />
               </div>
               <p className="text-2xl font-bold text-foreground">{s.value}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{s.label}</p>
+              <p className="text-sm font-medium text-muted-foreground mt-0.5">{s.label}</p>
             </div>
           ))}
         </div>
@@ -483,13 +483,13 @@ export function Users() {
                       <td className="px-6 py-4"><Badge variant={getRoleVariant(user.role)}>{getRoleLabel(user.role)}</Badge></td>
                       <td className="px-6 py-4"><Badge variant={getApprovalVariant(approval)}>{formatApproval(approval)}</Badge></td>
                       <td className="px-6 py-4"><Badge variant={user.status === 'Active' ? 'success' : 'neutral'}>{user.status}</Badge></td>
-                      <td className="px-6 py-4 text-xs text-muted-foreground">{user.lastLogin || 'Never'}</td>
+                      <td className="px-6 py-4 text-sm text-muted-foreground">{user.lastLogin || 'Never'}</td>
                       <td className="px-6 py-4">
                         <div className="flex flex-wrap items-center gap-2">
                           {userCanBeManaged && (
                             <button
                               onClick={() => { setEditingUser(user); setShowModal(true); }}
-                              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-primary font-medium hover:bg-primary-bg transition-colors"
+                              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-sm text-primary font-medium hover:bg-primary-bg transition-colors"
                             >
                               <Edit className="w-3.5 h-3.5" /> Edit
                             </button>
@@ -498,7 +498,7 @@ export function Users() {
                           {userCanBeManaged && (isPending || isRejected) && (
                             <button
                               onClick={() => handleApprove(user)}
-                              className="inline-flex items-center gap-1.5 rounded-md border border-success/30 bg-success-bg px-2.5 py-1.5 text-xs text-success font-medium hover:bg-success/10 transition-colors"
+                              className="inline-flex items-center gap-1.5 rounded-md border border-success/30 bg-success-bg px-2.5 py-1.5 text-sm text-success font-medium hover:bg-success/10 transition-colors"
                             >
                               <CheckCircle className="w-3.5 h-3.5" /> Approve
                             </button>
@@ -507,7 +507,7 @@ export function Users() {
                           {userCanBeManaged && isPending && (
                             <button
                               onClick={() => handleReject(user)}
-                              className="inline-flex items-center gap-1.5 rounded-md border border-destructive/30 bg-destructive-bg px-2.5 py-1.5 text-xs text-destructive font-medium hover:bg-destructive/10 transition-colors"
+                              className="inline-flex items-center gap-1.5 rounded-md border border-destructive/30 bg-destructive-bg px-2.5 py-1.5 text-sm text-destructive font-medium hover:bg-destructive/10 transition-colors"
                             >
                               <XCircle className="w-3.5 h-3.5" /> Reject
                             </button>
@@ -516,7 +516,7 @@ export function Users() {
                           {userCanBeManaged && !userIsCurrentUser && !isPending && !isRejected && (
                             <button
                               onClick={() => handleToggleStatus(user)}
-                              className={'inline-flex items-center rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors ' + (user.status === 'Active' ? 'border-destructive/30 bg-destructive-bg text-destructive hover:bg-destructive/10' : 'border-success/30 bg-success-bg text-success hover:bg-success/10')}
+                              className={'inline-flex items-center rounded-md border px-2.5 py-1.5 text-sm font-medium transition-colors ' + (user.status === 'Active' ? 'border-destructive/30 bg-destructive-bg text-destructive hover:bg-destructive/10' : 'border-success/30 bg-success-bg text-success hover:bg-success/10')}
                             >
                               {user.status === 'Active' ? 'Deactivate' : 'Activate'}
                             </button>
