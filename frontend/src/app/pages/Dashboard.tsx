@@ -175,34 +175,44 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
 
 // ─── Shared KPI Card ────────────────────────────────────────────────────────
 
-function NurseKpiCard({ title, value, helper, icon: Icon, tone }: {
+function NurseKpiCard({ title, value, helper, icon: Icon, tone, to }: {
   title: string;
   value: number | string;
   helper: string;
   icon: LucideIcon;
   tone: 'emerald' | 'teal' | 'amber' | 'rose';
+  to?: string;
 }) {
   const toneClass = {
-    emerald: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-    teal: 'bg-teal-50 text-teal-700 border-teal-100',
-    amber: 'bg-amber-50 text-amber-700 border-amber-100',
-    rose: 'bg-rose-50 text-rose-700 border-rose-100',
+    emerald: 'bg-emerald-50 text-emerald-700 border-emerald-100 group-hover:bg-emerald-100/80',
+    teal: 'bg-teal-50 text-teal-700 border-teal-100 group-hover:bg-teal-100/80',
+    amber: 'bg-amber-50 text-amber-700 border-amber-100 group-hover:bg-amber-100/80',
+    rose: 'bg-rose-50 text-rose-700 border-rose-100 group-hover:bg-rose-100/80',
   }[tone];
 
-  return (
-    <div className="rounded-3xl border border-emerald-900/5 bg-white p-5 shadow-[0_14px_35px_rgba(15,23,42,0.06)] transition-shadow hover:shadow-[0_18px_42px_rgba(15,23,42,0.09)]">
+  const content = (
+    <div className={`rounded-3xl border border-emerald-900/5 bg-white p-5 shadow-[0_14px_35px_rgba(15,23,42,0.06)] transition-all duration-200 ${to ? 'group hover:-translate-y-1 hover:shadow-[0_20px_45px_rgba(15,23,42,0.12)] hover:border-emerald-500/30 cursor-pointer' : 'hover:shadow-[0_18px_42px_rgba(15,23,42,0.09)]'}`}>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold text-slate-600">{title}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="text-sm font-semibold text-slate-600 transition-colors group-hover:text-slate-900">{title}</p>
+            {to && <ChevronRight className="w-3.5 h-3.5 text-slate-400 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />}
+          </div>
           <p className="mt-2 text-[36px] font-semibold leading-[40px] tracking-tight text-slate-950 tabular-nums">{value}</p>
         </div>
-        <div className={'w-12 h-12 rounded-2xl border flex items-center justify-center shadow-sm ' + toneClass}>
+        <div className={'w-12 h-12 rounded-2xl border flex items-center justify-center shadow-sm transition-colors ' + toneClass}>
           <Icon className="w-5 h-5" />
         </div>
       </div>
       <p className="mt-2.5 text-sm font-normal leading-snug text-slate-500">{helper}</p>
     </div>
   );
+
+  if (to) {
+    return <Link to={to} className="block no-underline focus:outline-none">{content}</Link>;
+  }
+
+  return content;
 }
 
 // ─── Nurse Dashboard ─────────────────────────────────────────────────────────
@@ -262,6 +272,7 @@ function NurseDashboard({
             helper={dueToday > 0 ? `${dueToday} patient(s) scheduled for PEP dose administration today.` : 'No PEP doses scheduled for administration today.'}
             icon={CalendarDays}
             tone="emerald"
+            to="/pep-schedule"
           />
           <NurseKpiCard
             title="Overdue Doses"
@@ -269,6 +280,7 @@ function NurseDashboard({
             helper={overdueDoses > 0 ? `${overdueDoses} delayed dose(s) needing contact or schedule review.` : 'No overdue vaccination doses.'}
             icon={Clock}
             tone={overdueDoses > 0 ? 'rose' : 'teal'}
+            to="/pep-schedule"
           />
           <NurseKpiCard
             title="Patients for Follow-up"
@@ -276,6 +288,7 @@ function NurseDashboard({
             helper={followUpPatients > 0 ? `${followUpPatients} active case(s) requiring follow-up monitoring.` : 'No active bite cases requiring follow-up.'}
             icon={UserCheck}
             tone="teal"
+            to="/incidents"
           />
           <NurseKpiCard
             title="Low Stock Items"
@@ -283,6 +296,7 @@ function NurseDashboard({
             helper={lowStockCount > 0 ? `${lowStockCount} item(s) below reorder threshold.` : 'All vaccine & supply levels adequate.'}
             icon={Package}
             tone={lowStockCount > 0 ? 'amber' : 'emerald'}
+            to="/inventory"
           />
         </div>
 
@@ -562,6 +576,7 @@ function ClinicAdminDashboard({
             helper={stats.totalCases > 0 ? 'All bite incidents logged for clinic monitoring.' : 'No bite incident cases logged yet.'}
             icon={Users}
             tone="emerald"
+            to="/incidents"
           />
           <NurseKpiCard
             title="Completed PEP"
@@ -569,6 +584,7 @@ function ClinicAdminDashboard({
             helper={hasComplianceData ? `${complianceRate}% of tracked PEP cycles completed.` : 'No PEP vaccination cycles tracked yet.'}
             icon={Syringe}
             tone="teal"
+            to="/pep-schedule"
           />
           <NurseKpiCard
             title="Pending Follow-ups"
@@ -576,6 +592,7 @@ function ClinicAdminDashboard({
             helper={stats.pendingDoses > 0 ? 'Upcoming or pending PEP doses needing review.' : 'No pending PEP doses queued.'}
             icon={Clock}
             tone="amber"
+            to="/pep-schedule"
           />
           <NurseKpiCard
             title="High-Risk Barangays"
@@ -583,6 +600,7 @@ function ClinicAdminDashboard({
             helper={displayedHighRiskCount > 0 ? `${displayedHighRiskCount} critical/high area(s) under active monitoring.` : 'All monitored areas within safe threshold.'}
             icon={MapPin}
             tone={displayedHighRiskCount > 0 ? 'rose' : 'emerald'}
+            to="/gis"
           />
         </div>
 
@@ -912,35 +930,45 @@ function ClinicAdminDashboard({
 
 // ─── System Admin Dashboard ───────────────────────────────────────────────────
 
-function SystemMetricCard({ title, value, helper, icon: Icon, tone }: {
+function SystemMetricCard({ title, value, helper, icon: Icon, tone, to }: {
   title: string;
   value: number | string;
   helper: string;
   icon: LucideIcon;
   tone: 'emerald' | 'teal' | 'amber' | 'rose' | 'slate';
+  to?: string;
 }) {
   const toneClass = {
-    emerald: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-    teal: 'bg-teal-50 text-teal-700 border-teal-100',
-    amber: 'bg-amber-50 text-amber-700 border-amber-100',
-    rose: 'bg-rose-50 text-rose-700 border-rose-100',
-    slate: 'bg-slate-50 text-slate-700 border-slate-100',
+    emerald: 'bg-emerald-50 text-emerald-700 border-emerald-100 group-hover:bg-emerald-100/80',
+    teal: 'bg-teal-50 text-teal-700 border-teal-100 group-hover:bg-teal-100/80',
+    amber: 'bg-amber-50 text-amber-700 border-amber-100 group-hover:bg-amber-100/80',
+    rose: 'bg-rose-50 text-rose-700 border-rose-100 group-hover:bg-rose-100/80',
+    slate: 'bg-slate-50 text-slate-700 border-slate-100 group-hover:bg-slate-100/80',
   }[tone];
 
-  return (
-    <div className="rounded-3xl border border-emerald-900/5 bg-white p-5 shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
+  const content = (
+    <div className={`rounded-3xl border border-emerald-900/5 bg-white p-5 shadow-[0_14px_35px_rgba(15,23,42,0.06)] transition-all duration-200 ${to ? 'group hover:-translate-y-1 hover:shadow-[0_20px_45px_rgba(15,23,42,0.12)] hover:border-emerald-500/30 cursor-pointer' : 'hover:shadow-[0_18px_42px_rgba(15,23,42,0.09)]'}`}>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold text-slate-600">{title}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="text-sm font-semibold text-slate-600 transition-colors group-hover:text-slate-900">{title}</p>
+            {to && <ChevronRight className="w-3.5 h-3.5 text-slate-400 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />}
+          </div>
           <p className="mt-2 text-[30px] font-bold leading-none tracking-tight text-slate-950 tabular-nums">{value}</p>
         </div>
-        <div className={'flex h-11 w-11 items-center justify-center rounded-2xl border shadow-sm ' + toneClass}>
+        <div className={'flex h-11 w-11 items-center justify-center rounded-2xl border shadow-sm transition-colors ' + toneClass}>
           <Icon className="h-5 w-5" />
         </div>
       </div>
       <p className="mt-3 text-sm leading-snug text-slate-500">{helper}</p>
     </div>
   );
+
+  if (to) {
+    return <Link to={to} className="block no-underline focus:outline-none">{content}</Link>;
+  }
+
+  return content;
 }
 
 function SystemPanel({ title, helper, children }: { title: string; helper?: string; children: ReactNode }) {
@@ -1030,11 +1058,11 @@ function SystemAdminDashboard({
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          <SystemMetricCard title="Total Users" value={users.length} helper="All platform and clinic accounts." icon={Users} tone="emerald" />
-          <SystemMetricCard title="Active Users" value={activeUsers} helper="Approved active accounts." icon={UserCheck} tone="teal" />
-          <SystemMetricCard title="Pending Account Requests" value={pendingUsers} helper="Awaiting administrator review." icon={UserCog} tone="amber" />
-          <SystemMetricCard title="Failed / Suspicious Logins" value={failedLoginAttempts} helper={failedLoginAttempts ? `${failedLoginAttempts} detected in audit logs.` : 'No matching audit entries.'} icon={ShieldAlert} tone={failedLoginAttempts ? 'rose' : 'slate'} />
-          <SystemMetricCard title="System Notifications" value={systemNotificationsCount} helper={systemNotificationsCount > 0 ? `${systemNotificationsCount} system notifications logged.` : 'No system notifications logged.'} icon={Bell} tone={systemNotificationsCount > 0 ? 'teal' : 'slate'} />
+          <SystemMetricCard title="Total Users" value={users.length} helper="All platform and clinic accounts." icon={Users} tone="emerald" to="/users" />
+          <SystemMetricCard title="Active Users" value={activeUsers} helper="Approved active accounts." icon={UserCheck} tone="teal" to="/users" />
+          <SystemMetricCard title="Pending Account Requests" value={pendingUsers} helper="Awaiting administrator review." icon={UserCog} tone="amber" to="/users" />
+          <SystemMetricCard title="Failed / Suspicious Logins" value={failedLoginAttempts} helper={failedLoginAttempts ? `${failedLoginAttempts} detected in audit logs.` : 'No matching audit entries.'} icon={ShieldAlert} tone={failedLoginAttempts ? 'rose' : 'slate'} to="/audit-logs" />
+          <SystemMetricCard title="System Notifications" value={systemNotificationsCount} helper={systemNotificationsCount > 0 ? `${systemNotificationsCount} system notifications logged.` : 'No system notifications logged.'} icon={Bell} tone={systemNotificationsCount > 0 ? 'teal' : 'slate'} to="/notifications" />
         </div>
 
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
@@ -1227,18 +1255,60 @@ export function Dashboard() {
 
       const result = await dashboardAPI.getStats();
       if (result.success) {
-        setStats(result.stats as DashboardStats);
-        setRecentIncidents((result.recentIncidents || []) as DashboardIncident[]);
+        const statsData = (result.stats || {}) as DashboardStats;
+        setStats(statsData);
+        const incidentList = (result.recentIncidents || []) as DashboardIncident[];
+        setRecentIncidents(incidentList);
         setLowStockItems((result.lowStockItems || []) as DashboardInventoryItem[]);
 
-        if (result.monthlyTrends && Array.isArray(result.monthlyTrends) && result.monthlyTrends.length > 0) {
-          setMonthlyTrends(result.monthlyTrends as MonthlyTrend[]);
+        // Monthly trends: use backend data or fallback to aggregating recent incidents
+        const rawMonthly = (result.monthlyTrends && Array.isArray(result.monthlyTrends) && result.monthlyTrends.length > 0)
+          ? (result.monthlyTrends as MonthlyTrend[])
+          : getDefaultMonthlyTrends();
+
+        const sumTrends = rawMonthly.reduce((s, m) => s + (m.cases || 0) + (m.vaccinated || 0), 0);
+
+        if (sumTrends === 0 && incidentList.length > 0) {
+          const fallbackMonthly = getDefaultMonthlyTrends();
+          incidentList.forEach((inc) => {
+            if (!inc.incident_date) return;
+            const incDate = new Date(inc.incident_date);
+            const mShort = incDate.toLocaleString('en-US', { month: 'short' });
+            const item = fallbackMonthly.find((t) => t.month === mShort);
+            if (item) {
+              item.cases += 1;
+            }
+          });
+          setMonthlyTrends(fallbackMonthly);
         } else {
-          setMonthlyTrends(getDefaultMonthlyTrends());
+          setMonthlyTrends(rawMonthly);
         }
 
-        if (result.vaccinationCompliance && Array.isArray(result.vaccinationCompliance)) {
-          setVaccinationCompliance(result.vaccinationCompliance as ComplianceItem[]);
+        // Vaccination compliance: use backend array or derive from overall stats
+        const rawCompliance = (result.vaccinationCompliance && Array.isArray(result.vaccinationCompliance))
+          ? (result.vaccinationCompliance as ComplianceItem[])
+          : [];
+        const sumCompliance = rawCompliance.reduce((s, d) => s + (d.value || 0), 0);
+
+        if (sumCompliance > 0) {
+          setVaccinationCompliance(rawCompliance);
+        } else if (result.stats) {
+          const completed = Number(statsData.completedVaccinations || 0);
+          const active = Number(statsData.activeCases || 0);
+          const pending = Number(statsData.pendingDoses || 0);
+          const overdue = Number(statsData.overdueDoses || 0);
+          if (completed > 0 || active > 0 || pending > 0 || overdue > 0) {
+            setVaccinationCompliance([
+              { name: 'Completed', value: completed, color: '#0D9488' },
+              { name: 'In Progress', value: active, color: '#06B6D4' },
+              { name: 'Pending', value: pending, color: '#F59E0B' },
+              { name: 'Missed Dose', value: overdue, color: '#F43F5E' },
+            ]);
+          } else {
+            setVaccinationCompliance(defaultVaccinationCompliance);
+          }
+        } else {
+          setVaccinationCompliance(defaultVaccinationCompliance);
         }
 
         if (result.animalTypeDistribution && Array.isArray(result.animalTypeDistribution)) {

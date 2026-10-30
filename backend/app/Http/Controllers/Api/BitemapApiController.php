@@ -205,10 +205,16 @@ class BitemapApiController extends Controller
 
         // Monthly bite incident trends (last 6 calendar months)
         $monthlyTrends = collect(range(5, 0))->map(function (int $monthsAgo) {
-            $monthDate = now()->subMonths($monthsAgo);
+            $monthDate = now()->subMonthsNoOverflow($monthsAgo);
             $start = $monthDate->copy()->startOfMonth()->toDateString();
             $end = $monthDate->copy()->endOfMonth()->toDateString();
-            $cases = Incident::whereBetween('incident_date', [$start, $end])->count();
+            $cases = Incident::where(function ($q) use ($start, $end) {
+                $q->whereBetween('incident_date', [$start, $end])
+                  ->orWhere(function ($q2) use ($start, $end) {
+                      $q2->whereNull('incident_date')
+                         ->whereBetween('created_at', [$start.' 00:00:00', $end.' 23:59:59']);
+                  });
+            })->count();
             $vaccinated = PepSchedule::whereIn('status', ['Done', 'Completed'])
                 ->where(function ($q) use ($start, $end) {
                     $q->whereBetween('administered_date', [$start, $end])
