@@ -41,7 +41,7 @@ function NavItem({ path, icon: Icon, label }: { path: string; icon: LucideIcon; 
     <NavLink
       to={path}
       className={({ isActive }) =>
-        `relative flex items-center gap-3 rounded-2xl px-4 py-2.5 text-sm font-semibold transition-all ${
+        `relative flex items-center gap-3 rounded-2xl px-4 py-2 text-sm font-semibold transition-all ${
           isActive
             ? 'bg-primary-bg text-primary shadow-sm shadow-emerald-900/5'
             : 'text-muted-foreground hover:bg-slate-50 hover:text-foreground'
@@ -116,7 +116,7 @@ export function Sidebar() {
     <aside
       className="fixed left-0 top-0 z-20 flex h-screen w-64 flex-col border-r border-sidebar-border bg-sidebar"
     >
-      <div className="border-b border-sidebar-border px-5 pb-5 pt-6">
+      <div className="border-b border-sidebar-border px-5 pb-4 pt-4">
         <div className="flex items-center gap-3">
           <div
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl shadow-sm shadow-emerald-900/20"
@@ -125,13 +125,13 @@ export function Sidebar() {
             <AlertCircle className="w-5 h-5 text-white" />
           </div>
           <div>
-            <p className="text-[16px] font-extrabold leading-tight text-foreground">BITEMAP</p>
+            <p className="text-lg font-extrabold leading-tight text-foreground">BITEMAP</p>
             <p className="text-xs text-muted-foreground leading-tight mt-0.5">Bite Incident Tracking</p>
           </div>
         </div>
       </div>
 
-      <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
+      <nav className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
         {visibleMainNav.length > 0 && (
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest px-4 mb-1.5">
@@ -159,9 +159,9 @@ export function Sidebar() {
         )}
       </nav>
 
-      <div className="mx-3 mb-3 rounded-3xl p-4 text-white shadow-lg shadow-emerald-900/15" style={{ background: 'radial-gradient(circle at top right, rgba(52, 211, 153, 0.55), transparent 35%), linear-gradient(135deg, #078C55 0%, #05603A 100%)' }}>
+      <div className="mx-3 mb-2 rounded-2xl p-3 text-white shadow-lg shadow-emerald-900/15" style={{ background: 'radial-gradient(circle at top right, rgba(52, 211, 153, 0.55), transparent 35%), linear-gradient(135deg, #078C55 0%, #05603A 100%)' }}>
         <p className="text-sm font-bold mb-0.5">BITEMAP System</p>
-        <p className="text-xs text-white/75 leading-snug mb-3">
+        <p className="text-xs text-white/75 leading-snug mb-2">
           GIS-Based Anti-Rabies Vaccination Monitoring
         </p>
         <div className="flex items-center gap-1.5">

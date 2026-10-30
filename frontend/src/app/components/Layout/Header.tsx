@@ -49,7 +49,7 @@ export function Header({ title, breadcrumbs = [] }: HeaderProps) {
               ))}
             </div>
           )}
-          <h1 className="text-[22px] font-extrabold tracking-tight text-foreground">{title}</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight text-foreground">{title}</h1>
         </div>
 
         {/* Center: Long, horizontally centered Global Search Bar with attached dropdown (Available across ALL modules) */}
