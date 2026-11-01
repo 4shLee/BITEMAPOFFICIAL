@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
 import {
   Activity,
   ArrowLeft,
@@ -20,7 +18,11 @@ import {
 import { publicAPI } from '../../lib/services/api';
 import { AnimatedGISBackground } from '../components/Brand/AnimatedGISBackground';
 import { BITEMAP_FONT_FAMILY, BITEMAP_LOGO_SRC } from '../components/Brand/brand';
-import { DIGOS_BOUNDS, DIGOS_CENTER } from '../../data/digos-geography';
+import { DIGOS_CENTER } from '../../data/digos-geography';
+import { DIGOS_MAX_BOUNDS } from '../../lib/maplibre/basemap';
+import { loadDigosBoundaries, validLatitude, validLongitude, type BarangayBoundaries } from '../../lib/maplibre/geo';
+import { useMapLibre } from '../../lib/maplibre/useMapLibre';
+import { addPublicLayers, registerPublicInteractions, updatePublicData } from '../components/Gis/publicLayers';
 
 type RiskLevel = 'LOW' | 'MODERATE' | 'HIGH' | 'SUPPRESSED' | 'NO DATA';
 
@@ -82,10 +84,6 @@ const RISK_STYLES: Record<RiskLevel, { color: string; label: string }> = {
 
 const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-function escapeHtml(value: string | number) {
-  return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-}
-
 function LoadingCard() {
   return <div className="animate-pulse rounded-2xl border border-slate-200 bg-white p-4"><div className="mb-4 h-9 w-9 rounded-xl bg-slate-200" /><div className="mb-2 h-6 w-24 rounded bg-slate-200" /><div className="h-3 w-36 max-w-full rounded bg-slate-100" /></div>;
 }
@@ -106,8 +104,15 @@ function FilterSelect({ label, value, onChange, children }: { label: string; val
 
 export function PublicHeatmap() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const aggregateLayerRef = useRef<L.LayerGroup | null>(null);
+  const { map, basemapError } = useMapLibre(mapContainerRef, {
+    center: [DIGOS_CENTER[1], DIGOS_CENTER[0]],
+    zoom: 11,
+    minZoom: 10,
+    maxZoom: 16,
+    maxBounds: DIGOS_MAX_BOUNDS,
+  });
+  const [boundaries, setBoundaries] = useState<BarangayBoundaries | null>(null);
+  const [boundaryError, setBoundaryError] = useState('');
   const [filters, setFilters] = useState<Filters>(initialFilters);
   const [response, setResponse] = useState<PublicHeatmapResponse | null>(null);
   const [selectedBarangay, setSelectedBarangay] = useState<string | null>(null);
@@ -145,58 +150,31 @@ export function PublicHeatmap() {
   }, [loadAggregates, retryKey]);
 
   useEffect(() => {
-    if (!mapContainerRef.current || mapRef.current) return;
-    const map = L.map(mapContainerRef.current, {
-      center: DIGOS_CENTER,
-      zoom: 11,
-      minZoom: 10,
-      maxZoom: 16,
-      maxBounds: L.latLngBounds(DIGOS_BOUNDS),
-      maxBoundsViscosity: 0.9,
-      zoomControl: true,
-    });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 18,
-      attribution: '&copy; OpenStreetMap contributors',
-    }).addTo(map);
-    aggregateLayerRef.current = L.layerGroup().addTo(map);
-    mapRef.current = map;
-    window.setTimeout(() => map.invalidateSize(), 0);
-
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => map.invalidateSize());
-    observer?.observe(mapContainerRef.current);
-    return () => {
-      observer?.disconnect();
-      map.remove();
-      mapRef.current = null;
-      aggregateLayerRef.current = null;
-    };
+    let cancelled = false;
+    loadDigosBoundaries()
+      .then((collection) => { if (!cancelled) setBoundaries(collection); })
+      .catch(() => { if (!cancelled) setBoundaryError('Barangay boundaries could not be loaded.'); });
+    return () => { cancelled = true; };
   }, []);
 
+  const selectRef = useRef(setSelectedBarangay);
+  useEffect(() => {
+    if (!map) return;
+    addPublicLayers(map);
+    return registerPublicInteractions(map, () => selectRef.current);
+  }, [map]);
+
   const visibleData = useMemo(() => response?.data ?? [], [response]);
+  const mapData = useMemo(() => visibleData.flatMap((item) => {
+    const latitude = validLatitude(item.latitude);
+    const longitude = validLongitude(item.longitude);
+    return latitude === null || longitude === null ? [] : [{ ...item, latitude, longitude }];
+  }), [visibleData]);
 
   useEffect(() => {
-    const layer = aggregateLayerRef.current;
-    if (!layer) return;
-    layer.clearLayers();
-
-    visibleData.forEach((item) => {
-      const center: [number, number] = [Number(item.latitude), Number(item.longitude)];
-      if (!Number.isFinite(center[0]) || !Number.isFinite(center[1])) return;
-      const selected = item.barangay_name === selectedBarangay;
-      const style = RISK_STYLES[item.risk_level] || RISK_STYLES['NO DATA'];
-      const circle = L.circle(center, {
-        radius: selected ? 1250 : 1050,
-        color: selected ? '#0F766E' : '#FFFFFF',
-        weight: selected ? 4 : 2,
-        fillColor: style.color,
-        fillOpacity: item.risk_level === 'NO DATA' ? 0.42 : 0.64,
-      });
-      circle.bindTooltip(`<strong>${escapeHtml(item.barangay_name)}</strong><br>${escapeHtml(item.count_label)}<br>${escapeHtml(style.label)}`, { sticky: true, direction: 'top' });
-      circle.on('click', () => setSelectedBarangay(item.barangay_name));
-      circle.addTo(layer);
-    });
-  }, [visibleData, selectedBarangay]);
+    if (!map) return;
+    updatePublicData(map, boundaries, mapData, selectedBarangay);
+  }, [map, boundaries, mapData, selectedBarangay]);
 
   const selected = useMemo(() => visibleData.find((item) => item.barangay_name === selectedBarangay) ?? null, [visibleData, selectedBarangay]);
   const selectedYearMaxMonth = Number(filters.year) === currentYear ? currentMonth : 12;
@@ -269,9 +247,10 @@ export function PublicHeatmap() {
 
           <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(280px,1fr)]">
             <section className="min-w-0 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-lg shadow-teal-950/5" aria-labelledby="map-title">
-              <div className="flex flex-col gap-2 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><div><h2 id="map-title" className="font-extrabold text-slate-900">Digos City Barangay Map</h2><p className="mt-0.5 text-xs text-slate-500">Broad area circles represent aggregated barangay totals, never individual incidents.</p></div><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">Read-only public map</span></div>
+              <div className="flex flex-col gap-2 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><div><h2 id="map-title" className="font-extrabold text-slate-900">Digos City Barangay Map</h2><p className="mt-0.5 text-xs text-slate-500">Barangay areas are shaded by aggregated totals, never individual incidents.</p></div><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">Read-only public map</span></div>
               <div className="relative h-[480px] sm:h-[560px] lg:h-[620px]">
                 <div ref={mapContainerRef} className="absolute inset-0 h-full w-full" aria-label="Interactive aggregated barangay incident map" />
+                {(basemapError || boundaryError) && <div className="pointer-events-none absolute left-1/2 top-3 z-[5] max-w-xs -translate-x-1/2 rounded-xl border border-amber-200 bg-white px-3 py-2 text-center text-xs font-semibold text-amber-800 shadow">{basemapError || boundaryError}</div>}
                 {isLoading && <div className="absolute inset-0 z-[500] flex items-center justify-center bg-white/70 backdrop-blur-[1px]"><div className="rounded-2xl bg-white px-5 py-3 text-sm font-bold text-teal-800 shadow-lg">Updating aggregated map…</div></div>}
                 {error && <div className="absolute inset-0 z-[500] flex items-center justify-center bg-white/75 p-5"><div className="max-w-sm rounded-2xl border border-rose-200 bg-white p-5 text-center shadow-lg"><p className="font-extrabold text-slate-900">Map data unavailable</p><p className="mt-1 text-sm text-slate-500">Use Retry above to request the aggregated data again.</p></div></div>}
                 <div className="absolute bottom-7 left-3 z-[450] max-w-[230px] rounded-2xl border border-white/70 bg-white/95 p-3 shadow-lg backdrop-blur-sm sm:left-4">

@@ -9,7 +9,7 @@ BITEMAP is a web-based information system designed to help animal bite treatment
 ## Technology Stack
 
 ### Frontend
-- React 18, TypeScript, Vite, Tailwind CSS, Leaflet
+- React 18, TypeScript, Vite, Tailwind CSS, MapLibre GL JS
 
 ### Backend
 - PHP 8.5+, Laravel 13, MariaDB 10.11, Twilio SDK

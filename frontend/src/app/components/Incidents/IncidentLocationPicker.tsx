@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-import { DIGOS_BOUNDS, DIGOS_CENTER } from '../../../data/digos-geography';
+import maplibregl from 'maplibre-gl';
+import { DIGOS_CENTER } from '../../../data/digos-geography';
+import { DIGOS_MAX_BOUNDS } from '../../../lib/maplibre/basemap';
+import { featureCollection, pointFeature, toLngLat } from '../../../lib/maplibre/geo';
+import { useMapLibre } from '../../../lib/maplibre/useMapLibre';
 
 type Coordinates = {
   lat: number;
@@ -19,6 +21,8 @@ type IncidentLocationPickerProps = {
   onPinSelect: (latitude: string, longitude: string) => void;
 };
 
+const SOURCE_ID = 'picker-pins';
+
 export function IncidentLocationPicker({
   barangayName,
   barangayCoordinates,
@@ -30,105 +34,85 @@ export function IncidentLocationPicker({
   onPinSelect,
 }: IncidentLocationPickerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const primaryMarkerRef = useRef<L.CircleMarker | null>(null);
-  const pendingMarkerRef = useRef<L.CircleMarker | null>(null);
   const onPinSelectRef = useRef(onPinSelect);
+  const { map } = useMapLibre(containerRef, {
+    center: [DIGOS_CENTER[1], DIGOS_CENTER[0]],
+    zoom: 13,
+    minZoom: 10,
+    maxZoom: 18,
+    maxBounds: DIGOS_MAX_BOUNDS,
+  });
 
   useEffect(() => {
     onPinSelectRef.current = onPinSelect;
   }, [onPinSelect]);
 
+  // Sources, layers and listeners are created once per map instance.
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
-
-    const map = L.map(containerRef.current, {
-      center: DIGOS_CENTER,
-      zoom: 13,
-      minZoom: 10,
-      maxZoom: 18,
-      maxBounds: L.latLngBounds(DIGOS_BOUNDS),
-      maxBoundsViscosity: 1,
-      zoomControl: true,
-    });
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors',
-    }).addTo(map);
-
-    map.on('click', (event: L.LeafletMouseEvent) => {
-      onPinSelectRef.current(event.latlng.lat.toFixed(8), event.latlng.lng.toFixed(8));
-    });
-
-    mapRef.current = map;
-    window.setTimeout(() => map.invalidateSize(), 0);
-
-    const observer = typeof ResizeObserver === 'undefined'
-      ? null
-      : new ResizeObserver(() => map.invalidateSize());
-    if (observer && containerRef.current) observer.observe(containerRef.current);
-
-    return () => {
-      observer?.disconnect();
-      map.remove();
-      mapRef.current = null;
-      primaryMarkerRef.current = null;
-      pendingMarkerRef.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    const map = mapRef.current;
     if (!map) return;
 
-    const selectedLat = Number(latitude);
-    const selectedLng = Number(longitude);
-    const pendingLat = Number(pendingLatitude);
-    const pendingLng = Number(pendingLongitude);
-    const hasConfirmedCoordinates = exactPin && Number.isFinite(selectedLat) && Number.isFinite(selectedLng) && Boolean(latitude) && Boolean(longitude);
-    const hasPendingCoordinates = Number.isFinite(pendingLat) && Number.isFinite(pendingLng) && Boolean(pendingLatitude) && Boolean(pendingLongitude);
-    const confirmedCoordinates = hasConfirmedCoordinates ? { lat: selectedLat, lng: selectedLng } : null;
-    const reviewCoordinates = hasPendingCoordinates ? { lat: pendingLat, lng: pendingLng } : null;
-    const primaryCoordinates = confirmedCoordinates || barangayCoordinates;
-    const center = reviewCoordinates || confirmedCoordinates || barangayCoordinates;
+    map.addSource(SOURCE_ID, { type: 'geojson', data: featureCollection([]) });
+    map.addLayer({
+      id: 'picker-pins',
+      type: 'circle',
+      source: SOURCE_ID,
+      paint: {
+        'circle-radius': ['match', ['get', 'kind'], 'pending', 9, 'confirmed', 8, 7],
+        'circle-color': ['match', ['get', 'kind'], 'pending', '#f59e0b', 'confirmed', '#10b981', '#38bdf8'],
+        'circle-stroke-color': ['match', ['get', 'kind'], 'pending', '#b45309', 'confirmed', '#047857', '#0369a1'],
+        'circle-stroke-width': 3,
+        'circle-opacity': 0.95,
+      },
+    });
 
-    primaryMarkerRef.current?.remove();
-    pendingMarkerRef.current?.remove();
-    primaryMarkerRef.current = null;
-    pendingMarkerRef.current = null;
+    const tooltip = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12 });
+    const onClick = (event: maplibregl.MapMouseEvent) => {
+      onPinSelectRef.current(event.lngLat.lat.toFixed(8), event.lngLat.lng.toFixed(8));
+    };
+    const onEnter = (event: maplibregl.MapLayerMouseEvent) => {
+      const feature = event.features?.[0];
+      if (!feature) return;
+      tooltip.setLngLat((feature.geometry as GeoJSON.Point).coordinates as [number, number]).setText(String(feature.properties?.label ?? '')).addTo(map);
+    };
+    const onLeave = () => tooltip.remove();
 
-    if (primaryCoordinates) {
-      primaryMarkerRef.current = L.circleMarker([primaryCoordinates.lat, primaryCoordinates.lng], {
-        radius: confirmedCoordinates ? 8 : 7,
-        color: confirmedCoordinates ? '#047857' : '#0369a1',
-        fillColor: confirmedCoordinates ? '#10b981' : '#38bdf8',
-        fillOpacity: 0.95,
-        weight: 3,
-      })
-        .addTo(map)
-        .bindTooltip(confirmedCoordinates ? 'Confirmed exact incident pin' : (barangayName ? barangayName + ' approximate center' : 'Approximate barangay center'));
-    }
+    map.on('click', onClick);
+    map.on('mouseenter', 'picker-pins', onEnter);
+    map.on('mouseleave', 'picker-pins', onLeave);
 
-    if (reviewCoordinates) {
-      pendingMarkerRef.current = L.circleMarker([reviewCoordinates.lat, reviewCoordinates.lng], {
-        radius: 9,
-        color: '#b45309',
-        fillColor: '#f59e0b',
-        fillOpacity: 0.95,
-        weight: 3,
-        dashArray: '4 3',
-      })
-        .addTo(map)
-        .bindTooltip('Pin selected for review', { permanent: false });
-    }
+    return () => {
+      tooltip.remove();
+    };
+  }, [map]);
+
+  useEffect(() => {
+    if (!map) return;
+
+    const hasConfirmedCoordinates = exactPin && Boolean(latitude) && Boolean(longitude);
+    const hasPendingCoordinates = Boolean(pendingLatitude) && Boolean(pendingLongitude);
+    const confirmed = hasConfirmedCoordinates ? toLngLat(latitude, longitude) : null;
+    const pending = hasPendingCoordinates ? toLngLat(pendingLatitude, pendingLongitude) : null;
+    const approximate = barangayCoordinates ? toLngLat(barangayCoordinates.lat, barangayCoordinates.lng) : null;
+    const primary = confirmed || approximate;
+    const center = pending || confirmed || approximate;
+
+    const features = [
+      primary && pointFeature(primary[1], primary[0], {
+        kind: confirmed ? 'confirmed' : 'approximate',
+        label: confirmed
+          ? 'Confirmed exact incident pin'
+          : (barangayName ? barangayName + ' approximate center' : 'Approximate barangay center'),
+      }),
+      pending && pointFeature(pending[1], pending[0], { kind: 'pending', label: 'Pin selected for review' }),
+    ];
+    (map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined)?.setData(featureCollection(features));
 
     if (center) {
-      map.setView([center.lat, center.lng], reviewCoordinates || confirmedCoordinates ? 17 : 15, { animate: false });
+      map.jumpTo({ center, zoom: pending || confirmed ? 17 : 15 });
     } else {
-      map.setView(DIGOS_CENTER, 11, { animate: false });
+      map.jumpTo({ center: [DIGOS_CENTER[1], DIGOS_CENTER[0]], zoom: 11 });
     }
-  }, [barangayCoordinates, barangayName, exactPin, latitude, longitude, pendingLatitude, pendingLongitude]);
+  }, [map, barangayCoordinates, barangayName, exactPin, latitude, longitude, pendingLatitude, pendingLongitude]);
 
   return (
     <div className="relative isolate z-0 overflow-hidden rounded-xl border border-emerald-100 bg-slate-100 shadow-inner">

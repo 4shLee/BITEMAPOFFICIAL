@@ -1,68 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
 import { Header } from '../components/Layout/Header';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Badge } from '../components/ui/Badge';
 import { gisAPI } from '../../lib/services/api';
-import { DIGOS_BOUNDS, DIGOS_CENTER } from '../../data/digos-geography';
-
-type HeatLayerOptions = {
-  radius: number;
-  blur: number;
-  maxZoom: number;
-  minOpacity: number;
-  gradient: Record<number, string>;
-};
-
-type LeafletHeatPlugin = {
-  heatLayer: (points: [number, number, number][], options: HeatLayerOptions) => L.Layer;
-};
-
-declare global {
-  interface Window {
-    L?: typeof L;
-  }
-}
-
-interface BarangayData {
-  incident_id: number | null;
-  incident_ids: number[];
-  barangay_name: string;
-  latitude: number;
-  longitude: number;
-  total_incident_count: number;
-  total_incidents: number;
-  top_animal_type: string;
-  pep_compliance_rate: number;
-  risk_level: 'LOW RISK' | 'MODERATE RISK' | 'HIGH RISK';
-}
-
-interface HeatPoint {
-  barangay_name: string;
-  latitude: number;
-  longitude: number;
-  intensity: number;
-  total_incident_count: number;
-}
-
-interface IncidentPoint {
-  incident_id: number;
-  barangay_name: string;
-  latitude: number;
-  longitude: number;
-}
-
-const validCoordinate = (value: unknown, minimum: number, maximum: number): number | null => {
-  if (typeof value !== 'number' && typeof value !== 'string') return null;
-  if (typeof value === 'string' && value.trim() === '') return null;
-
-  const coordinate = Number(value);
-  return Number.isFinite(coordinate) && coordinate >= minimum && coordinate <= maximum
-    ? coordinate
-    : null;
-};
+import { DIGOS_CENTER } from '../../data/digos-geography';
+import { DIGOS_MAX_BOUNDS } from '../../lib/maplibre/basemap';
+import { loadDigosBoundaries, validLatitude, validLongitude, type BarangayBoundaries } from '../../lib/maplibre/geo';
+import { useMapLibre } from '../../lib/maplibre/useMapLibre';
+import {
+  CHOROPLETH_CLASSES,
+  GIS_LAYER_DEFS,
+  RISK_COLORS,
+  addGisLayers,
+  registerGisInteractions,
+  setGisLayerVisibility,
+  updateGisData,
+  type BarangayData,
+  type GisLayerKey,
+  type HeatPoint,
+  type IncidentPoint,
+} from '../components/Gis/gisLayers';
 
 const validBarangayData = (value: unknown): BarangayData[] => {
   if (!Array.isArray(value)) return [];
@@ -71,8 +29,8 @@ const validBarangayData = (value: unknown): BarangayData[] => {
     if (!item || typeof item !== 'object') return [];
 
     const record = item as Record<string, unknown>;
-    const latitude = validCoordinate(record.latitude, -90, 90);
-    const longitude = validCoordinate(record.longitude, -180, 180);
+    const latitude = validLatitude(record.latitude);
+    const longitude = validLongitude(record.longitude);
     const barangayName = typeof record.barangay_name === 'string' ? record.barangay_name.trim() : '';
 
     if (latitude === null || longitude === null || !barangayName) return [];
@@ -104,8 +62,8 @@ const validHeatPoints = (value: unknown): HeatPoint[] => {
     if (!item || typeof item !== 'object') return [];
 
     const record = item as Record<string, unknown>;
-    const latitude = validCoordinate(record.latitude, -90, 90);
-    const longitude = validCoordinate(record.longitude, -180, 180);
+    const latitude = validLatitude(record.latitude);
+    const longitude = validLongitude(record.longitude);
     const barangayName = typeof record.barangay_name === 'string' ? record.barangay_name.trim() : '';
 
     if (latitude === null || longitude === null || !barangayName) return [];
@@ -120,111 +78,87 @@ const validHeatPoints = (value: unknown): HeatPoint[] => {
   });
 };
 
-const RISK_COLORS = {
-  'LOW RISK': '#16A34A',
-  'MODERATE RISK': '#F2C94C',
-  'HIGH RISK': '#DC2626'
+const validIncidentPoints = (value: unknown): IncidentPoint[] => {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((item: unknown) => {
+    if (!item || typeof item !== 'object') return [];
+    const record = item as Record<string, unknown>;
+    const latitude = validLatitude(record.latitude);
+    const longitude = validLongitude(record.longitude);
+    const incidentId = Number(record.incident_id);
+    const barangayName = typeof record.barangay_name === 'string' ? record.barangay_name.trim() : '';
+    return latitude === null || longitude === null || !Number.isFinite(incidentId) || !barangayName
+      ? []
+      : [{ incident_id: incidentId, barangay_name: barangayName, latitude, longitude }];
+  });
 };
 
-const escapeHtml = (value: string | number) => {
-  return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-};
+const defaultLayerState = GIS_LAYER_DEFS.reduce(
+  (state, def) => ({ ...state, [def.key]: def.defaultOn }),
+  {} as Record<GisLayerKey, boolean>,
+);
 
 export function GISMap() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const mapInstanceRef = useRef<L.Map | null>(null);
-  const markerLayerRef = useRef<L.LayerGroup | null>(null);
-  const incidentLayerRef = useRef<L.LayerGroup | null>(null);
-  const heatLayerRef = useRef<L.Layer | null>(null);
+  const { map, basemapError } = useMapLibre(mapContainerRef, {
+    center: [DIGOS_CENTER[1], DIGOS_CENTER[0]],
+    zoom: 11,
+    minZoom: 10,
+    maxZoom: 18,
+    maxBounds: DIGOS_MAX_BOUNDS,
+  });
 
   const [selectedBarangay, setSelectedBarangay] = useState<string | null>(null);
   const [barangayData, setBarangayData] = useState<BarangayData[]>([]);
   const [heatPoints, setHeatPoints] = useState<HeatPoint[]>([]);
   const [incidentPoints, setIncidentPoints] = useState<IncidentPoint[]>([]);
-  const [showIncidentPoints, setShowIncidentPoints] = useState(false);
+  const [boundaries, setBoundaries] = useState<BarangayBoundaries | null>(null);
+  const [boundaryError, setBoundaryError] = useState<string | null>(null);
+  const [layerState, setLayerState] = useState<Record<GisLayerKey, boolean>>(defaultLayerState);
   const [loading, setLoading] = useState(true);
-  const [mapLoading, setMapLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [animalType, setAnimalType] = useState('All');
   const [category, setCategory] = useState('All');
   const [retryRequest, setRetryRequest] = useState(0);
+  const mapLoading = !map;
+
+  const selectHandlerRef = useRef(setSelectedBarangay);
+  const knownBarangaysRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
+    knownBarangaysRef.current = new Set(barangayData.map((item) => item.barangay_name));
+  }, [barangayData]);
+
+  // Add layers and interactions exactly once per map instance.
+  useEffect(() => {
+    if (!map) return;
+    addGisLayers(map);
+    return registerGisInteractions(map, () => ({
+      onBarangaySelect: (name) => {
+        if (knownBarangaysRef.current.has(name)) selectHandlerRef.current(name);
+      },
+    }));
+  }, [map]);
+
+  // Barangay boundary polygons (static, filter-independent).
+  useEffect(() => {
     let cancelled = false;
-
-    const loadLeafletHeat = async () => {
-      try {
-        window.L = L;
-        await import('leaflet.heat');
-
-        if (!cancelled) {
-          setMapLoading(false);
-        }
-      } catch {
-        if (!cancelled) {
-          setMapLoading(false);
-          setError('Unable to load the GIS heatmap plugin.');
-        }
-      }
-    };
-
-    loadLeafletHeat();
-
+    loadDigosBoundaries()
+      .then((collection) => {
+        if (!cancelled) setBoundaries(collection);
+      })
+      .catch(() => {
+        if (!cancelled) setBoundaryError('Barangay boundaries could not be loaded.');
+      });
     return () => {
       cancelled = true;
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-      }
     };
   }, []);
 
-  useEffect(() => {
-    if (mapLoading || !mapContainerRef.current || mapInstanceRef.current) return;
-
-    const maxBounds = L.latLngBounds(DIGOS_BOUNDS);
-    const map = L.map(mapContainerRef.current, {
-      center: DIGOS_CENTER,
-      zoom: 11,
-      minZoom: 10,
-      maxZoom: 18,
-      maxBounds,
-      maxBoundsViscosity: 1.0
-    });
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
-
-    markerLayerRef.current = L.layerGroup().addTo(map);
-    incidentLayerRef.current = L.layerGroup().addTo(map);
-    mapInstanceRef.current = map;
-    window.setTimeout(() => map.invalidateSize(), 0);
-  }, [mapLoading]);
-
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    const container = mapContainerRef.current;
-
-    if (!map || !container || typeof ResizeObserver === 'undefined') return;
-
-    const observer = new ResizeObserver(() => {
-      map.invalidateSize();
-    });
-
-    observer.observe(container);
-
-    return () => observer.disconnect();
-  }, [mapLoading]);
-
+  // Filtered API data (single source of truth: the backend applies all filters).
   useEffect(() => {
     let cancelled = false;
 
@@ -245,19 +179,7 @@ export function GISMap() {
         const nextData = validBarangayData(response.data);
         setBarangayData(nextData);
         setHeatPoints(validHeatPoints(response.heat_points));
-        setIncidentPoints(Array.isArray(response.incident_points)
-          ? response.incident_points.flatMap((item: unknown) => {
-            if (!item || typeof item !== 'object') return [];
-            const record = item as Record<string, unknown>;
-            const latitude = validCoordinate(record.latitude, -90, 90);
-            const longitude = validCoordinate(record.longitude, -180, 180);
-            const incidentId = Number(record.incident_id);
-            const barangayName = typeof record.barangay_name === 'string' ? record.barangay_name.trim() : '';
-            return latitude === null || longitude === null || !Number.isFinite(incidentId) || !barangayName
-              ? []
-              : [{ incident_id: incidentId, barangay_name: barangayName, latitude, longitude }];
-          })
-          : []);
+        setIncidentPoints(validIncidentPoints(response.incident_points));
         setSelectedBarangay((current) => {
           if (current && nextData.some((item) => item.barangay_name === current)) {
             return current;
@@ -283,83 +205,17 @@ export function GISMap() {
     };
   }, [dateFrom, dateTo, animalType, category, retryRequest]);
 
+  // Push data into the map sources (no re-initialisation).
   useEffect(() => {
-    const map = mapInstanceRef.current;
+    if (!map) return;
+    updateGisData(map, boundaries, barangayData, heatPoints, incidentPoints);
+  }, [map, boundaries, barangayData, heatPoints, incidentPoints]);
 
-    if (!map || !markerLayerRef.current) return;
-
-    if (heatLayerRef.current) {
-      map.removeLayer(heatLayerRef.current);
-      heatLayerRef.current = null;
-    }
-
-    markerLayerRef.current.clearLayers();
-
-    const leafletWithHeat = L as typeof L & LeafletHeatPlugin;
-    if (heatPoints.length > 0 && typeof leafletWithHeat.heatLayer === 'function') {
-      const points = heatPoints.map((point) => [point.latitude, point.longitude, point.intensity]);
-      heatLayerRef.current = leafletWithHeat.heatLayer(points as [number, number, number][], {
-        radius: 38,
-        blur: 26,
-        maxZoom: 17,
-        minOpacity: 0.35,
-        gradient: {
-          0.2: '#A7F3D0',
-          0.45: '#22C55E',
-          0.65: '#F2C94C',
-          0.82: '#F97316',
-          1.0: '#DC2626'
-        }
-      }).addTo(map);
-    }
-
-    barangayData.forEach((item) => {
-      const color = RISK_COLORS[item.risk_level] || '#16A34A';
-      const radius = Math.min(30, Math.max(8, 8 + Math.sqrt(item.total_incident_count) * 3));
-      const popup =
-        '<div style="min-width:180px">' +
-        '<strong>' + escapeHtml(item.barangay_name) + '</strong><br />' +
-        'Total Incidents: ' + escapeHtml(item.total_incident_count) + '<br />' +
-        'Risk Level: ' + escapeHtml(item.risk_level) + '<br />' +
-        'Top Animal Type: ' + escapeHtml(item.top_animal_type) + '<br />' +
-        'PEP Compliance Rate: ' + escapeHtml(item.pep_compliance_rate) + '%' +
-        '</div>';
-
-      const marker = L.circleMarker([item.latitude, item.longitude], {
-        radius,
-        color: '#FFFFFF',
-        weight: 2,
-        fillColor: color,
-        fillOpacity: 0.85
-      })
-        .bindPopup(popup)
-        .on('click', () => setSelectedBarangay(item.barangay_name));
-
-      markerLayerRef.current.addLayer(marker);
-    });
-
-    window.setTimeout(() => map.invalidateSize(), 0);
-  }, [barangayData, heatPoints, mapLoading]);
-
+  // Layer toggles.
   useEffect(() => {
-    const layer = incidentLayerRef.current;
-    if (!layer) return;
-
-    layer.clearLayers();
-    if (!showIncidentPoints) return;
-
-    incidentPoints.forEach((point) => {
-      L.circleMarker([point.latitude, point.longitude], {
-        radius: 4,
-        color: '#0F172A',
-        weight: 1,
-        fillColor: '#38BDF8',
-        fillOpacity: 0.9,
-      })
-        .bindTooltip(`Incident #${escapeHtml(point.incident_id)} · ${escapeHtml(point.barangay_name)}`)
-        .addTo(layer);
-    });
-  }, [incidentPoints, showIncidentPoints, mapLoading]);
+    if (!map) return;
+    setGisLayerVisibility(map, layerState);
+  }, [map, layerState]);
 
   const getRiskVariant = (riskLevel: string) => {
     switch (riskLevel) {
@@ -386,28 +242,37 @@ export function GISMap() {
 
   const selectedData = barangayData.find((item) => item.barangay_name === selectedBarangay) ?? null;
   const emptyMessage = 'No incident data found for the selected filters.';
+  const bannerMessage = basemapError || boundaryError;
 
   return (
     <div className="min-h-screen flex-1 bg-[#f3f7f5]">
       <Header title="GIS Heatmap & Analysis" breadcrumbs={['GIS Map', 'Barangay Analysis']} />
 
       <div className="grid grid-cols-1 gap-5 px-5 py-5 lg:px-7 lg:py-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="overflow-hidden rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
-          <div className="border-b border-slate-100 px-5 py-4">
+        <div className="flex min-w-0 flex-col overflow-hidden xl:sticky xl:top-24 xl:self-start rounded-3xl border border-emerald-900/5 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
+          <div className="shrink-0 border-b border-slate-100 px-5 py-4">
             <h2 className="text-base font-extrabold text-slate-950">Barangay Incident Heatmap</h2>
-            <p className="mt-0.5 text-sm font-medium text-slate-500">Click a barangay marker to inspect incident density, risk, and PEP compliance.</p>
+            <p className="mt-0.5 text-sm font-medium text-slate-500">Click a barangay or marker to inspect incident density, risk, and PEP compliance.</p>
           </div>
           <div className="relative h-[520px] md:h-[620px] xl:h-[min(720px,calc(100vh-185px))] xl:min-h-[650px]">
-            <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
+            {/* Inline positioning: maplibre-gl.css (unlayered) sets .maplibregl-map { position: relative },
+                which would otherwise beat Tailwind's layered absolute/inset utilities. */}
+            <div ref={mapContainerRef} className="h-full w-full" style={{ position: 'absolute', inset: 0 }} />
 
             {(mapLoading || loading) && (
-              <div className="absolute inset-0 z-[400] flex items-center justify-center bg-white/80">
+              <div className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center bg-white/80">
                 <p className="text-sm text-slate-500">Loading live GIS data...</p>
               </div>
             )}
 
+            {bannerMessage && !error && (
+              <div className="pointer-events-none absolute left-1/2 top-4 z-[5] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-2xl border border-amber-200 bg-white px-4 py-2 text-center shadow-sm">
+                <p className="text-xs font-semibold text-amber-800">{bannerMessage}</p>
+              </div>
+            )}
+
             {!loading && !mapLoading && !error && barangayData.length === 0 && (
-              <div className="pointer-events-none absolute inset-0 z-[400] flex items-center justify-center">
+              <div className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center">
                 <div className="rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
                   <p className="text-sm text-slate-500">{emptyMessage}</p>
                 </div>
@@ -416,8 +281,8 @@ export function GISMap() {
 
             {error && (
               <div className={barangayData.length > 0
-                ? 'absolute left-1/2 top-4 z-[400] w-[calc(100%-2rem)] max-w-md -translate-x-1/2'
-                : 'absolute inset-0 z-[400] flex items-center justify-center bg-white/80'}>
+                ? 'absolute left-1/2 top-4 z-[5] w-[calc(100%-2rem)] max-w-md -translate-x-1/2'
+                : 'absolute inset-0 z-[5] flex items-center justify-center bg-white/80'}>
                 <div className="rounded-2xl border border-rose-100 bg-white px-4 py-3 text-center shadow-sm">
                   <p className="text-sm font-medium text-destructive">{error}</p>
                   <button
@@ -514,36 +379,48 @@ export function GISMap() {
                 value={category}
                 onChange={(event) => setCategory(event.target.value)}
               />
-              <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                <input
-                  type="checkbox"
-                  checked={showIncidentPoints}
-                  onChange={(event) => setShowIncidentPoints(event.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-teal-700"
-                />
-                <span>
-                  <span className="block text-sm font-bold text-slate-700">Show exact incident pins</span>
-                  <span className="mt-0.5 block text-xs text-slate-500">Separate staff-only layer</span>
-                </span>
-              </label>
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-emerald-900/5 bg-white p-5 shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
+            <h3 className="text-base font-extrabold text-slate-950">Map Layers</h3>
+            <div className="mt-3 space-y-2">
+              {GIS_LAYER_DEFS.map((def) => (
+                <label key={def.key} className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                  <input
+                    type="checkbox"
+                    checked={layerState[def.key]}
+                    onChange={(event) => setLayerState((current) => ({ ...current, [def.key]: event.target.checked }))}
+                    className="h-4 w-4 rounded border-slate-300 text-teal-700"
+                  />
+                  <span>
+                    <span className="block text-sm font-bold text-slate-700">{def.label}</span>
+                    <span className="mt-0.5 block text-xs text-slate-500">{def.description}</span>
+                  </span>
+                </label>
+              ))}
             </div>
           </div>
 
           <div className="rounded-3xl border border-emerald-900/5 bg-white p-5 shadow-[0_14px_35px_rgba(15,23,42,0.06)]">
             <h3 className="text-base font-extrabold text-slate-950">Legend</h3>
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3 xl:grid-cols-1">
-              <div className="flex items-center gap-2">
-                <div className="h-4 w-4 shrink-0 rounded bg-[#16A34A]"></div>
-                <span className="text-sm font-medium text-slate-500">0-10 incidents</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="h-4 w-4 shrink-0 rounded bg-[#F2C94C]"></div>
-                <span className="text-sm font-medium text-slate-500">11-20 incidents</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="h-4 w-4 shrink-0 rounded bg-[#DC2626]"></div>
-                <span className="text-sm font-medium text-slate-500">21+ incidents</span>
-              </div>
+            <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Choropleth (incidents per barangay)</p>
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-1">
+              {CHOROPLETH_CLASSES.map((item) => (
+                <div key={item.label} className="flex items-center gap-2">
+                  <div className="h-4 w-4 shrink-0 rounded" style={{ backgroundColor: item.color }}></div>
+                  <span className="text-sm font-medium text-slate-500">{item.label}</span>
+                </div>
+              ))}
+            </div>
+            <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">Barangay marker risk</p>
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3 xl:grid-cols-1">
+              {(Object.keys(RISK_COLORS) as Array<keyof typeof RISK_COLORS>).map((risk) => (
+                <div key={risk} className="flex items-center gap-2">
+                  <div className="h-4 w-4 shrink-0 rounded-full" style={{ backgroundColor: RISK_COLORS[risk] }}></div>
+                  <span className="text-sm font-medium text-slate-500">{risk}</span>
+                </div>
+              ))}
             </div>
           </div>
         </aside>

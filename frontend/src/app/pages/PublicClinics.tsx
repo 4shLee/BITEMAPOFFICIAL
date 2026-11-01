@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import maplibregl from 'maplibre-gl';
 import { ArrowLeft, Building2, CheckCircle2, ChevronDown, Clock3, ExternalLink, HeartPulse, Info, Mail, MapPin, Navigation, Phone, RefreshCw, RotateCcw, Search, ShieldCheck, X } from 'lucide-react';
 import { publicAPI } from '../../lib/services/api';
 import { AnimatedGISBackground } from '../components/Brand/AnimatedGISBackground';
 import { BITEMAP_FONT_FAMILY, BITEMAP_LOGO_SRC } from '../components/Brand/brand';
+import { featureCollection, pointFeature, toLngLat } from '../../lib/maplibre/geo';
+import { useMapLibre } from '../../lib/maplibre/useMapLibre';
 
 type Clinic = {
   public_id: string; name: string; clinic_type: string | null; address: string | null;
@@ -35,9 +36,8 @@ function Skeletons() {
 
 export function PublicClinics() {
   const mapNode = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const layerRef = useRef<L.LayerGroup | null>(null);
-  const markerRefs = useRef<Map<string, L.CircleMarker>>(new Map());
+  const { map, basemapError } = useMapLibre(mapNode, { center: [center[1], center[0]], zoom: 12, minZoom: 10, maxZoom: 18 });
+  const selectRef = useRef<(id: string) => void>(() => undefined);
   const [clinics, setClinics] = useState<Clinic[]>([]);
   const [filters, setFilters] = useState(initialFilters);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -64,13 +64,41 @@ export function PublicClinics() {
   }, [load]);
 
   useEffect(() => {
-    if (!mapNode.current || mapRef.current) return;
-    const map = L.map(mapNode.current, { center, zoom: 12, minZoom: 10, maxZoom: 18 });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
-    layerRef.current = L.layerGroup().addTo(map); mapRef.current = map;
-    const observer = new ResizeObserver(() => map.invalidateSize()); observer.observe(mapNode.current);
-    return () => { observer.disconnect(); map.remove(); mapRef.current = null; layerRef.current = null; };
+    selectRef.current = setSelectedId;
   }, []);
+
+  useEffect(() => {
+    if (!map) return;
+    map.addSource('clinics', { type: 'geojson', data: featureCollection([]) });
+    map.addLayer({
+      id: 'clinic-points',
+      type: 'circle',
+      source: 'clinics',
+      paint: {
+        'circle-radius': ['case', ['get', 'selected'], 12, 9],
+        'circle-color': ['case', ['get', 'verified'], '#0F766E', '#64748B'],
+        'circle-stroke-color': ['case', ['get', 'selected'], '#064E3B', '#FFFFFF'],
+        'circle-stroke-width': ['case', ['get', 'selected'], 4, 2],
+        'circle-opacity': 0.9,
+      },
+    });
+
+    const tooltip = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12 });
+    const onMove = (event: maplibregl.MapLayerMouseEvent) => {
+      const feature = event.features?.[0];
+      map.getCanvas().style.cursor = 'pointer';
+      if (feature) tooltip.setLngLat((feature.geometry as GeoJSON.Point).coordinates as [number, number]).setText(String(feature.properties?.name ?? '')).addTo(map);
+    };
+    const onLeave = () => { map.getCanvas().style.cursor = ''; tooltip.remove(); };
+    const onClick = (event: maplibregl.MapLayerMouseEvent) => {
+      const id = event.features?.[0]?.properties?.public_id;
+      if (id) selectRef.current(String(id));
+    };
+    map.on('mousemove', 'clinic-points', onMove);
+    map.on('mouseleave', 'clinic-points', onLeave);
+    map.on('click', 'clinic-points', onClick);
+    return () => { tooltip.remove(); };
+  }, [map]);
 
   const barangays = useMemo(() => Array.from(new Set(clinics.map((clinic) => clinic.barangay).filter(Boolean) as string[])).sort(), [clinics]);
   const filtered = useMemo(() => clinics.filter((clinic) => {
@@ -81,30 +109,39 @@ export function PublicClinics() {
     return (!search || text.includes(search)) && (filters.barangay === 'All' || clinic.barangay === filters.barangay) && (!filters.openNow || clinic.open_now === true) && service && rig;
   }), [clinics, filters]);
 
+  const clinicPoints = useMemo(() => filtered.flatMap((clinic) => {
+    const coordinates = toLngLat(clinic.latitude, clinic.longitude);
+    return coordinates ? [{ clinic, coordinates }] : [];
+  }), [filtered]);
+
   useEffect(() => {
-    const map = mapRef.current; const layer = layerRef.current;
-    if (!map || !layer) return;
-    layer.clearLayers(); markerRefs.current.clear();
-    const points: L.LatLngExpression[] = [];
-    filtered.forEach((clinic) => {
-      if (clinic.latitude == null || clinic.longitude == null) return;
-      const point: [number, number] = [Number(clinic.latitude), Number(clinic.longitude)];
-      const marker = L.circleMarker(point, { radius: clinic.public_id === selectedId ? 12 : 9, color: clinic.public_id === selectedId ? '#064E3B' : '#fff', weight: clinic.public_id === selectedId ? 4 : 2, fillColor: clinic.verified ? '#0F766E' : '#64748B', fillOpacity: .9 })
-        .bindTooltip(clinic.name.replace(/[<>&"']/g, '')).on('click', () => setSelectedId(clinic.public_id)).addTo(layer);
-      markerRefs.current.set(clinic.public_id, marker); points.push(point);
-    });
-    if (points.length > 1) map.fitBounds(L.latLngBounds(points), { padding: [40, 40], maxZoom: 15 });
-    else if (points.length === 1) map.setView(points[0], 15); else map.setView(center, 12);
-  }, [filtered, selectedId]);
+    if (!map) return;
+    (map.getSource('clinics') as maplibregl.GeoJSONSource | undefined)?.setData(featureCollection(clinicPoints.map(({ clinic }) =>
+      pointFeature(clinic.latitude, clinic.longitude, {
+        public_id: clinic.public_id,
+        name: clinic.name,
+        verified: clinic.verified,
+        selected: clinic.public_id === selectedId,
+      }),
+    )));
+  }, [map, clinicPoints, selectedId]);
+
+  useEffect(() => {
+    if (!map) return;
+    if (clinicPoints.length > 1) {
+      const bounds = new maplibregl.LngLatBounds();
+      clinicPoints.forEach(({ coordinates }) => bounds.extend(coordinates));
+      map.fitBounds(bounds, { padding: 40, maxZoom: 15, animate: false });
+    } else if (clinicPoints.length === 1) map.jumpTo({ center: clinicPoints[0].coordinates, zoom: 15 });
+    else map.jumpTo({ center: [center[1], center[0]], zoom: 12 });
+  }, [map, clinicPoints]);
 
   const focus = (clinic: Clinic) => {
     setSelectedId(clinic.public_id);
-    if (clinic.latitude != null && clinic.longitude != null) {
-      mapRef.current?.setView([Number(clinic.latitude), Number(clinic.longitude)], 16, { animate: true });
-      markerRefs.current.get(clinic.public_id)?.openTooltip();
-    }
+    const coordinates = toLngLat(clinic.latitude, clinic.longitude);
+    if (coordinates) map?.flyTo({ center: coordinates, zoom: 16 });
   };
-  const hasCoordinates = filtered.some((clinic) => clinic.latitude != null && clinic.longitude != null);
+  const hasCoordinates = clinicPoints.length > 0;
 
   return <div className="min-h-screen overflow-x-hidden bg-slate-50 text-slate-900" style={{ fontFamily: BITEMAP_FONT_FAMILY }}>
     <header className="sticky top-0 z-[1000] border-b border-slate-200/80 bg-white/95 shadow-sm backdrop-blur-md"><div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-2.5 sm:px-6 lg:px-8"><Link to="/public" className="flex min-w-0 items-center gap-3"><img src={BITEMAP_LOGO_SRC} alt="BITEMAP logo" className="h-11 w-11 object-contain sm:h-12 sm:w-12" /><div className="min-w-0"><p className="truncate text-[17px] font-extrabold text-teal-800 sm:text-xl">BITEMAP Public Portal</p><p className="hidden text-xs text-slate-500 md:block">Animal Bite Incident Tracking and Vaccination Monitoring</p></div></Link><div className="flex gap-2"><Link to="/public" className="inline-flex h-10 items-center gap-2 rounded-full border border-slate-200 px-3 text-xs font-extrabold"><ArrowLeft className="h-4 w-4" /><span className="hidden sm:inline">Public Portal</span></Link></div></div></header>
@@ -114,7 +151,7 @@ export function PublicClinics() {
         <div className="mb-6 flex gap-3 rounded-2xl border border-teal-200 bg-teal-50 px-4 py-3.5 text-sm leading-relaxed text-teal-900"><HeartPulse className="mt-0.5 h-5 w-5 shrink-0" /><p>After an animal bite or scratch, wash the wound immediately and seek medical assessment as soon as possible. Contact the clinic before travelling to confirm operating hours, treatment availability, and requirements.</p></div>
         <section className="mb-5 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"><div className="grid gap-3 lg:grid-cols-[1.5fr_1fr_1fr_1fr_auto_auto] lg:items-end"><label><span className="mb-1.5 block text-xs font-extrabold uppercase text-slate-500">Search clinics</span><span className="relative block"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} placeholder="Name, barangay, address, or service" className="h-11 w-full rounded-xl border border-slate-200 pl-9 pr-3 text-sm outline-none" /></span></label><FilterSelect label="Barangay" value={filters.barangay} onChange={(value) => setFilters({ ...filters, barangay: value })}><option value="All">All locations</option>{barangays.map((item) => <option key={item}>{item}</option>)}</FilterSelect><FilterSelect label="Treatment service" value={filters.service} onChange={(value) => setFilters({ ...filters, service: value })}><option value="All">All reported services</option>{knownServices.map((item) => <option key={item}>{item}</option>)}</FilterSelect><FilterSelect label="Immunoglobulin" value={filters.immunoglobulin} onChange={(value) => setFilters({ ...filters, immunoglobulin: value })}><option value="All">Any availability</option><option value="eRIG">eRIG reported</option><option value="hRIG">hRIG reported</option></FilterSelect><label className="flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-bold"><input type="checkbox" checked={filters.openNow} onChange={(e) => setFilters({ ...filters, openNow: e.target.checked })} className="accent-teal-700" /> Open now</label><button onClick={() => setFilters(initialFilters)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-extrabold"><RotateCcw className="h-4 w-4" /> Reset</button></div><p className="mt-3 text-xs text-slate-500">Filters match only information explicitly supplied for public display.</p></section>
         {error ? <section className="rounded-3xl border border-rose-200 bg-white p-8 text-center"><Info className="mx-auto h-8 w-8 text-rose-600" /><h2 className="mt-3 text-xl font-extrabold">Unable to load clinic information</h2><p className="mt-2 text-sm text-slate-600">{error}</p><button onClick={load} className="mt-5 inline-flex h-11 items-center gap-2 rounded-full bg-teal-700 px-5 text-sm font-extrabold text-white"><RefreshCw className="h-4 w-4" /> Retry</button></section> :
-        <div className="grid gap-5 lg:grid-cols-2"><section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-lg"><div className="border-b border-slate-100 px-5 py-4"><h2 className="font-extrabold">Verified Clinic Locations</h2><p className="mt-1 text-xs text-slate-500">Only clinic-supplied public coordinates appear on this map.</p></div><div className="relative h-[430px] sm:h-[540px] lg:h-[650px]"><div ref={mapNode} className="absolute inset-0" aria-label="Public clinic location map" />{!loading && !hasCoordinates && <div className="absolute inset-0 z-[500] flex items-center justify-center bg-white/75 p-5"><div className="max-w-xs rounded-2xl border border-slate-200 bg-white p-5 text-center shadow-lg"><MapPin className="mx-auto h-7 w-7 text-teal-600" /><p className="mt-3 font-extrabold">No verified map locations available</p><p className="mt-1 text-sm text-slate-500">Listings may still appear without public coordinates.</p></div></div>}</div></section>
+        <div className="grid gap-5 lg:grid-cols-2"><section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-lg"><div className="border-b border-slate-100 px-5 py-4"><h2 className="font-extrabold">Verified Clinic Locations</h2><p className="mt-1 text-xs text-slate-500">Only clinic-supplied public coordinates appear on this map.</p></div><div className="relative h-[430px] sm:h-[540px] lg:h-[650px]"><div ref={mapNode} className="h-full w-full" style={{ position: 'absolute', inset: 0 }} aria-label="Public clinic location map" />{basemapError && <div className="pointer-events-none absolute left-1/2 top-3 z-[5] max-w-xs -translate-x-1/2 rounded-xl border border-amber-200 bg-white px-3 py-2 text-center text-xs font-semibold text-amber-800 shadow">{basemapError}</div>}{!loading && !hasCoordinates && <div className="absolute inset-0 z-[500] flex items-center justify-center bg-white/75 p-5"><div className="max-w-xs rounded-2xl border border-slate-200 bg-white p-5 text-center shadow-lg"><MapPin className="mx-auto h-7 w-7 text-teal-600" /><p className="mt-3 font-extrabold">No verified map locations available</p><p className="mt-1 text-sm text-slate-500">Listings may still appear without public coordinates.</p></div></div>}</div></section>
         <section><div className="mb-3"><h2 className="text-lg font-extrabold">Clinic Results</h2><p className="mt-1 text-xs text-slate-500">{loading ? 'Loading verified information…' : String(filtered.length) + ' public listings'}</p></div>{loading ? <Skeletons /> : clinics.length === 0 ? <Empty title="No clinic information available" text="No clinic has enabled a verified public listing yet." /> : filtered.length === 0 ? <Empty title="No clinics match these filters" text="Try a broader location or service selection." /> : <div className="max-h-[650px] space-y-4 overflow-y-auto pr-1">{filtered.map((clinic) => <ClinicCard key={clinic.public_id} clinic={clinic} selected={selectedId === clinic.public_id} focus={focus} details={setDetails} />)}</div>}</section></div>}
         <section className="mt-8 rounded-3xl border border-slate-200 bg-white p-6"><h2 className="text-lg font-extrabold">Before Visiting</h2><div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{['Bring a valid ID when available', 'Prepare details about the bite or scratch', 'Bring previous vaccination records when applicable', 'Contact the clinic first to confirm requirements'].map((item) => <div key={item} className="flex gap-3"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-teal-600" /><p className="text-sm text-slate-600">{item}</p></div>)}</div></section>
       </div>
