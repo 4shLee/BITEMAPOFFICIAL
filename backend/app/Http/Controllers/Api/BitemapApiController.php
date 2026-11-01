@@ -3210,49 +3210,55 @@ class BitemapApiController extends Controller
                 ->whereIn('setting_key', $keys)
                 ->pluck('setting_value', 'setting_key');
 
-            if (! filter_var($settings->get('clinic_public_listing_enabled', false), FILTER_VALIDATE_BOOL)) {
-                return response()->json(['success' => true, 'data' => []]);
+            $clinics = [];
+
+            if (filter_var($settings->get('clinic_public_listing_enabled', false), FILTER_VALIDATE_BOOL)) {
+                $name = trim((string) $settings->get('clinic_name', ''));
+                if ($name !== '') {
+                    $servicesValue = $settings->get('clinic_services');
+                    $services = [];
+                    if (is_string($servicesValue) && $servicesValue !== '') {
+                        $decoded = json_decode($servicesValue, true);
+                        $services = is_array($decoded)
+                            ? array_values(array_filter($decoded, 'is_string'))
+                            : array_values(array_filter(array_map('trim', explode(',', $servicesValue))));
+                    }
+
+                    $latitude = is_numeric($settings->get('clinic_latitude')) ? (float) $settings->get('clinic_latitude') : null;
+                    $longitude = is_numeric($settings->get('clinic_longitude')) ? (float) $settings->get('clinic_longitude') : null;
+                    $verifiedAt = $settings->get('clinic_verified_at');
+                    $lastUpdated = Setting::query()->whereIn('setting_key', $keys)->max('updated_at');
+
+                    $clinics[] = [
+                        'public_id' => 'primary-clinic',
+                        'name' => $name,
+                        'clinic_type' => $settings->get('clinic_type') ?: 'BITEMAP Partner Animal Bite Center',
+                        'address' => $settings->get('clinic_address') ?: null,
+                        'barangay' => $settings->get('clinic_barangay') ?: null,
+                        'phone' => $settings->get('contact_number') ?: null,
+                        'public_email' => $settings->get('contact_email') ?: null,
+                        'operating_hours' => $settings->get('clinic_operating_hours') ?: null,
+                        'services' => $services,
+                        'latitude' => $latitude,
+                        'longitude' => $longitude,
+                        'public_notes' => $settings->get('clinic_public_notes') ?: null,
+                        'verified' => ! blank($verifiedAt),
+                        'is_partner' => true,
+                        'source' => 'bitemap_partner',
+                        'last_verified_at' => $verifiedAt ?: null,
+                        'last_updated_at' => $lastUpdated ? Carbon::parse($lastUpdated)->toDateString() : null,
+                        'open_now' => null,
+                    ];
+                }
             }
 
-            $name = trim((string) $settings->get('clinic_name', ''));
-            if ($name === '') {
-                return response()->json(['success' => true, 'data' => []]);
+            foreach ($this->getPublicClinicDirectory() as $externalClinic) {
+                $clinics[] = $externalClinic;
             }
-
-            $servicesValue = $settings->get('clinic_services');
-            $services = [];
-            if (is_string($servicesValue) && $servicesValue !== '') {
-                $decoded = json_decode($servicesValue, true);
-                $services = is_array($decoded)
-                    ? array_values(array_filter($decoded, 'is_string'))
-                    : array_values(array_filter(array_map('trim', explode(',', $servicesValue))));
-            }
-
-            $latitude = is_numeric($settings->get('clinic_latitude')) ? (float) $settings->get('clinic_latitude') : null;
-            $longitude = is_numeric($settings->get('clinic_longitude')) ? (float) $settings->get('clinic_longitude') : null;
-            $verifiedAt = $settings->get('clinic_verified_at');
-            $lastUpdated = Setting::query()->whereIn('setting_key', $keys)->max('updated_at');
 
             return response()->json([
                 'success' => true,
-                'data' => [[
-                    'public_id' => 'primary-clinic',
-                    'name' => $name,
-                    'clinic_type' => $settings->get('clinic_type') ?: null,
-                    'address' => $settings->get('clinic_address') ?: null,
-                    'barangay' => $settings->get('clinic_barangay') ?: null,
-                    'phone' => $settings->get('contact_number') ?: null,
-                    'public_email' => $settings->get('contact_email') ?: null,
-                    'operating_hours' => $settings->get('clinic_operating_hours') ?: null,
-                    'services' => $services,
-                    'latitude' => $latitude,
-                    'longitude' => $longitude,
-                    'public_notes' => $settings->get('clinic_public_notes') ?: null,
-                    'verified' => ! blank($verifiedAt),
-                    'last_verified_at' => $verifiedAt ?: null,
-                    'last_updated_at' => $lastUpdated ? Carbon::parse($lastUpdated)->toDateString() : null,
-                    'open_now' => null,
-                ]],
+                'data' => $clinics,
             ]);
         } catch (\Throwable $exception) {
             return $this->publicApiFailure(
@@ -3261,6 +3267,176 @@ class BitemapApiController extends Controller
                 'PUBLIC_CLINIC_DIRECTORY_UNAVAILABLE'
             );
         }
+    }
+
+    /**
+     * Curated verified directory of Animal Bite Centers and hospitals providing
+     * rabies post-exposure prophylaxis in Digos City, Davao del Sur.
+     *
+     * Note: BITEMAP's management system remains exclusive to the partner private ABC.
+     * Other clinics displayed on the public map are directory references only.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function getPublicClinicDirectory(): array
+    {
+        return [
+            [
+                'public_id' => 'abtc-digos-cho',
+                'name' => 'Digos City Animal Bite Treatment Center',
+                'clinic_type' => 'Public / LGU Animal Bite Treatment Center',
+                'address' => 'Lim Street, Barangay Zone 3, Digos City, Davao del Sur',
+                'barangay' => 'Zone 3',
+                'phone' => '(082) 553-2470',
+                'public_email' => null,
+                'operating_hours' => 'Monday-Friday, 8:00 AM-5:00 PM',
+                'services' => [
+                    'Animal bite assessment',
+                    'Anti-rabies vaccination',
+                    'PEP schedule follow-up',
+                    'Wound care',
+                    'PhilHealth Animal Bite Package',
+                ],
+                'latitude' => 6.7490,
+                'longitude' => 125.3565,
+                'public_notes' => 'City Health Office public ABTC. PhilHealth-accredited rabies post-exposure prophylaxis facility.',
+                'verified' => true,
+                'is_partner' => false,
+                'source' => 'Public Health Directory',
+                'last_verified_at' => '2026-01-15',
+                'last_updated_at' => '2026-01-15',
+                'open_now' => null,
+            ],
+            [
+                'public_id' => 'abtc-ddsph',
+                'name' => 'Davao del Sur Provincial Hospital - ABTC',
+                'clinic_type' => 'Public Provincial Hospital ABTC',
+                'address' => 'OPD Building, Lapu-Lapu Street, Barangay Zone 2, Digos City, Davao del Sur',
+                'barangay' => 'Zone 2',
+                'phone' => '(082) 553-2550',
+                'public_email' => null,
+                'operating_hours' => 'Monday-Friday, 8:00 AM-5:00 PM (Emergency 24/7)',
+                'services' => [
+                    'Animal bite assessment',
+                    'Anti-rabies vaccination',
+                    'Rabies Immunoglobulin (eRIG/hRIG)',
+                    'Wound care',
+                    'Tetanus immunization',
+                ],
+                'latitude' => 6.7535,
+                'longitude' => 125.3530,
+                'public_notes' => 'Provincial government tertiary hospital providing anti-rabies vaccination and emergency post-exposure care.',
+                'verified' => true,
+                'is_partner' => false,
+                'source' => 'Public Health Directory',
+                'last_verified_at' => '2026-01-15',
+                'last_updated_at' => '2026-01-15',
+                'open_now' => null,
+            ],
+            [
+                'public_id' => 'abc-jgmd-digos',
+                'name' => 'JGMD Digos City Animal Bite Center and Medical Clinic',
+                'clinic_type' => 'Private Animal Bite Center',
+                'address' => 'Vinzon Street, Barangay Zone 3, Digos City, Davao del Sur',
+                'barangay' => 'Zone 3',
+                'phone' => '0915-350-3565',
+                'public_email' => null,
+                'operating_hours' => 'Monday-Saturday, 8:00 AM-5:00 PM',
+                'services' => [
+                    'Animal bite assessment',
+                    'Anti-rabies vaccination',
+                    'Rabies Immunoglobulin (eRIG/hRIG)',
+                    'Wound care',
+                    'PEP schedule follow-up',
+                ],
+                'latitude' => 6.7485,
+                'longitude' => 125.3582,
+                'public_notes' => 'Private animal bite clinic offering consultation, active vaccination, and rabies immunoglobulin.',
+                'verified' => true,
+                'is_partner' => false,
+                'source' => 'Public Health Directory',
+                'last_verified_at' => '2026-01-15',
+                'last_updated_at' => '2026-01-15',
+                'open_now' => null,
+            ],
+            [
+                'public_id' => 'abc-darc-digos',
+                'name' => 'Digos Animal Bite Care Center (DARC)',
+                'clinic_type' => 'Private Animal Bite Center',
+                'address' => 'Lapu-Lapu Extension, Purok Cabbage, Barangay San Jose, Digos City, Davao del Sur',
+                'barangay' => 'San Jose',
+                'phone' => '0977-299-4167',
+                'public_email' => null,
+                'operating_hours' => 'Monday-Saturday, 8:00 AM-5:00 PM',
+                'services' => [
+                    'Animal bite assessment',
+                    'Anti-rabies vaccination',
+                    'PEP schedule follow-up',
+                    'Wound care',
+                ],
+                'latitude' => 6.7472,
+                'longitude' => 125.3540,
+                'public_notes' => 'Private outpatient animal bite care center.',
+                'verified' => true,
+                'is_partner' => false,
+                'source' => 'Public Health Directory',
+                'last_verified_at' => '2026-01-15',
+                'last_updated_at' => '2026-01-15',
+                'open_now' => null,
+            ],
+            [
+                'public_id' => 'hospital-mcdc-digos',
+                'name' => 'Medical Center of Digos Cooperative (MCDC Hospital)',
+                'clinic_type' => 'Private Cooperative Tertiary Hospital',
+                'address' => 'National Highway, Barangay Tres de Mayo, Digos City, Davao del Sur',
+                'barangay' => 'Tres De Mayo',
+                'phone' => '(082) 553-3333',
+                'public_email' => null,
+                'operating_hours' => 'Open 24 Hours (Emergency & OPD)',
+                'services' => [
+                    'Animal bite assessment',
+                    'Anti-rabies vaccination',
+                    'Rabies Immunoglobulin (hRIG)',
+                    'Wound care',
+                    'Emergency bite trauma management',
+                ],
+                'latitude' => 6.7680,
+                'longitude' => 125.3395,
+                'public_notes' => 'Tertiary cooperative hospital with 24/7 emergency department for animal exposure and rabies treatment.',
+                'verified' => true,
+                'is_partner' => false,
+                'source' => 'Public Health Directory',
+                'last_verified_at' => '2026-01-15',
+                'last_updated_at' => '2026-01-15',
+                'open_now' => null,
+            ],
+            [
+                'public_id' => 'hospital-digos-doctors',
+                'name' => 'Digos Doctors Hospital',
+                'clinic_type' => 'Private Tertiary Hospital',
+                'address' => 'McArthur Highway, Barangay Kiagot, Digos City, Davao del Sur',
+                'barangay' => 'Kiagot',
+                'phone' => '(082) 553-2771',
+                'public_email' => null,
+                'operating_hours' => 'Open 24 Hours (Emergency Room)',
+                'services' => [
+                    'Animal bite assessment',
+                    'Anti-rabies vaccination',
+                    'Rabies Immunoglobulin (eRIG/hRIG)',
+                    'Wound care',
+                    'Specialist consultation',
+                ],
+                'latitude' => 6.7812,
+                'longitude' => 125.3578,
+                'public_notes' => 'Private general hospital equipped for 24-hour bite management and PEP protocols.',
+                'verified' => true,
+                'is_partner' => false,
+                'source' => 'Public Health Directory',
+                'last_verified_at' => '2026-01-15',
+                'last_updated_at' => '2026-01-15',
+                'open_now' => null,
+            ],
+        ];
     }
 
     private function publicApiFailure(\Throwable $exception, string $message, string $code): JsonResponse
