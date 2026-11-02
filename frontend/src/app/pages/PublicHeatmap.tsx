@@ -280,8 +280,8 @@ export function PublicHeatmap() {
           </section>
 
           <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(280px,1fr)]">
-            <section className="min-w-0 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-lg shadow-teal-950/5" aria-labelledby="map-title">
-              <div className="flex flex-col gap-2 border-b border-slate-100 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+            <section className="flex min-w-0 flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-lg shadow-teal-950/5" aria-labelledby="map-title">
+              <div className="flex shrink-0 flex-col gap-2 border-b border-slate-100 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 id="map-title" className="font-extrabold text-slate-900">Digos City Barangay Map</h2>
                   <p className="mt-0.5 text-xs text-slate-500">Barangay areas are shaded by aggregated totals, never individual incidents.</p>
@@ -299,8 +299,15 @@ export function PublicHeatmap() {
                   <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">Read-only public map</span>
                 </div>
               </div>
-              <div className="relative h-[480px] sm:h-[560px] lg:h-[620px]">
-                <div ref={mapContainerRef} className="absolute inset-0 h-full w-full" aria-label="Interactive aggregated barangay incident map" />
+              <div className="relative flex-1 min-h-[500px] sm:min-h-[580px] lg:min-h-[640px]">
+                {/* Inline positioning ensures position: absolute and width/height 100% prevail
+                    over unlayered .maplibregl-map { position: relative } in Tailwind v4 */}
+                <div
+                  ref={mapContainerRef}
+                  className="h-full w-full"
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+                  aria-label="Interactive aggregated barangay incident map"
+                />
                 {(basemapError || boundaryError) && <div className="pointer-events-none absolute left-1/2 top-3 z-[5] max-w-xs -translate-x-1/2 rounded-xl border border-amber-200 bg-white px-3 py-2 text-center text-xs font-semibold text-amber-800 shadow">{basemapError || boundaryError}</div>}
                 {isLoading && <div className="absolute inset-0 z-[500] flex items-center justify-center bg-white/70 backdrop-blur-[1px]"><div className="rounded-2xl bg-white px-5 py-3 text-sm font-bold text-teal-800 shadow-lg">Updating aggregated map…</div></div>}
                 {error && <div className="absolute inset-0 z-[500] flex items-center justify-center bg-white/75 p-5"><div className="max-w-sm rounded-2xl border border-rose-200 bg-white p-5 text-center shadow-lg"><p className="font-extrabold text-slate-900">Map data unavailable</p><p className="mt-1 text-sm text-slate-500">Use Retry above to request the aggregated data again.</p></div></div>}
