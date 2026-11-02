@@ -1,5 +1,5 @@
-import { useEffect, type ReactNode } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router';
+import { type ReactNode } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router';
 import { Toaster } from 'sonner';
 import { Dashboard } from './pages/Dashboard';
 import { IncidentReport } from './pages/IncidentReport';
@@ -22,6 +22,7 @@ import { PublicHeatmap } from './pages/PublicHeatmap';
 import { PublicStatistics } from './pages/PublicStatistics';
 import { PublicClinics } from './pages/PublicClinics';
 import { MainLayout } from './components/Layout/MainLayout';
+import { PublicPortalLayout } from './components/Layout/PublicPortalLayout';
 import { Login } from './pages/Login';
 import { RequestAccountApproval } from './pages/RequestAccountApproval';
 import { canAccessPath, getDefaultPathForRole, getStoredUser, hasAuthSession } from '../lib/auth/roleAccess';
@@ -45,24 +46,6 @@ function RequireAuth() {
   }
 
   return <MainLayout />;
-}
-
-function PublicPortalLayout() {
-  useEffect(() => {
-    document.documentElement.classList.add('public-portal-route');
-    document.body.classList.add('public-portal-route');
-
-    return () => {
-      document.documentElement.classList.remove('public-portal-route');
-      document.body.classList.remove('public-portal-route');
-    };
-  }, []);
-
-  return (
-    <div className="public-portal-scroll">
-      <Outlet />
-    </div>
-  );
 }
 
 function RoleRoute({ children }: { children: ReactNode }) {

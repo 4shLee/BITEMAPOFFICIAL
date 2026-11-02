@@ -27,3 +27,91 @@ body.public-portal-route::-webkit-scrollbar {
   height: 0;
 }
 
+/* Spotify-style auto-hidden overlay scrollbar for the public portal */
+.public-spotify-scrollbar {
+  position: fixed;
+  top: 2px;
+  right: 2px;
+  bottom: 2px;
+  width: 10px;
+  z-index: 2100;
+  opacity: 0;
+  pointer-events: none;
+  user-select: none;
+  transition: opacity 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.public-spotify-scrollbar.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.public-spotify-scrollbar-thumb {
+  position: absolute;
+  top: 0;
+  right: 1px;
+  width: 6px;
+  min-height: 36px;
+  border-radius: 9999px;
+  background-color: rgba(19, 42, 39, 0.45);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.16);
+  cursor: pointer;
+  will-change: transform, height;
+  transition:
+    width 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.public-spotify-scrollbar.is-interactive .public-spotify-scrollbar-thumb,
+.public-spotify-scrollbar-thumb:hover {
+  width: 8px;
+  background-color: rgba(15, 35, 33, 0.68);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.24);
+}
+
+.public-spotify-scrollbar.is-dragging .public-spotify-scrollbar-thumb {
+  width: 8px;
+  background-color: rgba(13, 31, 29, 0.82);
+  cursor: grabbing;
+}
+
+/* Scoped auto-hidden scrollbar styling for nested scrollable containers inside the public portal */
+.public-portal-scroll .overflow-y-auto {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 220ms ease;
+}
+
+.public-portal-scroll .overflow-y-auto.is-scrolling,
+.public-portal-scroll .overflow-y-auto.is-edge-hover {
+  scrollbar-color: rgba(19, 42, 39, 0.48) transparent;
+}
+
+.public-portal-scroll .overflow-y-auto::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.public-portal-scroll .overflow-y-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.public-portal-scroll .overflow-y-auto::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 9999px;
+}
+
+.public-portal-scroll .overflow-y-auto.is-scrolling::-webkit-scrollbar-thumb,
+.public-portal-scroll .overflow-y-auto.is-edge-hover::-webkit-scrollbar-thumb,
+.public-portal-scroll .overflow-y-auto::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(19, 42, 39, 0.48);
+}
+
+.public-portal-scroll .overflow-y-auto::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(15, 35, 33, 0.68);
+}
+
+.public-portal-scroll .overflow-y-auto::-webkit-scrollbar-thumb:active {
+  background-color: rgba(13, 31, 29, 0.82);
+}
