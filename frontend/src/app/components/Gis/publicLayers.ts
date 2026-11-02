@@ -71,6 +71,24 @@ export function addPublicLayers(map: maplibregl.Map) {
       'circle-opacity': 0.9,
     },
   });
+  map.addLayer({
+    id: 'public-labels',
+    type: 'symbol',
+    source: POINT_SRC,
+    minzoom: 11,
+    layout: {
+      'text-field': ['get', 'name'],
+      'text-size': ['case', ['get', 'selected'], 12, 10.5],
+      'text-offset': [0, 1.2],
+      'text-anchor': 'top',
+      'text-optional': true,
+    },
+    paint: {
+      'text-color': '#0F172A',
+      'text-halo-color': '#FFFFFF',
+      'text-halo-width': 2,
+    },
+  });
 }
 
 export function updatePublicData(

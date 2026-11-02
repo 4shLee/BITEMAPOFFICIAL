@@ -87,7 +87,35 @@ class GisHeatmapTest extends TestCase
             ->assertJsonPath('data.0.barangay_name', 'Aplaya')
             ->assertJsonPath('data.0.total_incident_count', 1)
             ->assertJsonCount(1, 'heat_points')
-            ->assertJsonMissingPath('incident_points');
+            ->assertJsonMissingPath('incident_points')
+            ->assertJsonStructure([
+                'success',
+                'summary' => [
+                    'total_incidents',
+                    'total_incidents_label',
+                    'barangays_with_recorded_incidents',
+                    'highest_reported_barangay',
+                    'pep_completion_rate',
+                    'city_average_incidents',
+                ],
+                'reporting_period' => [
+                    'year',
+                    'month_start',
+                    'month_end',
+                    'label',
+                ],
+                'data' => [
+                    [
+                        'barangay_name',
+                        'latitude',
+                        'longitude',
+                        'incident_count',
+                        'count_label',
+                        'suppressed',
+                        'risk_level',
+                    ],
+                ],
+            ]);
     }
 
     public function test_null_exact_coordinates_still_use_the_validated_barangay_location(): void

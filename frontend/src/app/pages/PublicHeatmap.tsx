@@ -9,9 +9,11 @@ import {
   ChevronDown,
   Info,
   MapPin,
+  Maximize2,
   PawPrint,
   RefreshCw,
   RotateCcw,
+  Search,
   ShieldCheck,
   TrendingUp,
 } from 'lucide-react';
@@ -177,6 +179,40 @@ export function PublicHeatmap() {
   }, [map, boundaries, mapData, selectedBarangay]);
 
   const selected = useMemo(() => visibleData.find((item) => item.barangay_name === selectedBarangay) ?? null, [visibleData, selectedBarangay]);
+  const sortedBarangays = useMemo(() => {
+    return [...visibleData].sort((a, b) => {
+      const countA = a.incident_count ?? (a.suppressed ? 1 : 0);
+      const countB = b.incident_count ?? (b.suppressed ? 1 : 0);
+      if (countB !== countA) return countB - countA;
+      return a.barangay_name.localeCompare(b.barangay_name);
+    });
+  }, [visibleData]);
+
+  const handleSelectBarangay = (name: string) => {
+    if (!name) {
+      setSelectedBarangay(null);
+      return;
+    }
+    setSelectedBarangay(name);
+    const item = mapData.find((d) => d.barangay_name === name);
+    if (map && item) {
+      map.flyTo({
+        center: [item.longitude, item.latitude],
+        zoom: Math.max(map.getZoom(), 13),
+        essential: true,
+      });
+    }
+  };
+
+  const handleResetMapView = () => {
+    if (!map) return;
+    map.flyTo({
+      center: [DIGOS_CENTER[1], DIGOS_CENTER[0]],
+      zoom: 11,
+      essential: true,
+    });
+  };
+
   const selectedYearMaxMonth = Number(filters.year) === currentYear ? currentMonth : 12;
   const startMonthOptions = months.slice(0, Math.max(1, selectedYearMaxMonth - 2));
   const endMonthOptions = months.slice(Number(filters.monthStart) + 1, selectedYearMaxMonth);
@@ -221,8 +257,6 @@ export function PublicHeatmap() {
         </section>
 
         <div className="mx-auto max-w-7xl px-4 py-7 sm:px-6 lg:px-8">
-          <div className="mb-6 flex items-start gap-3 rounded-2xl border border-teal-200/80 bg-teal-50 px-4 py-3.5 text-teal-900"><Info className="mt-0.5 h-5 w-5 shrink-0 text-teal-700" /><div><p className="text-sm font-extrabold">Barangay-level aggregated data only.</p><p className="mt-0.5 text-sm leading-relaxed text-teal-800">Exact incident locations and personal patient information are not displayed.</p></div></div>
-
           <section aria-label="Public map filters" className="mb-5 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm shadow-teal-950/5">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[0.8fr_1fr_1fr_1fr_1fr_auto] lg:items-end">
               <FilterSelect label="Reporting year" value={filters.year} onChange={(value) => updateFilter('year', value)}>{[0,1,2,3,4,5].map((offset) => <option key={currentYear-offset} value={currentYear-offset}>{currentYear-offset}</option>)}</FilterSelect>
@@ -247,26 +281,186 @@ export function PublicHeatmap() {
 
           <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(280px,1fr)]">
             <section className="min-w-0 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-lg shadow-teal-950/5" aria-labelledby="map-title">
-              <div className="flex flex-col gap-2 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><div><h2 id="map-title" className="font-extrabold text-slate-900">Digos City Barangay Map</h2><p className="mt-0.5 text-xs text-slate-500">Barangay areas are shaded by aggregated totals, never individual incidents.</p></div><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">Read-only public map</span></div>
+              <div className="flex flex-col gap-2 border-b border-slate-100 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 id="map-title" className="font-extrabold text-slate-900">Digos City Barangay Map</h2>
+                  <p className="mt-0.5 text-xs text-slate-500">Barangay areas are shaded by aggregated totals, never individual incidents.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleResetMapView}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                    title="Center map back to Digos City"
+                  >
+                    <Maximize2 className="h-3.5 w-3.5 text-slate-500" />
+                    Reset view
+                  </button>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">Read-only public map</span>
+                </div>
+              </div>
               <div className="relative h-[480px] sm:h-[560px] lg:h-[620px]">
                 <div ref={mapContainerRef} className="absolute inset-0 h-full w-full" aria-label="Interactive aggregated barangay incident map" />
                 {(basemapError || boundaryError) && <div className="pointer-events-none absolute left-1/2 top-3 z-[5] max-w-xs -translate-x-1/2 rounded-xl border border-amber-200 bg-white px-3 py-2 text-center text-xs font-semibold text-amber-800 shadow">{basemapError || boundaryError}</div>}
                 {isLoading && <div className="absolute inset-0 z-[500] flex items-center justify-center bg-white/70 backdrop-blur-[1px]"><div className="rounded-2xl bg-white px-5 py-3 text-sm font-bold text-teal-800 shadow-lg">Updating aggregated map…</div></div>}
                 {error && <div className="absolute inset-0 z-[500] flex items-center justify-center bg-white/75 p-5"><div className="max-w-sm rounded-2xl border border-rose-200 bg-white p-5 text-center shadow-lg"><p className="font-extrabold text-slate-900">Map data unavailable</p><p className="mt-1 text-sm text-slate-500">Use Retry above to request the aggregated data again.</p></div></div>}
                 <div className="absolute bottom-7 left-3 z-[450] max-w-[230px] rounded-2xl border border-white/70 bg-white/95 p-3 shadow-lg backdrop-blur-sm sm:left-4">
-                  <p className="text-xs font-extrabold text-slate-800">Case-count classification</p><div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2">{(['LOW','MODERATE','HIGH','NO DATA'] as RiskLevel[]).map((risk) => <div key={risk} className="flex items-center gap-2"><span className="h-3 w-3 rounded-full" style={{ backgroundColor: RISK_STYLES[risk].color }} /><span className="text-xs font-bold text-slate-600">{RISK_STYLES[risk].label}</span></div>)}</div><p className="mt-2 border-t border-slate-100 pt-2 text-xs leading-relaxed text-slate-500">Low 5–10 · Moderate 11–20 · High 21+ · Counts below 5 suppressed</p>
+                  <p className="text-xs font-extrabold text-slate-800">Case-count classification</p><div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2">{(['LOW','MODERATE','HIGH','SUPPRESSED','NO DATA'] as RiskLevel[]).map((risk) => <div key={risk} className="flex items-center gap-2"><span className="h-3 w-3 rounded-full" style={{ backgroundColor: RISK_STYLES[risk].color }} /><span className="text-xs font-bold text-slate-600">{RISK_STYLES[risk].label}</span></div>)}</div><p className="mt-2 border-t border-slate-100 pt-2 text-xs leading-relaxed text-slate-500">Low 5–10 · Moderate 11–20 · High 21+ · Counts below 5 suppressed</p>
                 </div>
               </div>
             </section>
 
             <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
               <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-lg shadow-teal-950/5" aria-labelledby="selected-summary-title">
-                <h2 id="selected-summary-title" className="text-base font-extrabold text-slate-900">Selected Barangay Summary</h2>
-                {selected ? <div className="mt-5 space-y-5"><div><div className="flex items-start justify-between gap-3"><div><p className="text-xl font-extrabold text-teal-900">{selected.barangay_name}</p><p className="mt-1 text-sm font-bold text-slate-500">{selected.count_label}</p></div><span className="rounded-full px-3 py-1 text-xs font-extrabold text-white" style={{ backgroundColor: RISK_STYLES[selected.risk_level].color }}>{RISK_STYLES[selected.risk_level].label}</span></div></div><div className="grid grid-cols-2 gap-3"><div className="rounded-2xl bg-slate-50 p-3"><p className="text-xs font-extrabold uppercase tracking-wide text-slate-400">Incident rate</p><p className="mt-1 text-sm font-extrabold text-slate-900">{selected.incident_rate_per_1000 == null ? 'Not available' : `${selected.incident_rate_per_1000} per 1,000`}</p></div><div className="rounded-2xl bg-slate-50 p-3"><p className="text-xs font-extrabold uppercase tracking-wide text-slate-400">Top animal</p><p className="mt-1 text-sm font-extrabold text-slate-900">{selected.most_common_animal || 'Not available'}</p></div></div><div className="space-y-3 border-t border-slate-100 pt-4"><div className="flex items-center justify-between gap-3 text-sm"><span className="text-slate-500">Risk level</span><strong>{RISK_STYLES[selected.risk_level].label}</strong></div><div className="flex items-center justify-between gap-3 text-sm"><span className="text-slate-500">City comparison</span><strong>{selected.comparison_to_city_average == null ? 'Not available' : `${Math.abs(selected.comparison_to_city_average)} ${selected.comparison_to_city_average >= 0 ? 'above' : 'below'} average`}</strong></div><div className="flex items-center justify-between gap-3 text-sm"><span className="text-slate-500">Reporting period</span><strong className="text-right">{response?.reporting_period?.label}</strong></div></div>{selected.suppressed && <div className="rounded-2xl bg-slate-100 p-3 text-xs font-semibold leading-relaxed text-slate-600">This barangay’s exact value and derived statistics are hidden because the filtered count is below five.</div>}</div> : <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-8 text-center"><MapPin className="mx-auto h-7 w-7 text-teal-600" /><p className="mx-auto mt-3 max-w-56 text-sm font-semibold leading-relaxed text-slate-600">Select a barangay on the map to view its aggregated statistics.</p></div>}
+                <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                  <h2 id="selected-summary-title" className="text-base font-extrabold text-slate-900">
+                    {selected ? 'Barangay Profile' : 'Select Barangay'}
+                  </h2>
+                  {selected && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedBarangay(null)}
+                      className="text-xs font-bold text-teal-700 hover:text-teal-900 hover:underline"
+                    >
+                      View all list
+                    </button>
+                  )}
+                </div>
+
+                <div className="mt-3">
+                  <label className="block">
+                    <span className="sr-only">Quick search barangay</span>
+                    <div className="relative">
+                      <select
+                        value={selectedBarangay || ''}
+                        onChange={(e) => handleSelectBarangay(e.target.value)}
+                        className="h-10 w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 pl-3 pr-8 text-xs font-bold text-slate-700 outline-none transition focus:border-teal-600 focus:bg-white"
+                      >
+                        <option value="">-- Jump to a barangay ({visibleData.length}) --</option>
+                        {visibleData.map((item) => (
+                          <option key={item.barangay_name} value={item.barangay_name}>
+                            {item.barangay_name} ({RISK_STYLES[item.risk_level]?.label ?? item.risk_level})
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                    </div>
+                  </label>
+                </div>
+
+                {selected ? (
+                  <div className="mt-4 space-y-4">
+                    <div>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xl font-extrabold text-teal-900">{selected.barangay_name}</p>
+                          <p className="mt-1 text-sm font-bold text-slate-500">{selected.count_label}</p>
+                        </div>
+                        <span
+                          className="rounded-full px-3 py-1 text-xs font-extrabold text-white"
+                          style={{ backgroundColor: RISK_STYLES[selected.risk_level].color }}
+                        >
+                          {RISK_STYLES[selected.risk_level].label}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div className="rounded-2xl bg-slate-50 p-3">
+                        <p className="text-xs font-extrabold uppercase tracking-wide text-slate-400">Incident rate</p>
+                        <p className="mt-1 text-sm font-extrabold text-slate-900">
+                          {selected.incident_rate_per_1000 == null ? 'Not available' : `${selected.incident_rate_per_1000} per 1,000`}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl bg-slate-50 p-3">
+                        <p className="text-xs font-extrabold uppercase tracking-wide text-slate-400">Top animal</p>
+                        <p className="mt-1 text-sm font-extrabold text-slate-900">
+                          {selected.most_common_animal || 'Not available'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2.5 border-t border-slate-100 pt-3">
+                      <div className="flex items-center justify-between gap-3 text-sm">
+                        <span className="text-slate-500">Risk level</span>
+                        <strong>{RISK_STYLES[selected.risk_level].label}</strong>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 text-sm">
+                        <span className="text-slate-500">City comparison</span>
+                        <strong>
+                          {selected.comparison_to_city_average == null
+                            ? 'Not available'
+                            : `${Math.abs(selected.comparison_to_city_average)} ${selected.comparison_to_city_average >= 0 ? 'above' : 'below'} average`}
+                        </strong>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 text-sm">
+                        <span className="text-slate-500">Reporting period</span>
+                        <strong className="text-right">{response?.reporting_period?.label}</strong>
+                      </div>
+                    </div>
+
+                    {selected.suppressed && (
+                      <div className="rounded-2xl bg-slate-100 p-3 text-xs font-semibold leading-relaxed text-slate-600">
+                        This barangay’s exact value and derived statistics are hidden because the filtered count is below five.
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="mt-4">
+                    <p className="text-xs font-semibold text-slate-500">Top barangays in this period:</p>
+                    <div className="mt-2.5 max-h-56 space-y-1.5 overflow-y-auto pr-1">
+                      {sortedBarangays.slice(0, 8).map((b) => (
+                        <button
+                          key={b.barangay_name}
+                          type="button"
+                          onClick={() => handleSelectBarangay(b.barangay_name)}
+                          className="flex w-full items-center justify-between rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2 text-left text-xs transition hover:border-teal-300 hover:bg-teal-50/50"
+                        >
+                          <span className="font-bold text-slate-800">{b.barangay_name}</span>
+                          <span className="flex items-center gap-1.5">
+                            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: RISK_STYLES[b.risk_level].color }} />
+                            <span className="font-semibold text-slate-500">{b.count_label}</span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </section>
 
-              <section className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5"><div className="flex items-center gap-2 text-emerald-900"><PawPrint className="h-5 w-5" /><h2 className="font-extrabold">Prevention Reminder</h2></div><ul className="mt-4 space-y-2.5 text-sm leading-relaxed text-emerald-900/80"><li>• Avoid unfamiliar or aggressive animals.</li><li>• Keep pets vaccinated.</li><li>• Supervise children around animals.</li><li>• Seek medical assessment after a bite or scratch.</li></ul></section>
-              <section className="rounded-3xl border border-slate-200 bg-white p-5"><div className="flex items-start gap-3"><BarChart3 className="mt-0.5 h-5 w-5 shrink-0 text-teal-700" /><div><h2 className="font-extrabold text-slate-900">How classification works</h2><p className="mt-2 text-xs leading-relaxed text-slate-500">{response?.classification_basis || 'Classification is based on broad case-count thresholds. Exact values below five are suppressed.'}</p></div></div></section>
+              <section className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5">
+                <div className="flex items-center gap-2 text-emerald-900">
+                  <PawPrint className="h-5 w-5" />
+                  <h2 className="font-extrabold">Prevention Reminder</h2>
+                </div>
+                <ul className="mt-3 space-y-2 text-sm leading-relaxed text-emerald-900/80">
+                  <li>• Avoid unfamiliar or aggressive animals.</li>
+                  <li>• Keep pets vaccinated against rabies.</li>
+                  <li>• Supervise children around pets.</li>
+                  <li>• Seek medical assessment after a bite or scratch.</li>
+                </ul>
+                <div className="mt-4 border-t border-emerald-200/80 pt-3">
+                  <Link
+                    to="/public/clinics"
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 hover:text-emerald-950 hover:underline"
+                  >
+                    View Vaccination Clinics & Contacts →
+                  </Link>
+                </div>
+              </section>
+
+              <section className="rounded-3xl border border-slate-200 bg-white p-5">
+                <div className="flex items-start gap-3">
+                  <BarChart3 className="mt-0.5 h-5 w-5 shrink-0 text-teal-700" />
+                  <div>
+                    <h2 className="font-extrabold text-slate-900">How classification works</h2>
+                    <p className="mt-2 text-xs leading-relaxed text-slate-500">
+                      {response?.classification_basis ||
+                        'Classification is based on broad case-count thresholds. Exact values below five are suppressed.'}
+                    </p>
+                  </div>
+                </div>
+              </section>
             </aside>
           </div>
         </div>

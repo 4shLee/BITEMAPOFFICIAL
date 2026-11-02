@@ -3032,7 +3032,24 @@ class BitemapApiController extends Controller
 
     public function publicHeatmap(Request $request): JsonResponse
     {
-        $validator = Validator::make($request->query(), $this->heatmapFilterRules());
+        // Support both query conventions:
+        // 1) Public portal: year, month_start, month_end, animal_type, risk_level
+        // 2) Standard GIS filters: date_from, date_to, animal_type, who_category
+        $query = $request->query();
+
+        if (isset($query['year']) || isset($query['month_start']) || isset($query['month_end'])) {
+            $year = (int) ($query['year'] ?? now()->year);
+            $monthStart = (int) ($query['month_start'] ?? 1);
+            $monthEnd = (int) ($query['month_end'] ?? 12);
+
+            $dateFrom = Carbon::create($year, $monthStart, 1)->startOfMonth()->format('Y-m-d');
+            $dateTo = Carbon::create($year, $monthEnd, 1)->endOfMonth()->format('Y-m-d');
+
+            $query['date_from'] = $dateFrom;
+            $query['date_to'] = $dateTo;
+        }
+
+        $validator = Validator::make($query, $this->heatmapFilterRules());
 
         if ($validator->fails()) {
             return response()->json([
@@ -3045,7 +3062,97 @@ class BitemapApiController extends Controller
         }
 
         try {
-            return response()->json($this->heatmapPayload($validator->validated(), false));
+            $validated = $validator->validated();
+            $payload = $this->heatmapPayload($validated, false);
+
+            // Compute public summary and privacy-safe aggregate data
+            $rawBarangays = collect($payload['data'] ?? []);
+            $cityTotal = (int) $rawBarangays->sum('total_incident_count');
+            $recordedBarangays = $rawBarangays->where('total_incident_count', '>', 0)->count();
+            $cityAverage = $recordedBarangays > 0 ? round($cityTotal / $recordedBarangays, 1) : 0;
+            $highestBarangay = $rawBarangays->sortByDesc('total_incident_count')->first();
+
+            // Total PEP schedules across filtered incidents
+            $incidentIds = $rawBarangays->flatMap(fn ($b) => $b['incident_ids'] ?? [])->filter()->values();
+            $pepSchedules = $incidentIds->isNotEmpty()
+                ? PepSchedule::whereIn('incident_id', $incidentIds)->get()
+                : collect();
+            $pepTotal = $pepSchedules->count();
+            $pepDone = $pepSchedules->whereIn('status', ['Done', 'Completed'])->count();
+            $pepRate = $pepTotal > 0 ? round(($pepDone / $pepTotal) * 100, 1) : null;
+
+            $publicBarangays = Barangay::orderBy('name')->get()->map(function (Barangay $barangay) use ($rawBarangays, $cityAverage) {
+                $item = $rawBarangays->firstWhere('barangay_name', $barangay->name);
+                $count = (int) ($item['total_incident_count'] ?? 0);
+                $suppressed = $count > 0 && $count < 5;
+                $riskLevel = $count === 0 ? 'NO DATA' : ($suppressed ? 'SUPPRESSED' : ($count <= 10 ? 'LOW' : ($count <= 20 ? 'MODERATE' : 'HIGH')));
+                $countLabel = $suppressed
+                    ? 'Fewer than 5 incidents'
+                    : ($count === 0 ? 'No recorded data' : "{$count} incidents");
+                $topAnimal = ! $suppressed && $count > 0 ? ($item['top_animal_type'] ?? null) : null;
+                $ratePer1000 = ($suppressed || ! $barangay->population)
+                    ? null
+                    : round(($count / $barangay->population) * 1000, 2);
+                $comparison = ($suppressed || $count === 0)
+                    ? null
+                    : round($count - $cityAverage, 1);
+
+                $coords = DigosBarangayCoordinates::POINTS[$barangay->name] ?? null;
+                $lat = $coords ? $coords['lat'] : (float) $barangay->latitude;
+                $lng = $coords ? $coords['lng'] : (float) $barangay->longitude;
+
+                return [
+                    'barangay_name' => $barangay->name,
+                    'latitude' => $lat,
+                    'longitude' => $lng,
+                    'incident_count' => $suppressed ? null : $count,
+                    'count_label' => $countLabel,
+                    'suppressed' => $suppressed,
+                    'risk_level' => $riskLevel,
+                    'incident_rate_per_1000' => $ratePer1000,
+                    'most_common_animal' => $topAnimal,
+                    'comparison_to_city_average' => $comparison,
+                    // Keep compatibility with tests and callers expecting total_incident_count
+                    'total_incident_count' => $count,
+                ];
+            });
+
+            // If a specific risk level filter was requested (LOW, MODERATE, HIGH)
+            $requestedRisk = strtoupper((string) ($request->query('risk_level') ?? 'All'));
+            if ($requestedRisk !== 'ALL') {
+                $publicBarangays = $publicBarangays->filter(fn ($b) => $b['risk_level'] === $requestedRisk)->values();
+            }
+
+            $fromMonth = isset($query['month_start']) ? (int) $query['month_start'] : 1;
+            $toMonth = isset($query['month_end']) ? (int) $query['month_end'] : (int) now()->month;
+            $reportingYear = isset($query['year']) ? (int) $query['year'] : (int) now()->year;
+            $monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+            $reportingLabel = ($fromMonth >= 1 && $toMonth <= 12 && $fromMonth <= $toMonth)
+                ? "{$monthNames[$fromMonth - 1]}–{$monthNames[$toMonth - 1]} {$reportingYear}"
+                : "{$reportingYear}";
+
+            $payload['summary'] = [
+                'total_incidents' => $cityTotal >= 5 ? $cityTotal : null,
+                'total_incidents_label' => ($cityTotal > 0 && $cityTotal < 5) ? 'Fewer than 5 incidents' : ($cityTotal === 0 ? 'No recorded data' : "{$cityTotal} incidents"),
+                'barangays_with_recorded_incidents' => $recordedBarangays,
+                'highest_reported_barangay' => ($highestBarangay && $highestBarangay['total_incident_count'] >= 5)
+                    ? $highestBarangay['barangay_name']
+                    : ($highestBarangay ? $highestBarangay['barangay_name'] : null),
+                'pep_completion_rate' => $pepRate,
+                'city_average_incidents' => $recordedBarangays > 0 ? $cityAverage : null,
+            ];
+
+            $payload['reporting_period'] = [
+                'year' => $reportingYear,
+                'month_start' => $fromMonth,
+                'month_end' => $toMonth,
+                'label' => $reportingLabel,
+            ];
+
+            $payload['classification_basis'] = 'Case count: Low 5–10, Moderate 11–20, High 21+. Counts below 5 are suppressed.';
+            $payload['data'] = $publicBarangays->values()->all();
+
+            return response()->json($payload);
         } catch (\Throwable $exception) {
             return $this->publicApiFailure($exception, 'Unable to load map data.', 'PUBLIC_MAP_UNAVAILABLE');
         }
