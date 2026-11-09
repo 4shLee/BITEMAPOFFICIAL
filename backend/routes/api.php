@@ -4,7 +4,7 @@ use App\Http\Controllers\Api\BitemapApiController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/auth/signin', [BitemapApiController::class, 'signIn']);
-Route::post('/auth/signup', [BitemapApiController::class, 'signUp']);
+Route::post('/auth/signup', [BitemapApiController::class, 'signUp'])->middleware('throttle:10,1');
 
 Route::get('/dev/status', [BitemapApiController::class, 'devStatus']);
 Route::get('/barangays', [BitemapApiController::class, 'barangays']);

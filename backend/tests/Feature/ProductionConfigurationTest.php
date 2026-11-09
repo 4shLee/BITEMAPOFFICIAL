@@ -82,6 +82,32 @@ class ProductionConfigurationTest extends TestCase
         $this->get('/up', ['X-Forwarded-For' => '203.0.113.195'])->assertOk();
     }
 
+    public function test_session_cookie_security_and_sanctum_expiration_defaults(): void
+    {
+        $prodSession = $this->loadConfigWithEnv('session', [
+            'APP_ENV' => 'production',
+            'SESSION_SECURE_COOKIE' => null,
+            'SESSION_HTTP_ONLY' => null,
+            'SESSION_SAME_SITE' => null,
+        ]);
+
+        $this->assertTrue($prodSession['secure']);
+        $this->assertTrue($prodSession['http_only']);
+        $this->assertSame('lax', $prodSession['same_site']);
+
+        $localSession = $this->loadConfigWithEnv('session', [
+            'APP_ENV' => 'local',
+            'SESSION_SECURE_COOKIE' => null,
+        ]);
+        $this->assertFalse($localSession['secure']);
+
+        $sanctum = $this->loadConfigWithEnv('sanctum', [
+            'SANCTUM_TOKEN_EXPIRATION' => null,
+        ]);
+        $this->assertSame(720, $sanctum['expiration']);
+        $this->assertFalse($sanctum['last_used_at']);
+    }
+
     /**
      * Evaluate a config file with temporary environment values (null = unset).
      *

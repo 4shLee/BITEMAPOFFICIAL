@@ -50,7 +50,20 @@ return [
     |
     */
 
-    'expiration' => null,
+    'expiration' => (int) env('SANCTUM_TOKEN_EXPIRATION', 720),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Automatic Last Used At Tracking
+    |--------------------------------------------------------------------------
+    |
+    | Disabled so Sanctum's Guard does not overwrite `last_used_at` on passive
+    | session checks or background alert polls. Genuine user activity updates
+    | are managed explicitly by AuthSessionSecurity.
+    |
+    */
+
+    'last_used_at' => false,
 
     /*
     |--------------------------------------------------------------------------

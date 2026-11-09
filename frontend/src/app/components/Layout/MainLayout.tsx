@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { Outlet, useLocation } from 'react-router';
-import { canAccessPath, getStoredUser, isSystemAdminRole } from '../../../lib/auth/roleAccess';
-import { auditLogsAPI, notificationsAPI } from '../../../lib/services/api';
+import { Outlet, useLocation, useNavigate } from 'react-router';
+import { toast } from 'sonner';
+import {
+  canAccessPath,
+  clearAuthSessionStorage,
+  getStoredUser,
+  hasAuthSession,
+  isSystemAdminRole,
+  recordUserActivity,
+} from '../../../lib/auth/roleAccess';
+import { auditLogsAPI, authAPI, notificationsAPI } from '../../../lib/services/api';
 import { HeaderAlertsProvider, type QuickAlert } from './HeaderAlertsContext';
 import { Sidebar } from './Sidebar';
 
@@ -14,6 +22,7 @@ type HeaderAuditLog = {
 
 export function MainLayout() {
   const location = useLocation();
+  const navigate = useNavigate();
   const contentRef = useRef<HTMLDivElement>(null);
   const currentUser = getStoredUser();
   const canAccessNotifications = canAccessPath(currentUser?.role, '/notifications');
@@ -39,17 +48,73 @@ export function MainLayout() {
 
   useEffect(() => {
     let isMounted = true;
+    let lastRecordedAt = 0;
 
-    async function loadNotificationAlerts() {
-      if (!canAccessNotifications) {
+    const handleSessionExpired = () => {
+      if (!isMounted) return;
+      clearAuthSessionStorage();
+      toast.error('Your session has expired. Please sign in again.');
+      navigate('/login', { replace: true });
+    };
+
+    const handleUserInteraction = () => {
+      const now = Date.now();
+      if (now - lastRecordedAt < 15000) {
+        return;
+      }
+      if (!hasAuthSession()) {
+        handleSessionExpired();
+        return;
+      }
+      lastRecordedAt = now;
+      recordUserActivity(now);
+    };
+
+    const verifyActiveSession = () => {
+      if (!hasAuthSession()) {
+        handleSessionExpired();
+      }
+    };
+
+    authAPI.getSession().then((result) => {
+      if (isMounted && !result.success) {
+        handleSessionExpired();
+      }
+    });
+
+    const events: Array<keyof WindowEventMap> = ['mousedown', 'keydown', 'touchstart', 'wheel'];
+    events.forEach((eventName) => {
+      window.addEventListener(eventName, handleUserInteraction, { passive: true });
+    });
+    window.addEventListener('focus', verifyActiveSession);
+    document.addEventListener('visibilitychange', verifyActiveSession);
+
+    const sessionCheckTimer = window.setInterval(verifyActiveSession, 15000);
+
+    return () => {
+      isMounted = false;
+      events.forEach((eventName) => {
+        window.removeEventListener(eventName, handleUserInteraction);
+      });
+      window.removeEventListener('focus', verifyActiveSession);
+      document.removeEventListener('visibilitychange', verifyActiveSession);
+      window.clearInterval(sessionCheckTimer);
+    };
+  }, [navigate]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadNotificationAlerts(showLoadingSpinner = false) {
+      if (!canAccessNotifications || !hasAuthSession()) {
         if (isMounted) setAlertsLoading(false);
         return;
       }
 
       try {
-        if (isMounted) setAlertsLoading(true);
+        if (isMounted && showLoadingSpinner) setAlertsLoading(true);
         if (isSystemAdmin) {
-          const response = await auditLogsAPI.getAll({ per_page: 30 });
+          const response = await auditLogsAPI.getAll({ per_page: 25 }, { backgroundPoll: true });
           const platformAlerts = ((response.data || []) as HeaderAuditLog[])
             .filter((log) => {
               const moduleName = String(log.module || '');
@@ -62,12 +127,12 @@ export function MainLayout() {
               id: 'system-' + log.id,
               title: log.action || 'System alert',
               detail: log.description || log.module || 'Platform activity requires review.',
-              tone: /(failed|error|critical|unauthorized)/i.test([log.action, log.description].join(' ')) ? 'danger' as const : 'info' as const,
+              tone: /(failed|error|critical|unauthorized|blocked)/i.test([log.action, log.description].join(' ')) ? 'danger' as const : 'info' as const,
               count: 1,
             }));
           if (isMounted) setQuickAlerts(platformAlerts);
         } else {
-          const notificationResponse = await notificationsAPI.getSummary();
+          const notificationResponse = await notificationsAPI.getSummary({ backgroundPoll: true });
           const summary = notificationResponse.meta.summary;
           const priorityAlert = notificationResponse.meta.priority_alert;
           const overdue = Number(summary.overdue_patients || 0);
@@ -88,6 +153,10 @@ export function MainLayout() {
         }
       } catch {
         if (isMounted) {
+          if (!hasAuthSession()) {
+            navigate('/login', { replace: true });
+            return;
+          }
           setQuickAlerts([]);
           setClinicPriorityCount(0);
           setClinicSmsSimulation(true);
@@ -97,14 +166,14 @@ export function MainLayout() {
       }
     }
 
-    loadNotificationAlerts();
-    const interval = window.setInterval(loadNotificationAlerts, 60000);
+    loadNotificationAlerts(true);
+    const interval = window.setInterval(() => loadNotificationAlerts(false), 60000);
 
     return () => {
       isMounted = false;
       window.clearInterval(interval);
     };
-  }, [canAccessNotifications, isSystemAdmin]);
+  }, [canAccessNotifications, isSystemAdmin, navigate]);
 
   return (
     <HeaderAlertsProvider value={{ quickAlerts, clinicPriorityCount, clinicSmsSimulation, alertsLoading }}>

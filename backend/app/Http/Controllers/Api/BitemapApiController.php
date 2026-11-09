@@ -17,6 +17,7 @@ use App\Models\User;
 use App\Services\Sms\SmsGateway;
 use App\Services\Sms\VaccinationReminderService;
 use App\Services\WhoExposureClassificationService;
+use App\Support\AuthSessionSecurity;
 use App\Support\DefaultAdminAccount;
 use App\Support\DigosBarangayCoordinates;
 use App\Support\InventoryProductCatalog;
@@ -32,10 +33,12 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class BitemapApiController extends Controller
 {
@@ -53,6 +56,34 @@ class BitemapApiController extends Controller
         ]);
 
         $email = strtolower(trim($credentials['email']));
+        $throttleKey = $this->loginThrottleKey($email, $request);
+        $ipThrottleKey = $this->loginIpThrottleKey($request);
+        $maxAttempts = AuthSessionSecurity::maxFailedLoginAttempts();
+        $ipMaxAttempts = max($maxAttempts * 4, 20);
+        $decaySeconds = AuthSessionSecurity::accountLockMinutes() * 60;
+
+        if (RateLimiter::tooManyAttempts($throttleKey, $maxAttempts) || RateLimiter::tooManyAttempts($ipThrottleKey, $ipMaxAttempts)) {
+            $retryAfter = max(1, RateLimiter::availableIn($throttleKey), RateLimiter::availableIn($ipThrottleKey));
+            $existingUser = User::where('email', $email)->first();
+
+            $this->writeAudit(
+                $request,
+                'Login blocked',
+                'Authentication',
+                $existingUser?->id,
+                'Login temporarily blocked due to repeated failed attempts for email: '.$email.'.',
+                $existingUser
+            );
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Too many failed login attempts. Please wait '.$retryAfter.' seconds before trying again.',
+                'message' => 'Too many failed login attempts. Please wait '.$retryAfter.' seconds before trying again.',
+                'retry_after' => $retryAfter,
+            ], 429, [
+                'Retry-After' => (string) $retryAfter,
+            ]);
+        }
 
         if (DefaultAdminAccount::shouldRepairForLogin($email, $credentials['password'])) {
             DefaultAdminAccount::reset();
@@ -61,6 +92,8 @@ class BitemapApiController extends Controller
         $user = User::where('email', $email)->first();
 
         if (! $user || ! Hash::check($credentials['password'], $user->password)) {
+            RateLimiter::hit($throttleKey, $decaySeconds);
+            RateLimiter::hit($ipThrottleKey, $decaySeconds);
             $this->writeAudit($request, 'Failed login', 'Authentication', $user?->id, 'Failed login attempt for email: '.$email.'.', $user);
 
             return response()->json([
@@ -69,9 +102,7 @@ class BitemapApiController extends Controller
             ], 401);
         }
 
-        $approvalStatus = Schema::hasColumn('users', 'approval_status')
-            ? ($user->approval_status ?? 'approved')
-            : ($user->is_active ? 'approved' : 'pending');
+        $approvalStatus = AuthSessionSecurity::approvalStatus($user);
 
         if ($approvalStatus === 'pending') {
             return response()->json([
@@ -94,13 +125,24 @@ class BitemapApiController extends Controller
             ], 403);
         }
 
-        $user->forceFill(['last_login_at' => now()])->save();
+        RateLimiter::clear($throttleKey);
+        $now = now();
+        $user->forceFill(['last_login_at' => $now])->save();
         $this->writeAudit($request, 'Login', 'Authentication', $user->id, 'User signed in.', $user);
-        $token = $user->createToken('bitemap-web')->plainTextToken;
+
+        $expiresAt = AuthSessionSecurity::nextTokenExpiration($now, $now);
+        $newAccessToken = $user->createToken('bitemap-web', ['*'], $expiresAt);
+        $newAccessToken->accessToken->forceFill([
+            'last_used_at' => $now,
+            'expires_at' => $expiresAt,
+        ])->save();
+        $token = $newAccessToken->plainTextToken;
 
         return response()->json([
             'success' => true,
             'accessToken' => $token,
+            'expiresAt' => $expiresAt->toISOString(),
+            'sessionTimeoutMinutes' => AuthSessionSecurity::sessionTimeoutMinutes(),
             'user' => $this->userPayload($user->fresh()),
         ]);
     }
@@ -160,9 +202,33 @@ class BitemapApiController extends Controller
 
     public function session(Request $request): JsonResponse
     {
+        $user = $request->user();
+
+        if (! ($user instanceof User) || ! AuthSessionSecurity::isUserActiveAndApproved($user)) {
+            if ($user instanceof User) {
+                $user->tokens()->delete();
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Your account is inactive or not approved.',
+                'error' => 'Your account is inactive or not approved.',
+            ], 403);
+        }
+
+        $currentToken = $user->currentAccessToken();
+        $expiresAt = $currentToken instanceof PersonalAccessToken && $currentToken->expires_at
+            ? $currentToken->expires_at
+            : AuthSessionSecurity::nextTokenExpiration(
+                $currentToken instanceof PersonalAccessToken ? $currentToken->created_at : null,
+                $currentToken instanceof PersonalAccessToken ? ($currentToken->last_used_at ?? $currentToken->created_at) : null
+            );
+
         return response()->json([
             'success' => true,
-            'user' => $this->userPayload($request->user()),
+            'expiresAt' => $expiresAt->toISOString(),
+            'sessionTimeoutMinutes' => AuthSessionSecurity::sessionTimeoutMinutes(),
+            'user' => $this->userPayload($user),
         ]);
     }
 
@@ -1594,12 +1660,24 @@ class BitemapApiController extends Controller
             $data['name'] = User::normalizeNamePart($data['name']) ?? '';
         }
 
+        $wasActive = (bool) $user->is_active;
         $oldRole = $user->role;
+        $oldCanonicalRole = $this->canonicalUserRole($user->role);
+        $passwordChanged = array_key_exists('password', $data) && ! blank($data['password']);
+
         if (isset($data['role'])) {
             $data['role'] = $this->storableUserRole($data['role']);
         }
 
         $user->update($data);
+
+        $isNowActive = (bool) $user->is_active;
+        $newCanonicalRole = $this->canonicalUserRole($user->role);
+
+        if (($wasActive && ! $isNowActive) || $passwordChanged || ($oldCanonicalRole !== $newCanonicalRole)) {
+            $user->tokens()->delete();
+        }
+
         $action = isset($data['role']) && $data['role'] !== $oldRole ? 'Update role' : 'Edit record';
         $this->writeAudit($request, $action, 'User Management', $user->id, 'Updated user account for '.$user->name.'.');
 
@@ -1651,6 +1729,7 @@ class BitemapApiController extends Controller
         }
 
         $user->update($updates);
+        $user->tokens()->delete();
         $this->writeAudit($request, 'Reject user', 'User Management', $user->id, 'Rejected account request for '.$user->name.'.');
 
         return response()->json([
@@ -5319,5 +5398,15 @@ class BitemapApiController extends Controller
             'Expired' => 'Expired',
             default => 'Adjusted',
         };
+    }
+
+    private function loginThrottleKey(string $normalizedEmail, Request $request): string
+    {
+        return 'auth:signin:'.sha1($normalizedEmail.'|'.($request->ip() ?? 'unknown'));
+    }
+
+    private function loginIpThrottleKey(Request $request): string
+    {
+        return 'auth:signin:ip:'.sha1((string) ($request->ip() ?? 'unknown'));
     }
 }

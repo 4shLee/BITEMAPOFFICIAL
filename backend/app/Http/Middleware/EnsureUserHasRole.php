@@ -2,6 +2,8 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\User;
+use App\Support\AuthSessionSecurity;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -14,6 +16,16 @@ class EnsureUserHasRole
 
         if (! $user) {
             return response()->json(['success' => false, 'error' => 'Unauthenticated.'], 401);
+        }
+
+        if ($user instanceof User && ! AuthSessionSecurity::isUserActiveAndApproved($user)) {
+            $user->tokens()->delete();
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Your account is inactive or not approved.',
+                'error' => 'Your account is inactive or not approved.',
+            ], 403);
         }
 
         $allowedRoles = collect($roles)

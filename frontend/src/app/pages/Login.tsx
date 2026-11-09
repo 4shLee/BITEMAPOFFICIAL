@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router";
-import { ArrowLeft, ArrowRight, Check, ChevronDown, Eye, EyeOff, Globe2, Lock, Mail, ShieldAlert, ShieldCheck, Zap, UserPlus } from "lucide-react";
-import { authAPI, getErrorMessage } from "../../lib/services/api";
-import { ASSIGNABLE_ROLES, getDefaultPathForRole, getStoredUser, hasAuthSession } from "../../lib/auth/roleAccess";
+import { ArrowRight, Eye, EyeOff, Globe2, Lock, Mail, ShieldAlert, Zap } from "lucide-react";
+import { ApiError, authAPI, getErrorMessage } from "../../lib/services/api";
+import { getDefaultPathForRole, getStoredUser, hasAuthSession } from "../../lib/auth/roleAccess";
 import { toast } from "sonner";
 import { AnimatedGISBackground } from "../components/Brand/AnimatedGISBackground";
 import { BITEMAP_FONT_FAMILY, BITEMAP_LOGO_SRC } from "../components/Brand/brand";
@@ -16,6 +16,7 @@ export function Login() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
 
   useEffect(() => {
     const user = getStoredUser();
@@ -24,18 +25,40 @@ export function Login() {
     }
   }, [navigate]);
 
+  useEffect(() => {
+    if (cooldownSeconds <= 0) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setCooldownSeconds((prev) => (prev > 1 ? prev - 1 : 0));
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [cooldownSeconds]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (cooldownSeconds > 0) {
+      toast.error(`Please wait ${cooldownSeconds}s before trying to sign in again.`);
+      return;
+    }
+
     setIsLoading(true);
     try {
       const result = await authAPI.signIn(username.trim(), password);
       if (result.success) {
+        setCooldownSeconds(0);
         toast.success("Login successful!");
         navigate(getDefaultPathForRole(result.user?.role));
       } else {
         toast.error(result.error || "Login failed. Please check your credentials.");
       }
     } catch (error: unknown) {
+      if (error instanceof ApiError && error.status === 429) {
+        const waitSeconds = error.retryAfter && error.retryAfter > 0 ? Math.ceil(error.retryAfter) : 60;
+        setCooldownSeconds(waitSeconds);
+      }
       toast.error(getErrorMessage(error, "An error occurred during login."));
     } finally {
       setIsLoading(false);
@@ -94,6 +117,21 @@ export function Login() {
           </div>
 
               <form onSubmit={handleSubmit} className="space-y-4">
+                {cooldownSeconds > 0 && (
+                  <div
+                    role="alert"
+                    className="flex items-start gap-2.5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-[13px] font-semibold text-amber-900"
+                  >
+                    <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                    <div>
+                      <p>Login temporarily locked due to repeated failed attempts.</p>
+                      <p className="mt-0.5 text-[12px] font-medium text-amber-800">
+                        Please wait {cooldownSeconds} second{cooldownSeconds === 1 ? "" : "s"} before trying again.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <label htmlFor="username" className="sr-only">
                     Email
@@ -162,7 +200,7 @@ export function Login() {
 
                 <button
                   type="submit"
-                  disabled={isLoading}
+                  disabled={isLoading || cooldownSeconds > 0}
                   className="relative h-12 w-full rounded-full border border-transparent bg-gradient-to-r from-teal-800 to-teal-600 text-[15px] font-extrabold text-white shadow-lg shadow-teal-900/20 transition-colors hover:from-teal-900 hover:to-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500/35 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isLoading ? (
@@ -170,6 +208,8 @@ export function Login() {
                       <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/35 border-t-white" />
                       Signing in...
                     </span>
+                  ) : cooldownSeconds > 0 ? (
+                    <span>Wait {cooldownSeconds}s to Retry</span>
                   ) : (
                     <>
                       Sign In

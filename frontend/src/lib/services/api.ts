@@ -1,28 +1,90 @@
+import {
+  AUTH_EXPIRES_AT_STORAGE_KEY,
+  AUTH_TIMEOUT_MINUTES_STORAGE_KEY,
+  AUTH_TOKEN_STORAGE_KEY,
+  AUTH_USER_STORAGE_KEY,
+  clearAuthSessionStorage,
+  getStoredUser,
+  hasAuthSession,
+  recordUserActivity,
+} from '../auth/roleAccess';
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api';
 
-const getAuthToken = () => localStorage.getItem('bitemap_access_token');
+const getAuthToken = () => {
+  if (!hasAuthSession()) {
+    return null;
+  }
+
+  return localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+};
 
 export class ApiError extends Error {
   status: number;
   errors: Record<string, string[]>;
+  retryAfter?: number;
 
-  constructor(message: string, status: number, errors: Record<string, string[]> = {}) {
+  constructor(
+    message: string,
+    status: number,
+    errors: Record<string, string[]> = {},
+    retryAfter?: number,
+  ) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.errors = errors;
+    this.retryAfter = retryAfter;
+  }
+}
+
+function isPassiveEndpoint(endpoint: string, customHeaders: Record<string, string>): boolean {
+  if (
+    customHeaders['X-Background-Poll'] === '1' ||
+    customHeaders['X-Session-Check'] === '1' ||
+    customHeaders['X-Passive-Request'] === '1'
+  ) {
+    return true;
+  }
+
+  const cleanPath = endpoint.split('?')[0];
+  return (
+    cleanPath === '/auth/session' ||
+    cleanPath === '/auth/signout' ||
+    cleanPath === '/notifications/summary'
+  );
+}
+
+function syncSessionMetadata(data: Record<string, unknown>, isPassiveRequest = false) {
+  if (typeof data.expiresAt === 'string' && data.expiresAt.trim() !== '') {
+    localStorage.setItem(AUTH_EXPIRES_AT_STORAGE_KEY, data.expiresAt);
+  }
+
+  if (typeof data.sessionTimeoutMinutes === 'number' && Number.isFinite(data.sessionTimeoutMinutes) && data.sessionTimeoutMinutes > 0) {
+    localStorage.setItem(AUTH_TIMEOUT_MINUTES_STORAGE_KEY, String(Math.round(data.sessionTimeoutMinutes)));
+  }
+
+  if (!isPassiveRequest) {
+    recordUserActivity();
   }
 }
 
 async function apiRequest(endpoint: string, options: RequestInit = {}, requiresAuth = true) {
-  const headers: HeadersInit = {
+  const customHeaders = (options.headers || {}) as Record<string, string>;
+  const isPassiveRequest = isPassiveEndpoint(endpoint, customHeaders);
+
+  const headers: Record<string, string> = {
     'Accept': 'application/json',
     'Content-Type': 'application/json',
-    ...options.headers,
+    ...customHeaders,
   };
 
-  const token = getAuthToken();
-  if (requiresAuth && token) {
+  if (requiresAuth) {
+    const token = getAuthToken();
+    if (!token) {
+      clearAuthSessionStorage();
+      throw new ApiError('Unauthenticated.', 401);
+    }
     headers.Authorization = 'Bearer ' + token;
   }
 
@@ -37,20 +99,32 @@ async function apiRequest(endpoint: string, options: RequestInit = {}, requiresA
   }));
 
   if (!response.ok) {
-    if (response.status === 401) {
-      localStorage.removeItem('bitemap_access_token');
-      localStorage.removeItem('bitemap_user');
+    if (
+      response.status === 401 ||
+      (response.status === 403 && data?.error === 'Your account is inactive or not approved.')
+    ) {
+      clearAuthSessionStorage();
     }
+
+    const retryHeader = Number(response.headers.get('Retry-After'));
+    const retryAfter = typeof data?.retry_after === 'number'
+      ? data.retry_after
+      : (Number.isFinite(retryHeader) && retryHeader > 0 ? retryHeader : undefined);
 
     throw new ApiError(
       data.error || data.message || 'Request failed with status ' + response.status,
       response.status,
       data.errors || {},
+      retryAfter,
     );
   }
 
   if (!data.success && data.error) {
     throw new Error(data.error);
+  }
+
+  if (requiresAuth) {
+    syncSessionMetadata(data, isPassiveRequest);
   }
 
   return data;
@@ -212,8 +286,9 @@ export const authAPI = {
     }, false);
 
     if (data.success && data.accessToken) {
-      localStorage.setItem('bitemap_access_token', data.accessToken);
-      localStorage.setItem('bitemap_user', JSON.stringify(data.user));
+      localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, data.accessToken);
+      localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(data.user));
+      syncSessionMetadata(data, false);
     }
 
     return data;
@@ -221,7 +296,14 @@ export const authAPI = {
 
   async getSession() {
     try {
-      return await apiRequest('/auth/session');
+      const data = await apiRequest('/auth/session', {
+        headers: { 'X-Session-Check': '1' },
+      });
+      if (data.success && data.user) {
+        localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(data.user));
+        syncSessionMetadata(data, true);
+      }
+      return data;
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : 'Session expired' };
     }
@@ -229,17 +311,19 @@ export const authAPI = {
 
   async signOut() {
     try {
-      await apiRequest('/auth/signout', { method: 'POST' });
+      if (localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)) {
+        await apiRequest('/auth/signout', { method: 'POST' });
+      }
+    } catch {
+      // Clear local session regardless of server response.
     } finally {
-      localStorage.removeItem('bitemap_access_token');
-      localStorage.removeItem('bitemap_user');
+      clearAuthSessionStorage();
       window.location.href = '/login';
     }
   },
 
   getCurrentUser() {
-    const userStr = localStorage.getItem('bitemap_user');
-    return userStr ? JSON.parse(userStr) : null;
+    return getStoredUser();
   }
 };
 
@@ -465,21 +549,28 @@ export const reportsAPI = {
       format: config.format,
     });
 
-    const headers: HeadersInit = {
+    const headers: Record<string, string> = {
       'Accept': config.format === 'Excel' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf',
     };
 
     const token = getAuthToken();
-    if (token) {
-      headers.Authorization = 'Bearer ' + token;
+    if (!token) {
+      clearAuthSessionStorage();
+      throw new ApiError('Unauthenticated.', 401);
     }
+    headers.Authorization = 'Bearer ' + token;
 
     const response = await fetch(API_BASE_URL + '/reports/download?' + query.toString(), { headers });
 
     if (!response.ok) {
+      if (response.status === 401) {
+        clearAuthSessionStorage();
+      }
       const errorData = await response.json().catch(() => ({}));
       throw new Error(errorData.error || errorData.message || 'Failed to download report.');
     }
+
+    recordUserActivity();
 
     const disposition = response.headers.get('Content-Disposition') || '';
     const match = disposition.match(/filename="?([^";]+)"?/i);
@@ -493,7 +584,7 @@ export const reportsAPI = {
 
 // ============ AUDIT LOGS API ============
 export const auditLogsAPI = {
-  async getAll(filters: Record<string, string | number> = {}) {
+  async getAll(filters: Record<string, string | number> = {}, options?: { backgroundPoll?: boolean }) {
     const query = new URLSearchParams();
 
     Object.entries(filters).forEach(([key, value]) => {
@@ -501,7 +592,11 @@ export const auditLogsAPI = {
     });
 
     const suffix = query.toString() ? '?' + query.toString() : '';
-    return apiRequest('/audit-logs' + suffix);
+    const requestOptions: RequestInit = options?.backgroundPoll
+      ? { headers: { 'X-Background-Poll': '1' } }
+      : {};
+
+    return apiRequest('/audit-logs' + suffix, requestOptions);
   },
 
   async download(filters: Record<string, string | number> = {}, format: 'PDF' | 'Excel' = 'PDF') {
@@ -509,17 +604,26 @@ export const auditLogsAPI = {
     Object.entries({ ...filters, format }).forEach(([key, value]) => {
       if (value && value !== 'All') query.set(key, String(value));
     });
-    const headers: HeadersInit = {
+    const headers: Record<string, string> = {
       'Accept': format === 'Excel' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf',
     };
     const token = getAuthToken();
-    if (token) headers.Authorization = 'Bearer ' + token;
+    if (!token) {
+      clearAuthSessionStorage();
+      throw new ApiError('Unauthenticated.', 401);
+    }
+    headers.Authorization = 'Bearer ' + token;
 
     const response = await fetch(API_BASE_URL + '/audit-logs/download?' + query.toString(), { headers });
     if (!response.ok) {
+      if (response.status === 401) {
+        clearAuthSessionStorage();
+      }
       const errorData = await response.json().catch(() => ({}));
       throw new Error(errorData.error || errorData.message || 'Failed to download audit logs.');
     }
+
+    recordUserActivity();
 
     const disposition = response.headers.get('Content-Disposition') || '';
     const match = disposition.match(/filename="?([^";]+)"?/i);
@@ -537,10 +641,19 @@ export const settingsAPI = {
   },
 
   async update(key: string, value: string) {
-    return apiRequest('/settings/' + key, {
+    const response = await apiRequest('/settings/' + key, {
       method: 'PUT',
       body: JSON.stringify({ value }),
     });
+
+    if (key === 'session_timeout_minutes') {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric) && numeric > 0) {
+        localStorage.setItem(AUTH_TIMEOUT_MINUTES_STORAGE_KEY, String(Math.round(numeric)));
+      }
+    }
+
+    return response;
   },
 
   async updateSmsCredentials(credentials: { account_sid: string; auth_token: string; from_number: string }) {
@@ -564,8 +677,13 @@ export const notificationsAPI = {
     return apiRequest('/notifications');
   },
 
-  async getSummary(): Promise<{ success: boolean; meta: NotificationSummaryMeta }> {
-    return apiRequest('/notifications/summary');
+  async getSummary(options?: { backgroundPoll?: boolean }): Promise<{ success: boolean; meta: NotificationSummaryMeta }> {
+    const isBackground = options?.backgroundPoll ?? true;
+    const requestOptions: RequestInit = isBackground
+      ? { headers: { 'X-Background-Poll': '1' } }
+      : {};
+
+    return apiRequest('/notifications/summary', requestOptions);
   },
 
   async getTodaySchedules() {

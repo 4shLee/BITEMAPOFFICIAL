@@ -124,6 +124,57 @@ const PATH_ACTION_GUARDS: Array<{ pattern: RegExp; action: PermissionAction }> =
   { pattern: /^\/patients\/[^/]+\/edit$/, action: 'patients.update' },
 ];
 
+export const AUTH_TOKEN_STORAGE_KEY = 'bitemap_access_token';
+export const AUTH_USER_STORAGE_KEY = 'bitemap_user';
+export const AUTH_EXPIRES_AT_STORAGE_KEY = 'bitemap_token_expires_at';
+export const AUTH_LAST_ACTIVITY_STORAGE_KEY = 'bitemap_last_activity_at';
+export const AUTH_TIMEOUT_MINUTES_STORAGE_KEY = 'bitemap_session_timeout_minutes';
+export const DEFAULT_IDLE_TIMEOUT_MINUTES = 30;
+
+export function clearAuthSessionStorage() {
+  localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+  localStorage.removeItem(AUTH_USER_STORAGE_KEY);
+  localStorage.removeItem(AUTH_EXPIRES_AT_STORAGE_KEY);
+  localStorage.removeItem(AUTH_LAST_ACTIVITY_STORAGE_KEY);
+  localStorage.removeItem(AUTH_TIMEOUT_MINUTES_STORAGE_KEY);
+}
+
+export function recordUserActivity(timestampMs: number = Date.now()) {
+  if (localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)) {
+    localStorage.setItem(AUTH_LAST_ACTIVITY_STORAGE_KEY, String(timestampMs));
+  }
+}
+
+export function getSessionTimeoutMinutes(): number {
+  const raw = Number(localStorage.getItem(AUTH_TIMEOUT_MINUTES_STORAGE_KEY));
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return DEFAULT_IDLE_TIMEOUT_MINUTES;
+  }
+
+  return Math.max(5, Math.min(480, Math.round(raw)));
+}
+
+export function isAuthSessionExpired(nowMs: number = Date.now()): boolean {
+  const expiresAtRaw = localStorage.getItem(AUTH_EXPIRES_AT_STORAGE_KEY);
+  if (expiresAtRaw) {
+    const expiresAtMs = Date.parse(expiresAtRaw);
+    if (Number.isFinite(expiresAtMs) && nowMs >= expiresAtMs) {
+      return true;
+    }
+  }
+
+  const lastActivityRaw = localStorage.getItem(AUTH_LAST_ACTIVITY_STORAGE_KEY);
+  if (lastActivityRaw) {
+    const lastActivityMs = Number(lastActivityRaw);
+    const idleTimeoutMs = getSessionTimeoutMinutes() * 60 * 1000;
+    if (Number.isFinite(lastActivityMs) && nowMs - lastActivityMs >= idleTimeoutMs) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export function normalizeRoleKey(role?: string) {
   const key = (role || '').trim().replace(/\s+/g, '_').replace(/[-/]+/g, '_').toLowerCase();
 
@@ -143,7 +194,7 @@ export function isSystemAdminRole(role?: string) {
 }
 
 export function getStoredUser(): CurrentUser | null {
-  const raw = localStorage.getItem('bitemap_user');
+  const raw = localStorage.getItem(AUTH_USER_STORAGE_KEY);
   if (!raw) return null;
 
   try {
@@ -154,7 +205,19 @@ export function getStoredUser(): CurrentUser | null {
 }
 
 export function hasAuthSession() {
-  return Boolean(localStorage.getItem('bitemap_access_token') && getStoredUser());
+  const token = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+  const user = getStoredUser();
+
+  if (!token || !user) {
+    return false;
+  }
+
+  if (isAuthSessionExpired()) {
+    clearAuthSessionStorage();
+    return false;
+  }
+
+  return true;
 }
 
 export function getRolePermissions(role?: string) {
