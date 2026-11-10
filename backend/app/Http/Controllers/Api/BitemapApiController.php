@@ -105,6 +105,8 @@ class BitemapApiController extends Controller
         $approvalStatus = AuthSessionSecurity::approvalStatus($user);
 
         if ($approvalStatus === 'pending') {
+            $this->writeAudit($request, 'Failed login', 'Authentication', $user->id, 'Sign-in denied for pending account: '.$user->email.'.', $user);
+
             return response()->json([
                 'success' => false,
                 'error' => 'Your account request is still waiting for admin approval.',
@@ -112,6 +114,8 @@ class BitemapApiController extends Controller
         }
 
         if ($approvalStatus === 'rejected') {
+            $this->writeAudit($request, 'Failed login', 'Authentication', $user->id, 'Sign-in denied for rejected account: '.$user->email.'.', $user);
+
             return response()->json([
                 'success' => false,
                 'error' => 'Your account request was rejected. Please contact the system administrator.',
@@ -119,6 +123,8 @@ class BitemapApiController extends Controller
         }
 
         if (! $user->is_active) {
+            $this->writeAudit($request, 'Failed login', 'Authentication', $user->id, 'Sign-in denied for inactive account: '.$user->email.'.', $user);
+
             return response()->json([
                 'success' => false,
                 'error' => 'This account is inactive.',
@@ -192,6 +198,14 @@ class BitemapApiController extends Controller
         }
 
         $user = User::create($values);
+        $this->writeAudit(
+            $request,
+            'Request account',
+            'Authentication',
+            $user->id,
+            'Account request submitted for '.$user->email.' with requested role '.$this->canonicalUserRole($user->role).'.',
+            $user
+        );
 
         return response()->json([
             'success' => true,
@@ -543,12 +557,11 @@ class BitemapApiController extends Controller
 
     public function deletePatient(Request $request, Patient $patient): JsonResponse
     {
-        $patientName = $patient->full_name;
         $patientId = $patient->id;
 
-        DB::transaction(function () use ($request, $patient, $patientId, $patientName): void {
+        DB::transaction(function () use ($request, $patient, $patientId): void {
             $patient->delete();
-            $this->writeAudit($request, 'Delete record', 'Patients', $patientId, 'Deleted patient record for '.$patientName.'.');
+            $this->writeAudit($request, 'Delete record', 'Patients', $patientId, 'Deleted patient record #'.$patientId.'.');
         });
 
         return response()->json([
@@ -698,11 +711,10 @@ class BitemapApiController extends Controller
     {
         $patient = $incident->patient;
         $incidentId = $incident->id;
-        $patientName = $patient?->full_name ?? 'Unknown patient';
 
-        DB::transaction(function () use ($request, $incident, $incidentId, $patient, $patientName): void {
+        DB::transaction(function () use ($request, $incident, $incidentId, $patient): void {
             $incident->delete();
-            $this->writeAudit($request, 'Delete record', 'Incidents', $incidentId, 'Deleted incident record for '.$patientName.'.');
+            $this->writeAudit($request, 'Delete record', 'Incidents', $incidentId, 'Deleted incident record #'.$incidentId.'.');
 
             if ($patient && ! $patient->incidents()->exists()) {
                 $patient->delete();
@@ -1603,7 +1615,13 @@ class BitemapApiController extends Controller
         }
 
         $user = User::create($values);
-        $this->writeAudit($request, 'Create record', 'User Management', $user->id, 'Created user account for '.$user->name.'.');
+        $this->writeAudit(
+            $request,
+            'Create record',
+            'User Management',
+            $user->id,
+            'Created user account for '.$user->name.' ('.$user->email.', role: '.$this->canonicalUserRole($user->role).').'
+        );
 
         return response()->json(['success' => true, 'data' => $this->userPayload($user)], 201);
     }
@@ -1687,7 +1705,6 @@ class BitemapApiController extends Controller
         }
 
         $wasActive = (bool) $user->is_active;
-        $oldRole = $user->role;
         $oldCanonicalRole = $this->canonicalUserRole($user->role);
         $passwordChanged = array_key_exists('password', $data) && ! blank($data['password']);
 
@@ -1699,13 +1716,64 @@ class BitemapApiController extends Controller
 
         $isNowActive = (bool) $user->is_active;
         $newCanonicalRole = $this->canonicalUserRole($user->role);
+        $roleChanged = $oldCanonicalRole !== $newCanonicalRole;
+        $deactivated = $wasActive && ! $isNowActive;
+        $activated = ! $wasActive && $isNowActive;
 
-        if (($wasActive && ! $isNowActive) || $passwordChanged || ($oldCanonicalRole !== $newCanonicalRole)) {
+        if ($deactivated || $passwordChanged || $roleChanged) {
             $user->tokens()->delete();
         }
 
-        $action = isset($data['role']) && $data['role'] !== $oldRole ? 'Update role' : 'Edit record';
-        $this->writeAudit($request, $action, 'User Management', $user->id, 'Updated user account for '.$user->name.'.');
+        $loggedSecurityEvent = false;
+
+        if ($roleChanged) {
+            $this->writeAudit(
+                $request,
+                'Update role',
+                'User Management',
+                $user->id,
+                'Updated role for '.$user->name.' ('.$user->email.') from '.$oldCanonicalRole.' to '.$newCanonicalRole.' and revoked active sessions.'
+            );
+            $loggedSecurityEvent = true;
+        }
+
+        if ($passwordChanged) {
+            $passwordDescription = $isSelfUpdate
+                ? 'Changed own account password for '.$user->name.' ('.$user->email.').'
+                : 'Reset password for user account '.$user->name.' ('.$user->email.') and revoked active sessions.';
+            $this->writeAudit($request, 'Reset password', 'User Management', $user->id, $passwordDescription);
+            $loggedSecurityEvent = true;
+        }
+
+        if ($deactivated) {
+            $this->writeAudit(
+                $request,
+                'Deactivate user',
+                'User Management',
+                $user->id,
+                'Deactivated user account for '.$user->name.' ('.$user->email.') and revoked active sessions.'
+            );
+            $loggedSecurityEvent = true;
+        } elseif ($activated) {
+            $this->writeAudit(
+                $request,
+                'Activate user',
+                'User Management',
+                $user->id,
+                'Activated user account for '.$user->name.' ('.$user->email.').'
+            );
+            $loggedSecurityEvent = true;
+        }
+
+        if (! $loggedSecurityEvent) {
+            $this->writeAudit(
+                $request,
+                'Edit record',
+                'User Management',
+                $user->id,
+                'Updated user account details for '.$user->name.' ('.$user->email.').'
+            );
+        }
 
         return response()->json(['success' => true, 'data' => $this->userPayload($user->fresh())]);
     }
@@ -1733,7 +1801,13 @@ class BitemapApiController extends Controller
         }
 
         $user->update($updates);
-        $this->writeAudit($request, 'Approve user', 'User Management', $user->id, 'Approved account request for '.$user->name.'.');
+        $this->writeAudit(
+            $request,
+            'Approve user',
+            'User Management',
+            $user->id,
+            'Approved account request for '.$user->name.' ('.$user->email.') with role '.$this->canonicalUserRole($user->role).'.'
+        );
 
         return response()->json([
             'success' => true,
@@ -1764,7 +1838,13 @@ class BitemapApiController extends Controller
 
         $user->update($updates);
         $user->tokens()->delete();
-        $this->writeAudit($request, 'Reject user', 'User Management', $user->id, 'Rejected account request for '.$user->name.'.');
+        $this->writeAudit(
+            $request,
+            'Reject user',
+            'User Management',
+            $user->id,
+            'Rejected account request for '.$user->name.' ('.$user->email.') and revoked active sessions.'
+        );
 
         return response()->json([
             'success' => true,
@@ -1964,10 +2044,21 @@ class BitemapApiController extends Controller
         $total = (clone $query)->count();
         $todayCount = (clone $query)->whereDate('created_at', today())->count();
         $hasActionType = Schema::hasColumn('audit_logs', 'action_type');
+        $criticalActions = [
+            'Delete record',
+            'Approve user',
+            'Reject user',
+            'Update role',
+            'Reset password',
+            'Activate user',
+            'Deactivate user',
+            'Failed login',
+            'Login blocked',
+        ];
         $criticalQuery = clone $query;
         $criticalCount = $hasActionType
-            ? $criticalQuery->whereIn('action_type', ['Delete record', 'Approve user', 'Reject user', 'Update role'])->count()
-            : $criticalQuery->whereIn('action', ['Delete record', 'Approve user', 'Reject user', 'Update role'])->count();
+            ? $criticalQuery->whereIn('action_type', $criticalActions)->count()
+            : $criticalQuery->whereIn('action', $criticalActions)->count();
         $paginator = (clone $query)
             ->latest('id')
             ->paginate($filters['per_page'], ['*'], 'page', $filters['page']);
@@ -4494,10 +4585,11 @@ class BitemapApiController extends Controller
         }
 
         if (($filters['role'] ?? 'All') !== 'All') {
+            $roleVariants = $this->auditRoleFilterVariants((string) $filters['role']);
             if ($hasUserRole) {
-                $query->where('user_role', $filters['role']);
+                $query->whereIn('user_role', $roleVariants);
             } else {
-                $query->whereHas('user', fn ($userQuery) => $userQuery->where('role', $filters['role']));
+                $query->whereHas('user', fn ($userQuery) => $userQuery->whereIn('role', $roleVariants));
             }
         }
 
@@ -4516,6 +4608,21 @@ class BitemapApiController extends Controller
         }
 
         return $query;
+    }
+
+    private function auditRoleFilterVariants(string $role): array
+    {
+        if (strcasecmp(trim($role), 'System') === 0) {
+            return ['System'];
+        }
+
+        return match ($this->canonicalUserRole($role)) {
+            'system_admin' => ['system_admin', 'System Administrator', 'System Admin', 'Admin', 'admin'],
+            'clinic_admin' => ['clinic_admin', 'Clinic Admin', 'Clinic Administrator'],
+            'doctor' => ['doctor', 'Doctor', 'Health Officer'],
+            'nurse_vaccinator' => ['nurse_vaccinator', 'Nurse/Vaccinator', 'Nurse', 'Vaccinator', 'nurse', 'vaccinator'],
+            default => [$role],
+        };
     }
 
     private function auditLogPayload(AuditLog $log): array
