@@ -18,6 +18,18 @@ tmp/
 bitemap-backup-*.json
 backend/storage/app/private/backups/
 
+# Secrets / credentials (example templates remain tracked)
+.env
+.env.*
+!.env.example
+!.env.docker.example
+*.pem
+*.p12
+*.pfx
+
+# Local REPL / tinker history (may contain patient queries)
+backend/.tmp-appdata/
+
 # OS files
 .DS_Store
 Thumbs.db

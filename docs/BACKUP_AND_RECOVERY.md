@@ -42,19 +42,19 @@ BITEMAP uses a defense-in-depth, two-tier backup architecture:
 - **What it is:** Railway's managed Volume Backups / Snapshots attached to the `MySQL` database service.
 - **Role in BITEMAP:** Provides fast block-level point-in-time recovery of the entire MySQL data volume in the event of Railway container failure or failed DDL migrations.
 - **Limitation:** Provider volume snapshots are tied to the Railway project account and do not protect against accidental account deletion or logical table corruption unless paired with application-level logical backups.
-- **Required Configuration in Railway:**
-  1. Open the Railway project → select the **`MySQL`** service → **Backups** tab.
-  2. Enable **Automated Volume Backups** (Daily schedule).
-  3. Before any deployment that includes database migrations (`php artisan migrate --force`), trigger a manual on-demand Railway Volume Snapshot.
+- **Configuration (manual, provider-dependent):** Railway does **not** enable this automatically for BITEMAP, and the repository cannot configure it. Availability, schedule options, and retention depend on the Railway plan and dashboard at the time; do not assume a snapshot exists until you have seen it listed.
+  1. Open the Railway project → select the **`MySQL`** service → **Backups** tab (if offered on your plan).
+  2. Enable the scheduled volume backups that your plan provides, and note the retention shown.
+  3. Before any deployment that includes database migrations (`php artisan migrate --force`), trigger a manual on-demand backup and confirm it appears in the list.
 
 ### Tier 2 — Application Logical Backups (`bitemap:backup-db`)
 - **What it is:** A portable, database-agnostic Laravel Artisan backup command (`php artisan bitemap:backup-db`) implemented in `App\Support\DatabaseBackupManager`.
-- **Why it is needed:** The production `backend/Dockerfile` (`php:8.5-apache`) minimizes attack surface and image size by omitting `mysqldump` / `mariadb-client`. `bitemap:backup-db` runs natively over PHP PDO in local environments, Docker containers, automated CI tests, and Railway CLI shells without extra system binaries.
+- **Why it is needed:** The production `backend/Dockerfile` (`php:8.5-apache`) minimizes attack surface and image size by omitting `mysqldump` / `mariadb-client`. `bitemap:backup-db` runs natively over PHP PDO in local environments, Docker containers, the automated feature tests, and Railway shells without extra system binaries.
 - **Features:**
   - Exports all 11 BITEMAP tables in foreign-key dependency order.
   - Generates a deterministic **SHA-256 integrity checksum** over the canonical payload.
   - Supports **AES-256 encryption at rest** (`--encrypt`) using Laravel's `Crypt` (`APP_KEY`).
-  - Stores backups in `storage/app/private/backups/` (outside `public/`, mode `0600`, and gitignored).
+  - Stores backups in `storage/app/private/backups/` (outside `public/`, file mode `0600` on Linux containers, and gitignored).
   - Automatically prunes older backups beyond the retention count (`--keep=14`).
   - Records an append-only `Create backup` entry in `audit_logs` without exposing any PII.
 
@@ -62,12 +62,15 @@ BITEMAP uses a defense-in-depth, two-tier backup architecture:
 
 ## 3. Backup Frequency & Retention Policy
 
-| Backup Type | Trigger / Schedule | Encryption | Storage Location | Retention Policy |
-| --- | --- | --- | --- | --- |
-| **Daily Logical Backup** | Automated daily at `02:00` (`routes/console.php` scheduler) | AES-256 (`--encrypt`) | `storage/app/private/backups/` + off-site download | **14 days** (`--keep=14`) |
-| **Daily Railway Volume Snapshot** | Automated daily by Railway Volume Backups | Provider disk encryption | Railway Managed Storage (separate from container) | Per Railway plan (7–14 days) |
-| **Pre-Migration / Pre-Deploy Backup** | Manual before running `php artisan migrate --force` | AES-256 (`--encrypt`) | Off-site administrator encrypted storage | **30 days** |
-| **Weekly Off-Site Archive** | Weekly manual export via `railway run` or `mysqldump` | AES-256 (`--encrypt`) | Off-site restricted administrator storage | **90 days** |
+| Backup Type | Trigger / Schedule | Automation status | Encryption | Storage Location | Retention Policy |
+| --- | --- | --- | --- | --- | --- |
+| **Daily Logical Backup** | `02:00` via `routes/console.php` scheduler | **Conditional:** runs only while a scheduler process (`php artisan schedule:work`, e.g. the optional `bitemap-scheduler` Railway service or local Docker `scheduler`) is running | AES-256 (`--encrypt`) | `storage/app/private/backups/` **inside that container** — ephemeral on Railway, lost on redeploy; copying off-site is **manual** | **14 files** (`--keep=14`) |
+| **Railway Volume Backup** | Provider schedule | **Provider-dependent, must be enabled manually** in the Railway dashboard | Provider-managed | Railway managed storage | Per Railway plan |
+| **Pre-Migration / Pre-Deploy Backup** | Before running `php artisan migrate --force` | **Manual** | AES-256 (`--encrypt`) | Off-site administrator encrypted storage | **30 days** |
+| **Weekly Off-Site Archive** | Weekly | **Manual** (`railway run … bitemap:backup-db --encrypt`, see §5A) | AES-256 (`--encrypt`) | Off-site restricted administrator storage | **90 days** |
+
+> [!IMPORTANT]
+> Only the scheduled logical backup is automated by BITEMAP itself, and only while a scheduler process is running. Every off-site copy is a manual operator task. Run `php artisan bitemap:maintenance-check` to see whether recent backup files exist on the machine/container you are inspecting.
 
 ---
 
@@ -78,7 +81,7 @@ BITEMAP uses a defense-in-depth, two-tier backup architecture:
 2. **Integrity Verification (`SHA-256` + HMAC)**:
    - Every backup envelope records a 64-character SHA-256 digest of the canonical payload. Both `bitemap:verify-backup` and `bitemap:restore-db` recompute and compare this digest with `hash_equals()` before trusting any row.
 3. **Access Control & File Permissions**:
-   - Backups written to `storage/app/private/backups/` are never reachable via `/storage` (which only links `storage/app/public`) and are created with `0600` permissions.
+   - Backups written to `storage/app/private/backups/` are never reachable via `/storage` (which only links `storage/app/public`) and are created with `0600` permissions on Linux (the chmod is a no-op on Windows hosts).
 4. **Git Exclusion**:
    - `.gitignore`, `backend/.gitignore`, and `backend/storage/app/private/.gitignore` explicitly ignore `*.sql`, `*.sql.gz`, `*.bak`, `bitemap-backup-*.json`, and `storage/app/private/backups/`.
 5. **Audit Trail Accountability**:
@@ -94,15 +97,20 @@ BITEMAP uses a defense-in-depth, two-tier backup architecture:
 php artisan bitemap:backup-db --encrypt --keep=14
 ```
 
-To save an off-site encrypted backup from Railway to your local machine (without modifying production):
+To save an off-site encrypted backup of Railway data onto your own machine (read-only towards production data apart from one appended `Create backup` audit entry):
 ```bash
+# From backend/ on your machine. `railway run` executes LOCALLY with the service's variables injected,
+# so the file is written to your local backend/storage/app/private/backups/ and encrypted with the
+# production APP_KEY. Your machine must be able to reach the database: Railway's private host
+# (*.railway.internal) is NOT reachable from outside Railway, so this only works if the MySQL service
+# exposes a public TCP proxy and DB_HOST/DB_PORT point to it for this command.
 railway run --service bitemap-api php artisan bitemap:backup-db --encrypt --output=storage/app/private/backups/pre-deploy.encrypted.json
 ```
 
-### B. Optional MariaDB / MySQL Native Dump (Local Docker)
-For local Docker (`bitemap-mariadb`), you can also take a native SQL dump using `--single-transaction`:
+### B. Optional MariaDB / MySQL Native Dump (Local Docker only)
+For local Docker (`bitemap-mariadb`), you can also take a native SQL dump. Run from the repository root; `-p` prompts for the password instead of placing it on the command line. A plain `.sql` dump is **not encrypted** — keep it local, never commit it (`*.sql` is gitignored), and delete it when done:
 ```bash
-docker exec bitemap-mariadb mariadb-dump -u bitemap -psecret --single-transaction --routines --triggers bitemap_db > storage/app/private/backups/local-dump.sql
+docker exec -it bitemap-mariadb mariadb-dump -u bitemap -p --single-transaction --routines --triggers bitemap_db > backend/storage/app/private/backups/local-dump.sql
 ```
 
 ### C. Verify Backup Integrity Before Relying On It
@@ -148,7 +156,7 @@ Only during an authorized disaster recovery event:
    *(Note: In `APP_ENV=production`, `bitemap:restore-db` always refuses to execute unless `--force` is explicitly supplied).*
 
 ### Step 4 — Post-Restore Verification Checklist
-1. **Reference Data Check**: Verify `GET /api/barangays` returns the 26 Digos City barangays with coordinates.
+1. **Reference Data Check**: Verify `GET /api/barangays` returns the 28 Digos City barangays with coordinates.
 2. **Authentication & Session Check**: Confirm old Bearer tokens are invalidated (`personal_access_tokens` is empty) and sign in freshly as `system_admin` and `clinic_admin`.
 3. **Clinical Records Check**: Verify patient counts, incident records, PEP schedules, and vaccine batch balances match the backup manifest's `table_counts`.
 4. **Audit Log Check**: Confirm the `Restore backup` event appears in the `System Maintenance` audit log with the matching SHA-256 prefix.

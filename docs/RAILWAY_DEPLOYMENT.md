@@ -106,9 +106,12 @@ Then sign in from the Vercel frontend and create the clinic's other users throug
 
 ## Verification checklist (dummy data only)
 
+For detailed ongoing maintenance controls, upgrade procedures, and disaster recovery runbooks, see [`docs/MAINTENANCE_AND_UPDATES.md`](MAINTENANCE_AND_UPDATES.md) and [`docs/BACKUP_AND_RECOVERY.md`](BACKUP_AND_RECOVERY.md).
+
 1. `GET https://<api>/up` → 200.
-2. `GET https://<api>/api/barangays` → JSON list of Digos barangays.
-3. `GET https://<api>/api/dev/status` → 404.
+2. `php artisan bitemap:maintenance-check` → read-only production configuration and readiness verification.
+3. `GET https://<api>/api/barangays` → JSON list of Digos barangays.
+4. `GET https://<api>/api/dev/status` → 404.
 4. Browser at the Vercel URL: sign in as the admin you created; no CORS errors in the console.
 5. Create a fictional patient + incident; confirm PEP schedule is generated; audit log shows your real IP (not a Railway-internal one).
 6. Reminders: confirm they are recorded as `Pending` (simulation mode) while `SMS_SERVICE_ENABLED=false`.
