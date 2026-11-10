@@ -214,7 +214,7 @@ export function Settings() {
           smsSenderId: String(map.get(systemSettingKeys.smsSenderId) || systemDefaults.smsSenderId),
           retryFailedSms: boolFromSetting(map.get(systemSettingKeys.retryFailedSms), systemDefaults.retryFailedSms),
           maxRetryAttempts: String(map.get(systemSettingKeys.maxRetryAttempts) || systemDefaults.maxRetryAttempts),
-          strongPasswords: boolFromSetting(map.get(systemSettingKeys.strongPasswords), systemDefaults.strongPasswords),
+          strongPasswords: true,
           sessionTimeout: String(map.get(systemSettingKeys.sessionTimeout) || systemDefaults.sessionTimeout),
           maxFailedLogins: String(map.get(systemSettingKeys.maxFailedLogins) || systemDefaults.maxFailedLogins),
           accountLockDuration: String(map.get(systemSettingKeys.accountLockDuration) || systemDefaults.accountLockDuration),
@@ -427,7 +427,7 @@ export function Settings() {
 
                 <SettingsCard title="Security Settings" description="Password, session, and account lock policies" icon={Shield} tone="bg-rose-50 text-rose-700">
                   <div className="space-y-3">
-                    <ToggleRow title="Require Strong Passwords" description="Require secure passwords for staff accounts." checked={systemCfg.strongPasswords} onChange={setSystem('strongPasswords')} />
+                    <ToggleRow title="Require Strong Passwords" description="Always enforced by security policy (minimum 8 characters, mixed case, number, and symbol)." checked={true} onChange={setSystem('strongPasswords')} disabled />
                     <ToggleRow title="Force Password Change" description="Apply to newly approved users." checked={systemCfg.forcePasswordChange} onChange={setSystem('forcePasswordChange')} />
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                       <Select label="Session Timeout" options={sessionTimeoutOptions} value={systemCfg.sessionTimeout} onChange={(event) => setSystem('sessionTimeout')(event.target.value)} />

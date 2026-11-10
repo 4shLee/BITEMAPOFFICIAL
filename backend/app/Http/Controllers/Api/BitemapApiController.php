@@ -48,6 +48,35 @@ class BitemapApiController extends Controller
 
     private const PUBLIC_SIGNUP_ROLE_OPTIONS = ['clinic_admin', 'Clinic Admin', 'doctor', 'Doctor', 'Health Officer', 'nurse_vaccinator', 'Nurse/Vaccinator', 'Nurse', 'Vaccinator', 'nurse', 'vaccinator'];
 
+    private const SENSITIVE_SETTING_KEYS = [
+        'twilio_account_sid',
+        'twilio_auth_token',
+        'twilio_from_number',
+    ];
+
+    /**
+     * Fail-safe allowlist of non-sensitive numeric/boolean security and policy keys
+     * whose previous and new values may be included in audit log descriptions.
+     * All other settings (contact info, clinic details, SMS sender ID, etc.) log only the key name.
+     */
+    private const AUDIT_VALUE_LOGGABLE_SETTING_KEYS = [
+        'session_timeout_minutes',
+        'max_failed_login_attempts',
+        'account_lock_minutes',
+        'max_sms_retry_attempts',
+        'reminder_days_before',
+        'strong_passwords_required',
+        'force_password_change_approved_users',
+        'security_alerts_enabled',
+        'retry_failed_sms_enabled',
+        'sms_service_failure_alerts_enabled',
+        'queue_failure_alerts_enabled',
+        'system_failure_alerts_enabled',
+        'sms_reminders_enabled',
+        'low_stock_alert_enabled',
+        'expiring_batch_alert_enabled',
+    ];
+
     public function signIn(Request $request): JsonResponse
     {
         $credentials = $request->validate([
@@ -1856,11 +1885,14 @@ class BitemapApiController extends Controller
     public function settings(): JsonResponse
     {
         $role = $this->canonicalUserRole(request()->user()?->role);
-        $keys = $this->allowedSettingKeysForRole($role);
+        $keys = array_values(array_diff($this->allowedSettingKeysForRole($role), self::SENSITIVE_SETTING_KEYS));
 
         return response()->json([
             'success' => true,
-            'data' => Setting::whereIn('setting_key', $keys)->orderBy('setting_key')->get(),
+            'data' => Setting::whereIn('setting_key', $keys)
+                ->whereNotIn('setting_key', self::SENSITIVE_SETTING_KEYS)
+                ->orderBy('setting_key')
+                ->get(),
             'meta' => [
                 'sms_credentials_configured' => $role === 'system_admin' ? $this->smsCredentialsConfigured() : false,
             ],
@@ -1869,7 +1901,10 @@ class BitemapApiController extends Controller
 
     public function updateSetting(Request $request, string $key): JsonResponse
     {
-        if (! in_array($key, $this->allowedSettingKeysForRole($request->user()?->role), true)) {
+        if (
+            in_array($key, self::SENSITIVE_SETTING_KEYS, true)
+            || ! in_array($key, $this->allowedSettingKeysForRole($request->user()?->role), true)
+        ) {
             return response()->json([
                 'success' => false,
                 'message' => 'This setting is not available for your role.',
@@ -1877,16 +1912,28 @@ class BitemapApiController extends Controller
             ], 403);
         }
 
-        $data = $request->validate(['value' => ['required']]);
+        if (! $request->exists('value')) {
+            throw ValidationException::withMessages([
+                'value' => ['The value field is required.'],
+            ]);
+        }
+
+        $normalizedValue = $this->validateAndNormalizeSettingValue($key, $request->input('value'));
+        $previousValue = Setting::where('setting_key', $key)->value('setting_value');
+
         $setting = Setting::updateOrCreate(
             ['setting_key' => $key],
             [
-                'setting_value' => (string) $data['value'],
+                'setting_value' => $normalizedValue,
                 'updated_by' => $request->user()?->id,
             ]
         );
 
-        $this->writeAudit($request, 'Edit record', 'Settings', $setting->id, 'Updated setting '.$key.'.');
+        $auditDescription = $this->shouldLogSettingValuesInAudit($key)
+            ? 'Updated setting '.$key.' from '.($previousValue !== null && $previousValue !== '' ? $previousValue : 'default').' to '.($normalizedValue !== '' ? $normalizedValue : 'empty').'.'
+            : 'Updated setting '.$key.'.';
+
+        $this->writeAudit($request, 'Edit record', 'Settings', $setting->id, $auditDescription);
 
         return response()->json(['success' => true, 'data' => $setting]);
     }
@@ -4392,6 +4439,155 @@ class BitemapApiController extends Controller
             'data' => $notification?->fresh(),
             'meta' => ['duplicate' => false, 'retried' => false],
         ], $status === 'Failed' ? 422 : 200);
+    }
+
+    private function shouldLogSettingValuesInAudit(string $key): bool
+    {
+        if ($this->isSensitiveSettingKey($key)) {
+            return false;
+        }
+
+        return in_array($key, self::AUDIT_VALUE_LOGGABLE_SETTING_KEYS, true);
+    }
+
+    private function isSensitiveSettingKey(string $key): bool
+    {
+        if (in_array($key, self::SENSITIVE_SETTING_KEYS, true)) {
+            return true;
+        }
+
+        $lower = strtolower($key);
+
+        return str_contains($lower, 'token')
+            || str_contains($lower, 'secret')
+            || str_contains($lower, 'credential')
+            || str_contains($lower, 'account_sid')
+            || str_contains($lower, 'api_key');
+    }
+
+    private function validateAndNormalizeSettingValue(string $key, mixed $rawValue): string
+    {
+        if (is_array($rawValue) || is_object($rawValue)) {
+            throw ValidationException::withMessages([
+                'value' => ['The setting value must be a scalar value.'],
+            ]);
+        }
+
+        $booleanKeys = [
+            'retry_failed_sms_enabled',
+            'force_password_change_approved_users',
+            'security_alerts_enabled',
+            'sms_service_failure_alerts_enabled',
+            'queue_failure_alerts_enabled',
+            'system_failure_alerts_enabled',
+            'clinic_public_listing_enabled',
+            'sms_reminders_enabled',
+            'low_stock_alert_enabled',
+            'expiring_batch_alert_enabled',
+        ];
+
+        if ($key === 'strong_passwords_required') {
+            if (! in_array($rawValue, [true, 1, 'true', '1'], true)) {
+                throw ValidationException::withMessages([
+                    'value' => ['Strong password enforcement cannot be disabled.'],
+                ]);
+            }
+
+            return 'true';
+        }
+
+        if (in_array($key, $booleanKeys, true)) {
+            if (! in_array($rawValue, [true, false, 1, 0, 'true', 'false', '1', '0'], true)) {
+                throw ValidationException::withMessages([
+                    'value' => ["The {$key} setting must be true or false."],
+                ]);
+            }
+
+            return in_array($rawValue, [true, 1, 'true', '1'], true) ? 'true' : 'false';
+        }
+
+        $intRanges = [
+            'session_timeout_minutes' => [5, 480, 'Session timeout must be a whole number between 5 and 480 minutes.'],
+            'max_failed_login_attempts' => [1, 20, 'Maximum failed login attempts must be a whole number between 1 and 20.'],
+            'account_lock_minutes' => [1, 1440, 'Account lock duration must be a whole number between 1 and 1440 minutes.'],
+            'max_sms_retry_attempts' => [0, 10, 'Maximum SMS retry attempts must be a whole number between 0 and 10.'],
+            'reminder_days_before' => [0, 30, 'Reminder lead time must be a whole number between 0 and 30 days.'],
+        ];
+
+        if (isset($intRanges[$key])) {
+            [$min, $max, $errorMessage] = $intRanges[$key];
+            $stringVal = trim((string) $rawValue);
+
+            if (is_bool($rawValue) || $stringVal === '' || ! preg_match('/^-?\d+$/', $stringVal)) {
+                throw ValidationException::withMessages([
+                    'value' => [$errorMessage],
+                ]);
+            }
+
+            $intVal = (int) $stringVal;
+            if ($intVal < $min || $intVal > $max) {
+                throw ValidationException::withMessages([
+                    'value' => [$errorMessage],
+                ]);
+            }
+
+            return (string) $intVal;
+        }
+
+        $stringVal = trim((string) ($rawValue ?? ''));
+
+        return match ($key) {
+            'sms_provider' => in_array($stringVal, ['PhilSMS', 'Semaphore', 'Twilio', 'Mock', 'Other'], true)
+                ? $stringVal
+                : throw ValidationException::withMessages([
+                    'value' => ['Invalid SMS provider selected.'],
+                ]),
+            'sms_sender_id' => mb_strlen($stringVal) <= 50
+                ? $stringVal
+                : throw ValidationException::withMessages([
+                    'value' => ['SMS sender ID must not exceed 50 characters.'],
+                ]),
+            'clinic_name' => ($stringVal !== '' && mb_strlen($stringVal) <= 255)
+                ? $stringVal
+                : throw ValidationException::withMessages([
+                    'value' => ['Clinic name is required and must not exceed 255 characters.'],
+                ]),
+            'contact_email' => ($stringVal === '' || (mb_strlen($stringVal) <= 255 && filter_var($stringVal, FILTER_VALIDATE_EMAIL) !== false))
+                ? $stringVal
+                : throw ValidationException::withMessages([
+                    'value' => ['Contact email must be a valid email address.'],
+                ]),
+            'contact_number' => ($stringVal === '' || (mb_strlen($stringVal) <= 30 && preg_match('/^(\+?63|0)?[0-9\s()-]{7,20}$/', $stringVal) === 1))
+                ? $stringVal
+                : throw ValidationException::withMessages([
+                    'value' => ['Contact number must be a valid telephone or mobile number.'],
+                ]),
+            'system_timezone' => in_array($stringVal, timezone_identifiers_list(), true)
+                ? $stringVal
+                : throw ValidationException::withMessages([
+                    'value' => ['Invalid system timezone.'],
+                ]),
+            'system_language' => in_array($stringVal, ['en', 'fil'], true)
+                ? $stringVal
+                : throw ValidationException::withMessages([
+                    'value' => ['Invalid system language.'],
+                ]),
+            'clinic_latitude' => ($stringVal === '' || (is_numeric($stringVal) && (float) $stringVal >= -90 && (float) $stringVal <= 90))
+                ? $stringVal
+                : throw ValidationException::withMessages([
+                    'value' => ['Clinic latitude must be a valid coordinate between -90 and 90.'],
+                ]),
+            'clinic_longitude' => ($stringVal === '' || (is_numeric($stringVal) && (float) $stringVal >= -180 && (float) $stringVal <= 180))
+                ? $stringVal
+                : throw ValidationException::withMessages([
+                    'value' => ['Clinic longitude must be a valid coordinate between -180 and 180.'],
+                ]),
+            default => mb_strlen($stringVal) <= 500
+                ? $stringVal
+                : throw ValidationException::withMessages([
+                    'value' => ['Setting value must not exceed 500 characters.'],
+                ]),
+        };
     }
 
     private function allowedSettingKeysForRole(?string $role): array
