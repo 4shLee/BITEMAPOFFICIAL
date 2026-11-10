@@ -54,10 +54,10 @@ class EnsureUserHasRole
             ->toString();
 
         return match ($key) {
-            'admin' => 'system_admin',
-            'clinic_administrator' => 'clinic_admin',
-            'health_officer' => 'doctor',
-            'nurse', 'vaccinator' => 'nurse_vaccinator',
+            'admin', 'system_admin', 'system_administrator' => 'system_admin',
+            'clinic_admin', 'clinic_administrator' => 'clinic_admin',
+            'doctor', 'health_officer' => 'doctor',
+            'nurse', 'vaccinator', 'nurse_vaccinator' => 'nurse_vaccinator',
             default => $key,
         };
     }

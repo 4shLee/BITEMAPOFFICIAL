@@ -20,6 +20,7 @@ import {
   inventoryAPI,
   type GlobalSearchResultItem,
 } from '../../../lib/services/api';
+import { getStoredUser, isSystemAdminRole } from '../../../lib/auth/roleAccess';
 
 interface FlattenedItem {
   id: string;
@@ -115,20 +116,10 @@ export function GlobalSearchDropdown() {
       try {
         const res = await searchAPI.globalSearch(debouncedQuery, controller.signal);
         if (res && res.success && res.data) {
-          const hasAny =
-            res.data.patients?.length > 0 ||
-            res.data.incidents?.length > 0 ||
-            res.data.pep_schedules?.length > 0 ||
-            res.data.inventory?.length > 0 ||
-            res.data.users?.length > 0 ||
-            res.data.navigation?.length > 0;
-
-          if (hasAny) {
-            setResults(res.data);
-            setSelectedIndex(0);
-            setIsLoading(false);
-            return;
-          }
+          setResults(res.data);
+          setSelectedIndex(0);
+          setIsLoading(false);
+          return;
         }
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -137,12 +128,20 @@ export function GlobalSearchDropdown() {
 
       // 2. Direct fallback using active module endpoints (guaranteed to match existing database records)
       try {
+        const currentUserRole = getStoredUser()?.role;
+        const canAccessClinical = !isSystemAdminRole(currentUserRole);
         const lowerQuery = debouncedQuery.toLowerCase();
-        const [patientsRes, incidentsRes, inventoryRes] = await Promise.allSettled([
-          patientsAPI.getAll({ search: debouncedQuery, per_page: 10 }, controller.signal),
-          incidentsAPI.getAll({ search: debouncedQuery, per_page: 10 }, controller.signal),
-          inventoryAPI.getAll(),
-        ]);
+        const [patientsRes, incidentsRes, inventoryRes] = canAccessClinical
+          ? await Promise.allSettled([
+              patientsAPI.getAll({ search: debouncedQuery, per_page: 10 }, controller.signal),
+              incidentsAPI.getAll({ search: debouncedQuery, per_page: 10 }, controller.signal),
+              inventoryAPI.getAll(),
+            ])
+          : [
+              { status: 'rejected' as const, reason: null },
+              { status: 'rejected' as const, reason: null },
+              { status: 'rejected' as const, reason: null },
+            ];
 
         const patients: GlobalSearchResultItem[] = [];
         if (

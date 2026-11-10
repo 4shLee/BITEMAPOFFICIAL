@@ -66,6 +66,10 @@ function UserModal({ user, roles, isCurrentUser, onClose, onSave }: { user: User
       toast.error('You cannot deactivate your own account.');
       return;
     }
+    if (isCurrentUser && normalizeRoleKey(form.role) !== normalizeRoleKey(user.role)) {
+      toast.error('You cannot change or demote your own role.');
+      return;
+    }
     if (hasPasswordInput && !passwordEvaluation.isValid) {
       setPasswordTouched(true);
       toast.error(passwordEvaluation.errorMessage || 'Password does not meet security requirements.');
@@ -144,11 +148,15 @@ function UserModal({ user, roles, isCurrentUser, onClose, onSave }: { user: User
             <select
               value={form.role}
               onChange={e => setForm({ ...form, role: e.target.value })}
+              disabled={isCurrentUser}
               className="w-full px-3.5 py-2.5 bg-input-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
             >
               {roles.map(role => <option key={role.value} value={role.value}>{role.label}</option>)}
             </select>
-            {user?.approval_status === 'pending' && (
+            {isCurrentUser && (
+              <p className="mt-1.5 text-xs text-muted-foreground">You cannot change or demote your own role.</p>
+            )}
+            {!isCurrentUser && user?.approval_status === 'pending' && (
               <p className="mt-1.5 text-xs text-muted-foreground">You can change the requested role before approving this account.</p>
             )}
           </div>
