@@ -1,4 +1,9 @@
 *.log
+*.sql
+*.sql.gz
+*.bak
+bitemap-backup-*.json
+/storage/app/private/backups/
 .DS_Store
 .env
 .env.backup

@@ -74,6 +74,7 @@ Artisan::command('bitemap:send-sms-reminders {--scope=today}', function (Vaccina
 })->purpose('Send or queue PEP SMS reminders');
 
 Schedule::command('bitemap:mark-missed-schedules')->dailyAt('00:15');
+Schedule::command('bitemap:backup-db --encrypt --keep=14')->dailyAt('02:00');
 Schedule::command('bitemap:send-sms-reminders --scope=today')->dailyAt('07:00');
 Schedule::command('bitemap:send-sms-reminders --scope=upcoming')->dailyAt('07:30');
 Schedule::command('bitemap:send-sms-reminders --scope=missed')->dailyAt('08:00');

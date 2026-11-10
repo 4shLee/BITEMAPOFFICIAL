@@ -71,7 +71,7 @@ Default: **not** run at startup. Recommended: Railway service → Settings → *
 php artisan migrate --force
 ```
 
-A failed pre-deploy command aborts the deployment and the previous release keeps serving. MySQL DDL is not transactional, so a migration that fails midway can leave a half-applied schema: take a database backup before deploys that include new migrations, and review them first (one existing migration, `2026_07_14_000001_repair_stale_pep_schedule_dates`, rewrites `pep_schedules.scheduled_date` data).
+A failed pre-deploy command aborts the deployment and the previous release keeps serving. MySQL DDL is not transactional, so a migration that fails midway can leave a half-applied schema: take a database backup before deploys that include new migrations (`php artisan bitemap:backup-db --encrypt` + Railway Volume Snapshot — see [`docs/BACKUP_AND_RECOVERY.md`](BACKUP_AND_RECOVERY.md)), and review them first (one existing migration, `2026_07_14_000001_repair_stale_pep_schedule_dates`, rewrites `pep_schedules.scheduled_date` data).
 
 Opt-in alternative: set `RUN_MIGRATIONS_ON_START=true`; a failing migration then stops the container instead of serving a half-migrated schema (Railway will retry/restart).
 

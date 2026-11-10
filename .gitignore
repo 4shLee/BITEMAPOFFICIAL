@@ -12,6 +12,11 @@ frontend/dist/
 # Temp / generated files
 tmp/
 *.log
+*.sql
+*.sql.gz
+*.bak
+bitemap-backup-*.json
+backend/storage/app/private/backups/
 
 # OS files
 .DS_Store
