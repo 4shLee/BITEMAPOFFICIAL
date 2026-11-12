@@ -12,6 +12,7 @@ import {
   HeartPulse,
   Info,
   LocateFixed,
+  LogIn,
   Mail,
   MapPin,
   Navigation,
@@ -24,6 +25,7 @@ import {
   X,
 } from 'lucide-react';
 import { publicAPI } from '../../lib/services/api';
+import { getDefaultPathForRole, getStoredUser, hasAuthSession } from '../../lib/auth/roleAccess';
 import { AnimatedGISBackground } from '../components/Brand/AnimatedGISBackground';
 import { BITEMAP_FONT_FAMILY, BITEMAP_LOGO_SRC } from '../components/Brand/brand';
 import { escapeHtml, toLngLat } from '../../lib/maplibre/geo';
@@ -90,6 +92,9 @@ function Skeletons() {
 }
 
 export function PublicClinics() {
+  const user = useMemo(() => (hasAuthSession() ? getStoredUser() : null), []);
+  const authDestination = user ? getDefaultPathForRole(user.role) : '/login';
+  const authLabel = user ? 'Dashboard' : 'Log In';
   const mapNode = useRef<HTMLDivElement | null>(null);
   const { map, basemapError } = useMapLibre(mapNode, {
     center: [DIGOS_CENTER_COORDS[1], DIGOS_CENTER_COORDS[0]],
@@ -489,6 +494,14 @@ export function PublicClinics() {
             >
               <ArrowLeft className="h-4 w-4" />
               <span className="hidden sm:inline">Back to Public Portal</span>
+            </Link>
+            <Link
+              to={authDestination}
+              className="inline-flex h-10 items-center gap-1.5 rounded-full border border-teal-700/30 bg-white px-3.5 text-xs font-extrabold text-teal-800 shadow-xs hover:border-teal-700 hover:bg-teal-50 transition-colors"
+              title={user ? 'Go to Staff Dashboard' : 'Staff Log In'}
+            >
+              <LogIn className="h-4 w-4 text-teal-700" />
+              <span>{authLabel}</span>
             </Link>
           </div>
         </div>
