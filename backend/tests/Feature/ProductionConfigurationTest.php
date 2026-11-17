@@ -108,6 +108,33 @@ class ProductionConfigurationTest extends TestCase
         $this->assertFalse($sanctum['last_used_at']);
     }
 
+    public function test_google_oauth_config_comes_from_environment_and_defaults_to_null(): void
+    {
+        $defaults = $this->loadConfigWithEnv('services', [
+            'GOOGLE_CLIENT_ID' => null,
+            'GOOGLE_CLIENT_SECRET' => null,
+            'GOOGLE_REDIRECT_URI' => null,
+            'GOOGLE_FRONTEND_URL' => null,
+        ]);
+
+        $this->assertNull($defaults['google']['client_id']);
+        $this->assertNull($defaults['google']['client_secret']);
+        $this->assertNull($defaults['google']['redirect']);
+        $this->assertNull($defaults['google']['frontend_url']);
+
+        $configured = $this->loadConfigWithEnv('services', [
+            'GOOGLE_CLIENT_ID' => 'google-client-id.apps.googleusercontent.com',
+            'GOOGLE_CLIENT_SECRET' => 'google-client-secret',
+            'GOOGLE_REDIRECT_URI' => 'https://api.bitemap.example.test/api/auth/google/callback',
+            'GOOGLE_FRONTEND_URL' => 'https://bitemap.example.test',
+        ]);
+
+        $this->assertSame('google-client-id.apps.googleusercontent.com', $configured['google']['client_id']);
+        $this->assertSame('google-client-secret', $configured['google']['client_secret']);
+        $this->assertSame('https://api.bitemap.example.test/api/auth/google/callback', $configured['google']['redirect']);
+        $this->assertSame('https://bitemap.example.test', $configured['google']['frontend_url']);
+    }
+
     /**
      * Evaluate a config file with temporary environment values (null = unset).
      *

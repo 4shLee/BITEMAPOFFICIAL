@@ -14,6 +14,8 @@ use App\Models\Patient;
 use App\Models\PepSchedule;
 use App\Models\Setting;
 use App\Models\User;
+use App\Services\GoogleOAuthException;
+use App\Services\GoogleOAuthService;
 use App\Services\Sms\SmsGateway;
 use App\Services\Sms\VaccinationReminderService;
 use App\Services\WhoExposureClassificationService;
@@ -26,6 +28,7 @@ use App\Support\PhoneNumber;
 use App\Support\SmsCredentials;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -104,14 +107,7 @@ class BitemapApiController extends Controller
                 $existingUser
             );
 
-            return response()->json([
-                'success' => false,
-                'error' => 'Too many failed login attempts. Please wait '.$retryAfter.' seconds before trying again.',
-                'message' => 'Too many failed login attempts. Please wait '.$retryAfter.' seconds before trying again.',
-                'retry_after' => $retryAfter,
-            ], 429, [
-                'Retry-After' => (string) $retryAfter,
-            ]);
+            return $this->tooManyLoginAttemptsResponse($retryAfter);
         }
 
         if (DefaultAdminAccount::shouldRepairForLogin($email, $credentials['password'])) {
@@ -131,10 +127,172 @@ class BitemapApiController extends Controller
             ], 401);
         }
 
+        $approvalError = $this->validateSignInAccountEligibility($request, $user, 'Sign-in');
+        if ($approvalError !== null) {
+            return $approvalError;
+        }
+
+        RateLimiter::clear($throttleKey);
+
+        return $this->issueAuthenticatedSessionResponse($request, $user, 'User signed in.');
+    }
+
+    public function googleRedirect(Request $request, GoogleOAuthService $googleOAuth): JsonResponse
+    {
+        try {
+            $redirect = $googleOAuth->createAuthorizationRedirect($request);
+
+            return response()->json([
+                'success' => true,
+                'authUrl' => $redirect['authUrl'],
+                'state' => $redirect['state'],
+            ]);
+        } catch (GoogleOAuthException $exception) {
+            return response()->json([
+                'success' => false,
+                'error' => $exception->getMessage(),
+                'message' => $exception->getMessage(),
+            ], $exception->httpStatus);
+        }
+    }
+
+    public function googleCallback(Request $request, GoogleOAuthService $googleOAuth): JsonResponse|RedirectResponse
+    {
+        if ($request->isMethod('GET') && ! $request->expectsJson()) {
+            return redirect()->away(
+                $googleOAuth->frontendLoginRedirectUrl($request->only(['code', 'state', 'error']))
+            );
+        }
+
+        $ipThrottleKey = $this->loginIpThrottleKey($request);
+        $maxAttempts = AuthSessionSecurity::maxFailedLoginAttempts();
+        $ipMaxAttempts = max($maxAttempts * 4, 20);
+        $decaySeconds = AuthSessionSecurity::accountLockMinutes() * 60;
+
+        if (RateLimiter::tooManyAttempts($ipThrottleKey, $ipMaxAttempts)) {
+            $retryAfter = max(1, RateLimiter::availableIn($ipThrottleKey));
+
+            $this->writeAudit(
+                $request,
+                'Login blocked',
+                'Authentication',
+                null,
+                'Google login temporarily blocked due to repeated failed attempts.',
+                null
+            );
+
+            return $this->tooManyLoginAttemptsResponse($retryAfter);
+        }
+
+        if ($request->filled('error')) {
+            RateLimiter::hit($ipThrottleKey, $decaySeconds);
+            $this->writeAudit(
+                $request,
+                'Failed login',
+                'Authentication',
+                null,
+                'Google sign-in cancelled or denied by provider.',
+                null
+            );
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Google sign-in was cancelled or denied.',
+                'message' => 'Google sign-in was cancelled or denied.',
+            ], 401);
+        }
+
+        $validated = $request->validate([
+            'code' => ['required', 'string'],
+            'state' => ['required', 'string'],
+        ]);
+
+        try {
+            $googleIdentity = $googleOAuth->authenticateCode((string) $validated['code'], (string) $validated['state'], $request);
+        } catch (GoogleOAuthException $exception) {
+            if ($exception->httpStatus !== 503) {
+                RateLimiter::hit($ipThrottleKey, $decaySeconds);
+                $this->writeAudit(
+                    $request,
+                    'Failed login',
+                    'Authentication',
+                    null,
+                    'Failed Google login attempt: '.$exception->getMessage(),
+                    null
+                );
+            }
+
+            return response()->json([
+                'success' => false,
+                'error' => $exception->getMessage(),
+                'message' => $exception->getMessage(),
+            ], $exception->httpStatus);
+        }
+
+        $email = $googleIdentity['email'];
+        $throttleKey = $this->loginThrottleKey($email, $request);
+
+        if (RateLimiter::tooManyAttempts($throttleKey, $maxAttempts)) {
+            $retryAfter = max(1, RateLimiter::availableIn($throttleKey));
+            $existingUser = User::where('email', $email)->first();
+
+            $this->writeAudit(
+                $request,
+                'Login blocked',
+                'Authentication',
+                $existingUser?->id,
+                'Google login temporarily blocked due to repeated failed attempts for email: '.$email.'.',
+                $existingUser
+            );
+
+            return $this->tooManyLoginAttemptsResponse($retryAfter);
+        }
+
+        $matchedUsers = User::whereRaw('LOWER(email) = ?', [$email])->limit(2)->get();
+        $user = $matchedUsers->count() === 1 ? $matchedUsers->first() : null;
+
+        if (! $user) {
+            RateLimiter::hit($throttleKey, $decaySeconds);
+            RateLimiter::hit($ipThrottleKey, $decaySeconds);
+            $this->writeAudit(
+                $request,
+                'Failed login',
+                'Authentication',
+                null,
+                'Google sign-in rejected for unregistered email: '.$email.'.',
+                null
+            );
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Your Google account is not registered as a BITEMAP staff account. Please contact your administrator.',
+                'message' => 'Your Google account is not registered as a BITEMAP staff account. Please contact your administrator.',
+            ], 403);
+        }
+
+        $approvalError = $this->validateSignInAccountEligibility($request, $user, 'Google sign-in');
+        if ($approvalError !== null) {
+            RateLimiter::hit($throttleKey, $decaySeconds);
+            RateLimiter::hit($ipThrottleKey, $decaySeconds);
+
+            return $approvalError;
+        }
+
+        RateLimiter::clear($throttleKey);
+
+        return $this->issueAuthenticatedSessionResponse(
+            $request,
+            $user,
+            'User signed in with Google ('.$user->email.').'
+        );
+    }
+
+    private function validateSignInAccountEligibility(Request $request, User $user, string $auditPrefix): ?JsonResponse
+    {
         $approvalStatus = AuthSessionSecurity::approvalStatus($user);
 
         if ($approvalStatus === 'pending') {
-            $this->writeAudit($request, 'Failed login', 'Authentication', $user->id, 'Sign-in denied for pending account: '.$user->email.'.', $user);
+            $this->writeAudit($request, 'Failed login', 'Authentication', $user->id, $auditPrefix.' denied for pending account: '.$user->email.'.', $user);
 
             return response()->json([
                 'success' => false,
@@ -143,7 +301,7 @@ class BitemapApiController extends Controller
         }
 
         if ($approvalStatus === 'rejected') {
-            $this->writeAudit($request, 'Failed login', 'Authentication', $user->id, 'Sign-in denied for rejected account: '.$user->email.'.', $user);
+            $this->writeAudit($request, 'Failed login', 'Authentication', $user->id, $auditPrefix.' denied for rejected account: '.$user->email.'.', $user);
 
             return response()->json([
                 'success' => false,
@@ -152,7 +310,7 @@ class BitemapApiController extends Controller
         }
 
         if (! $user->is_active) {
-            $this->writeAudit($request, 'Failed login', 'Authentication', $user->id, 'Sign-in denied for inactive account: '.$user->email.'.', $user);
+            $this->writeAudit($request, 'Failed login', 'Authentication', $user->id, $auditPrefix.' denied for inactive account: '.$user->email.'.', $user);
 
             return response()->json([
                 'success' => false,
@@ -160,10 +318,14 @@ class BitemapApiController extends Controller
             ], 403);
         }
 
-        RateLimiter::clear($throttleKey);
+        return null;
+    }
+
+    private function issueAuthenticatedSessionResponse(Request $request, User $user, string $auditDescription): JsonResponse
+    {
         $now = now();
         $user->forceFill(['last_login_at' => $now])->save();
-        $this->writeAudit($request, 'Login', 'Authentication', $user->id, 'User signed in.', $user);
+        $this->writeAudit($request, 'Login', 'Authentication', $user->id, $auditDescription, $user);
 
         $expiresAt = AuthSessionSecurity::nextTokenExpiration($now, $now);
         $newAccessToken = $user->createToken('bitemap-web', ['*'], $expiresAt);
@@ -171,14 +333,25 @@ class BitemapApiController extends Controller
             'last_used_at' => $now,
             'expires_at' => $expiresAt,
         ])->save();
-        $token = $newAccessToken->plainTextToken;
 
         return response()->json([
             'success' => true,
-            'accessToken' => $token,
+            'accessToken' => $newAccessToken->plainTextToken,
             'expiresAt' => $expiresAt->toISOString(),
             'sessionTimeoutMinutes' => AuthSessionSecurity::sessionTimeoutMinutes(),
             'user' => $this->userPayload($user->fresh()),
+        ]);
+    }
+
+    private function tooManyLoginAttemptsResponse(int $retryAfter): JsonResponse
+    {
+        return response()->json([
+            'success' => false,
+            'error' => 'Too many failed login attempts. Please wait '.$retryAfter.' seconds before trying again.',
+            'message' => 'Too many failed login attempts. Please wait '.$retryAfter.' seconds before trying again.',
+            'retry_after' => $retryAfter,
+        ], 429, [
+            'Retry-After' => (string) $retryAfter,
         ]);
     }
 

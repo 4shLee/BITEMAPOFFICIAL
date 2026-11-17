@@ -253,6 +253,14 @@ function registryListEndpoint(endpoint: string, filters: RegistryListFilters = {
   return endpoint + (query.size > 0 ? '?' + query.toString() : '');
 }
 
+function persistAuthSession(data: Record<string, unknown>) {
+  if (data.success && typeof data.accessToken === 'string' && data.accessToken.trim() !== '') {
+    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, data.accessToken);
+    localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(data.user));
+    syncSessionMetadata(data, false);
+  }
+}
+
 // ============ AUTHENTICATION API ============
 export const authAPI = {
   async signUp(email: string, password: string, name: { firstName: string; middleName?: string; lastName: string; suffix?: string }, role: string, phone?: string) {
@@ -285,11 +293,24 @@ export const authAPI = {
       body: JSON.stringify({ email, password }),
     }, false);
 
-    if (data.success && data.accessToken) {
-      localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, data.accessToken);
-      localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(data.user));
-      syncSessionMetadata(data, false);
-    }
+    persistAuthSession(data);
+
+    return data;
+  },
+
+  async getGoogleAuthUrl() {
+    return apiRequest('/auth/google/redirect', {
+      method: 'GET',
+    }, false);
+  },
+
+  async signInWithGoogle(code: string, state: string) {
+    const data = await apiRequest('/auth/google/callback', {
+      method: 'POST',
+      body: JSON.stringify({ code, state }),
+    }, false);
+
+    persistAuthSession(data);
 
     return data;
   },

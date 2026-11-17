@@ -4,6 +4,8 @@ use App\Http\Controllers\Api\BitemapApiController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/auth/signin', [BitemapApiController::class, 'signIn']);
+Route::get('/auth/google/redirect', [BitemapApiController::class, 'googleRedirect'])->middleware('throttle:30,1');
+Route::match(['get', 'post'], '/auth/google/callback', [BitemapApiController::class, 'googleCallback']);
 Route::post('/auth/signup', [BitemapApiController::class, 'signUp'])->middleware('throttle:10,1');
 
 Route::get('/dev/status', [BitemapApiController::class, 'devStatus']);

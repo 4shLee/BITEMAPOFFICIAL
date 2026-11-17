@@ -52,6 +52,12 @@ TWILIO_ACCOUNT_SID=
 TWILIO_AUTH_TOKEN=
 TWILIO_FROM_NUMBER=
 BITEMAP_FACILITY_NAME="Animal Bite Treatment Center"
+
+# Google OAuth 2.0 / OpenID Connect (optional until Google Cloud Console OAuth client is configured)
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=https://<api-domain>.up.railway.app/api/auth/google/callback
+GOOGLE_FRONTEND_URL=https://<your-app>.vercel.app
 ```
 
 The reference names `${{MySQL.…}}` assume the database service is called `MySQL`; adjust to your service name.

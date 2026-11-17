@@ -39,5 +39,9 @@
         <env name="TWILIO_ACCOUNT_SID" value=""/>
         <env name="TWILIO_AUTH_TOKEN" value=""/>
         <env name="TWILIO_FROM_NUMBER" value=""/>
+        <env name="GOOGLE_CLIENT_ID" value=""/>
+        <env name="GOOGLE_CLIENT_SECRET" value=""/>
+        <env name="GOOGLE_REDIRECT_URI" value=""/>
+        <env name="GOOGLE_FRONTEND_URL" value=""/>
     </php>
 </phpunit>
