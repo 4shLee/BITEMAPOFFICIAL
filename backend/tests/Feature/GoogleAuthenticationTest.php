@@ -202,6 +202,8 @@ PEM;
             'state' => $state,
         ])->assertStatus(403)
             ->assertJsonPath('success', false)
+            ->assertJsonPath('code', 'unregistered_google_account')
+            ->assertJsonPath('email', 'unknown@gmail.com')
             ->assertJsonPath(
                 'error',
                 'Your Google account is not registered as a BITEMAP staff account. Please contact your administrator.'
@@ -256,7 +258,8 @@ PEM;
                 'state' => $state,
             ])->assertStatus(403)
                 ->assertJsonPath('success', false)
-                ->assertJsonPath('error', $expectedError);
+                ->assertJsonPath('error', $expectedError)
+                ->assertJsonMissingPath('code');
 
             $this->assertDatabaseHas('audit_logs', [
                 'action' => 'Failed login',

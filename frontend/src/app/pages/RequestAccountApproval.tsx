@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 import { AlertCircle, ArrowLeft, Check, ChevronDown, Circle, Eye, EyeOff, Globe2, ShieldCheck } from "lucide-react";
 import { ApiError, authAPI, getErrorMessage } from "../../lib/services/api";
 import { ASSIGNABLE_ROLES } from "../../lib/auth/roleAccess";
@@ -99,8 +99,30 @@ function RequestedRoleDropdown({ value, onChange }: { value: string; onChange: (
   );
 }
 
+type RequestAccessLocationState = {
+  googleUnregisteredEmail?: string;
+  googleUnregisteredNotice?: string;
+} | null;
+
 export function RequestAccountApproval() {
-  const [requestForm, setRequestForm] = useState(initialRequestForm);
+  const location = useLocation();
+  const locationState = (location.state as RequestAccessLocationState) ?? null;
+  const prefilledGoogleEmail =
+    typeof locationState?.googleUnregisteredEmail === "string"
+      ? locationState.googleUnregisteredEmail.trim()
+      : "";
+  const googleUnregisteredNotice =
+    typeof locationState?.googleUnregisteredNotice === "string" &&
+    locationState.googleUnregisteredNotice.trim() !== ""
+      ? locationState.googleUnregisteredNotice.trim()
+      : prefilledGoogleEmail
+        ? "Your Google account is not registered with BITEMAP yet. Complete this access request to ask your clinic administrator for approval."
+        : null;
+
+  const [requestForm, setRequestForm] = useState(() => ({
+    ...initialRequestForm,
+    email: prefilledGoogleEmail,
+  }));
   const [showRequestPassword, setShowRequestPassword] = useState(false);
   const [isRequestSubmitting, setIsRequestSubmitting] = useState(false);
   const [requestSubmitted, setRequestSubmitted] = useState(false);
@@ -108,6 +130,14 @@ export function RequestAccountApproval() {
   const [confirmPasswordTouched, setConfirmPasswordTouched] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [serverPasswordError, setServerPasswordError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (prefilledGoogleEmail) {
+      setRequestForm((current) =>
+        current.email ? current : { ...current, email: prefilledGoogleEmail }
+      );
+    }
+  }, [prefilledGoogleEmail]);
 
   const passwordEvaluation = evaluatePasswordPolicy(requestForm.password);
   const hasPasswordInput = requestForm.password.length > 0;
@@ -238,6 +268,16 @@ export function RequestAccountApproval() {
                 <h2 className="text-[20px] font-extrabold leading-tight text-slate-900 sm:text-[22px] [@media(max-height:640px)]:text-[18px]">Request Account Approval</h2>
                 <p className="mt-0.5 text-[12px] font-medium text-slate-500 [@media(max-height:640px)]:hidden">Submit your details for authorized staff review.</p>
               </div>
+
+              {googleUnregisteredNotice && (
+                <div
+                  role="status"
+                  className="mb-1.5 flex items-start gap-2 rounded-xl border border-teal-200 bg-teal-50/90 px-3 py-1.5 text-left text-[12px] font-medium leading-snug text-teal-900"
+                >
+                  <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-teal-700" />
+                  <p>{googleUnregisteredNotice}</p>
+                </div>
+              )}
 
               <form onSubmit={handleRequestSubmit} className="space-y-1.5">
                 {/* Personal Information Section */}

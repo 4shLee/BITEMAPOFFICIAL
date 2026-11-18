@@ -263,11 +263,18 @@ class BitemapApiController extends Controller
                 null
             );
 
-            return response()->json([
+            $responsePayload = [
                 'success' => false,
                 'error' => 'Your Google account is not registered as a BITEMAP staff account. Please contact your administrator.',
                 'message' => 'Your Google account is not registered as a BITEMAP staff account. Please contact your administrator.',
-            ], 403);
+            ];
+
+            if ($matchedUsers->isEmpty()) {
+                $responsePayload['code'] = 'unregistered_google_account';
+                $responsePayload['email'] = $email;
+            }
+
+            return response()->json($responsePayload, 403);
         }
 
         $approvalError = $this->validateSignInAccountEligibility($request, $user, 'Google sign-in');

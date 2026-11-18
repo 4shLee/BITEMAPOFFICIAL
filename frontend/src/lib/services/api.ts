@@ -23,18 +23,24 @@ export class ApiError extends Error {
   status: number;
   errors: Record<string, string[]>;
   retryAfter?: number;
+  code?: string;
+  email?: string;
 
   constructor(
     message: string,
     status: number,
     errors: Record<string, string[]> = {},
     retryAfter?: number,
+    code?: string,
+    email?: string,
   ) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.errors = errors;
     this.retryAfter = retryAfter;
+    this.code = code;
+    this.email = email;
   }
 }
 
@@ -116,6 +122,8 @@ async function apiRequest(endpoint: string, options: RequestInit = {}, requiresA
       response.status,
       data.errors || {},
       retryAfter,
+      typeof data?.code === 'string' ? data.code : undefined,
+      typeof data?.email === 'string' ? data.email : undefined,
     );
   }
 

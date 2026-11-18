@@ -12,6 +12,11 @@ const apiSource = await readFile(
   'utf8'
 );
 
+const requestAccessSource = await readFile(
+  new URL('../src/app/pages/RequestAccountApproval.tsx', import.meta.url),
+  'utf8'
+);
+
 test('Login page renders Continue with Google button alongside existing email/password login', () => {
   assert.match(loginSource, /Continue with Google/);
   assert.match(loginSource, /handleGoogleSignIn/);
@@ -45,4 +50,16 @@ test('Frontend API client exposes Google OAuth helpers and never includes Google
   assert.match(apiSource, /\/auth\/google\/callback/);
   assert.doesNotMatch(apiSource, /GOOGLE_CLIENT_SECRET/);
   assert.doesNotMatch(loginSource, /GOOGLE_CLIENT_SECRET/);
+});
+
+test('Unregistered Google account redirects to Request Access with prefilled email and guidance notice without auto-registration', () => {
+  assert.match(loginSource, /error\.status === 403/);
+  assert.match(loginSource, /error\.code === "unregistered_google_account"/);
+  assert.match(loginSource, /navigate\("\/request-account-approval"/);
+  assert.match(loginSource, /googleUnregisteredEmail:\s*verifiedEmail/);
+  assert.match(loginSource, /Your Google account is not registered with BITEMAP yet\. Complete this access request to ask your clinic administrator for approval\./);
+  assert.match(requestAccessSource, /useLocation/);
+  assert.match(requestAccessSource, /googleUnregisteredEmail/);
+  assert.match(requestAccessSource, /googleUnregisteredNotice/);
+  assert.match(requestAccessSource, /authAPI\.signUp\(/);
 });

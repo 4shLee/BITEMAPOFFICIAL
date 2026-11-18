@@ -124,6 +124,25 @@ export function Login() {
           toast.error(message);
         }
       } catch (error: unknown) {
+        if (
+          error instanceof ApiError &&
+          error.status === 403 &&
+          error.code === "unregistered_google_account"
+        ) {
+          const verifiedEmail = typeof error.email === "string" ? error.email.trim() : "";
+          const noticeMessage =
+            "Your Google account is not registered with BITEMAP yet. Complete this access request to ask your clinic administrator for approval.";
+          toast.info(noticeMessage);
+          navigate("/request-account-approval", {
+            replace: true,
+            state: {
+              googleUnregisteredEmail: verifiedEmail,
+              googleUnregisteredNotice: noticeMessage,
+            },
+          });
+          return;
+        }
+
         if (error instanceof ApiError && error.status === 429) {
           const waitSeconds = error.retryAfter && error.retryAfter > 0 ? Math.ceil(error.retryAfter) : 60;
           setCooldownSeconds(waitSeconds);
