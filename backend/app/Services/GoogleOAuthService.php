@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Throwable;
@@ -173,7 +174,8 @@ class GoogleOAuthService
      */
     public function frontendLoginRedirectUrl(array $params = []): string
     {
-        $baseUrl = $this->resolveSafeFrontendOrigin();
+        $stateParam = isset($params['state']) && is_scalar($params['state']) ? trim((string) $params['state']) : '';
+        $baseUrl = $this->resolveSafeFrontendOrigin($stateParam);
         $loginUrl = $baseUrl.'/login';
         $allowedKeys = ['code', 'state', 'error'];
         $filtered = [];
@@ -210,11 +212,20 @@ class GoogleOAuthService
         $userAgentHash = $this->userAgentHash($request);
         $issuedAt = now()->getTimestamp();
 
-        $payloadJson = json_encode([
+        $requestedOrigin = trim((string) ($request?->query('origin') ?: $request?->header('Origin', '')));
+        $validatedOrigin = $this->validateAllowedOrigin($requestedOrigin);
+
+        $statePayload = [
             'nonce' => $nonce,
             'iat' => $issuedAt,
             'ua' => substr($userAgentHash, 0, 16),
-        ], JSON_THROW_ON_ERROR);
+            'cv' => Crypt::encryptString($codeVerifier),
+        ];
+        if ($validatedOrigin !== null) {
+            $statePayload['origin'] = $validatedOrigin;
+        }
+
+        $payloadJson = json_encode($statePayload, JSON_THROW_ON_ERROR);
 
         Cache::put($this->stateCacheKey($nonce), [
             'code_verifier' => $codeVerifier,
@@ -235,6 +246,87 @@ class GoogleOAuthService
      * @return array{code_verifier: string, ua_hash: string, iat: int}|null
      */
     private function verifyAndConsumeState(string $state, ?Request $request): ?array
+    {
+        $payload = $this->extractSignedStatePayload($state);
+        if ($payload === null) {
+            return null;
+        }
+
+        $nonce = $payload['nonce'] ?? null;
+        $issuedAt = $payload['iat'] ?? null;
+        $uaPrefix = $payload['ua'] ?? null;
+
+        if (! is_string($nonce) || $nonce === '' || ! is_int($issuedAt) || ! is_string($uaPrefix)) {
+            return null;
+        }
+
+        $now = now()->getTimestamp();
+        if ($issuedAt > ($now + 60) || ($now - $issuedAt) > self::STATE_TTL_SECONDS) {
+            return null;
+        }
+
+        $currentUaHash = $this->userAgentHash($request);
+        if (! hash_equals(substr($currentUaHash, 0, 16), $uaPrefix)) {
+            return null;
+        }
+
+        // Single-use state prevents OAuth callback replay attacks.
+        if (! Cache::add($this->stateConsumedCacheKey($nonce), true, now()->addSeconds(self::STATE_TTL_SECONDS))) {
+            Cache::forget($this->stateCacheKey($nonce));
+
+            return null;
+        }
+
+        $cached = Cache::pull($this->stateCacheKey($nonce));
+        if (is_array($cached)) {
+            $codeVerifier = $cached['code_verifier'] ?? null;
+            $cachedUaHash = $cached['ua_hash'] ?? null;
+            $cachedIssuedAt = $cached['iat'] ?? null;
+
+            if (
+                is_string($codeVerifier)
+                && $codeVerifier !== ''
+                && is_string($cachedUaHash)
+                && is_int($cachedIssuedAt)
+                && ($now - $cachedIssuedAt) <= self::STATE_TTL_SECONDS
+                && hash_equals($cachedUaHash, $currentUaHash)
+            ) {
+                return [
+                    'code_verifier' => $codeVerifier,
+                    'ua_hash' => $cachedUaHash,
+                    'iat' => $cachedIssuedAt,
+                ];
+            }
+
+            return null;
+        }
+
+        $encryptedVerifier = $payload['cv'] ?? null;
+        if (! is_string($encryptedVerifier) || $encryptedVerifier === '') {
+            return null;
+        }
+
+        try {
+            $decryptedVerifier = Crypt::decryptString($encryptedVerifier);
+        } catch (Throwable) {
+            return null;
+        }
+
+        if ($decryptedVerifier === '') {
+            return null;
+        }
+
+        return [
+            'code_verifier' => $decryptedVerifier,
+            'ua_hash' => $currentUaHash,
+            'iat' => $issuedAt,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function extractSignedStatePayload(string $state): ?array
     {
         $parts = explode('.', trim($state));
         if (count($parts) !== 2 || $parts[0] === '' || $parts[1] === '') {
@@ -258,54 +350,8 @@ class GoogleOAuthService
         }
 
         $payload = json_decode($decodedPayload, true);
-        if (! is_array($payload)) {
-            return null;
-        }
 
-        $nonce = $payload['nonce'] ?? null;
-        $issuedAt = $payload['iat'] ?? null;
-        $uaPrefix = $payload['ua'] ?? null;
-
-        if (! is_string($nonce) || $nonce === '' || ! is_int($issuedAt) || ! is_string($uaPrefix)) {
-            return null;
-        }
-
-        $now = now()->getTimestamp();
-        if ($issuedAt > ($now + 60) || ($now - $issuedAt) > self::STATE_TTL_SECONDS) {
-            return null;
-        }
-
-        $currentUaHash = $this->userAgentHash($request);
-        if (! hash_equals(substr($currentUaHash, 0, 16), $uaPrefix)) {
-            return null;
-        }
-
-        // Single-use state prevents OAuth callback replay attacks.
-        $cached = Cache::pull($this->stateCacheKey($nonce));
-        if (! is_array($cached)) {
-            return null;
-        }
-
-        $codeVerifier = $cached['code_verifier'] ?? null;
-        $cachedUaHash = $cached['ua_hash'] ?? null;
-        $cachedIssuedAt = $cached['iat'] ?? null;
-
-        if (
-            ! is_string($codeVerifier)
-            || $codeVerifier === ''
-            || ! is_string($cachedUaHash)
-            || ! is_int($cachedIssuedAt)
-            || ($now - $cachedIssuedAt) > self::STATE_TTL_SECONDS
-            || ! hash_equals($cachedUaHash, $currentUaHash)
-        ) {
-            return null;
-        }
-
-        return [
-            'code_verifier' => $codeVerifier,
-            'ua_hash' => $cachedUaHash,
-            'iat' => $cachedIssuedAt,
-        ];
+        return is_array($payload) ? $payload : null;
     }
 
     /**
@@ -514,20 +560,20 @@ class GoogleOAuthService
         return "\x03".$this->derLength(strlen($bytes) + 1)."\x00".$bytes;
     }
 
-    private function resolveSafeFrontendOrigin(): string
+    private function resolveSafeFrontendOrigin(string $state = ''): string
     {
-        $allowedOrigins = [];
-        foreach ((array) config('cors.allowed_origins', []) as $origin) {
-            $normalized = $this->parseValidHttpOrigin((string) $origin);
-            if ($normalized !== null) {
-                $allowedOrigins[] = $normalized;
+        if ($state !== '') {
+            $payload = $this->extractSignedStatePayload($state);
+            $stateOrigin = is_array($payload) && is_string($payload['origin'] ?? null)
+                ? $this->validateAllowedOrigin($payload['origin'])
+                : null;
+            if ($stateOrigin !== null) {
+                return $stateOrigin;
             }
         }
 
-        $allowedPatterns = array_values(array_filter(
-            array_map('trim', (array) config('cors.allowed_origins_patterns', [])),
-            static fn (string $pattern): bool => $pattern !== ''
-        ));
+        $allowedOrigins = $this->configuredAllowedOrigins();
+        $allowedPatterns = $this->configuredAllowedOriginPatterns();
 
         $configuredFrontend = $this->parseValidHttpOrigin((string) config('services.google.frontend_url', ''));
         if ($configuredFrontend !== null) {
@@ -542,6 +588,52 @@ class GoogleOAuthService
         }
 
         return 'http://localhost:5173';
+    }
+
+    private function validateAllowedOrigin(string $origin): ?string
+    {
+        $normalized = $this->parseValidHttpOrigin($origin);
+        if ($normalized === null) {
+            return null;
+        }
+
+        $allowedOrigins = $this->configuredAllowedOrigins();
+        $allowedPatterns = $this->configuredAllowedOriginPatterns();
+
+        if ($allowedOrigins === [] && $allowedPatterns === []) {
+            $configuredFrontend = $this->parseValidHttpOrigin((string) config('services.google.frontend_url', ''));
+
+            return $configuredFrontend !== null && $normalized === $configuredFrontend ? $normalized : null;
+        }
+
+        return $this->isOriginAllowed($normalized, $allowedOrigins, $allowedPatterns) ? $normalized : null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function configuredAllowedOrigins(): array
+    {
+        $allowedOrigins = [];
+        foreach ((array) config('cors.allowed_origins', []) as $origin) {
+            $normalized = $this->parseValidHttpOrigin((string) $origin);
+            if ($normalized !== null) {
+                $allowedOrigins[] = $normalized;
+            }
+        }
+
+        return $allowedOrigins;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function configuredAllowedOriginPatterns(): array
+    {
+        return array_values(array_filter(
+            array_map('trim', (array) config('cors.allowed_origins_patterns', [])),
+            static fn (string $pattern): bool => $pattern !== ''
+        ));
     }
 
     private function parseValidHttpOrigin(string $url): ?string
@@ -625,6 +717,11 @@ class GoogleOAuthService
     private function stateCacheKey(string $nonce): string
     {
         return 'google_oauth_state:'.hash('sha256', $nonce);
+    }
+
+    private function stateConsumedCacheKey(string $nonce): string
+    {
+        return 'google_oauth_state_consumed:'.hash('sha256', $nonce);
     }
 
     private function codeCacheKey(string $code): string

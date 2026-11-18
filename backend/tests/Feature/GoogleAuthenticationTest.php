@@ -866,6 +866,73 @@ PEM;
             ->assertJsonPath('error', 'Google sign-in is not configured on this server.');
     }
 
+    public function test_initiating_allowed_frontend_origin_is_preserved_and_signed_state_recovers_from_cache_miss_once(): void
+    {
+        Http::preventStrayRequests();
+
+        config([
+            'services.google.frontend_url' => 'http://localhost:5174',
+            'cors.allowed_origins' => [
+                'http://localhost:5173',
+                'http://127.0.0.1:5173',
+                'http://localhost:5174',
+                'http://127.0.0.1:5174',
+            ],
+        ]);
+
+        $user = User::factory()->create([
+            'name' => 'Maria Santos',
+            'email' => 'maria@gmail.com',
+            'role' => 'nurse_vaccinator',
+            'is_active' => true,
+            'approval_status' => 'approved',
+        ]);
+
+        // 1. Initiating from allowed origin http://localhost:5173 redirects back to http://localhost:5173/login
+        $redirect5173 = $this->getJson('/api/auth/google/redirect?origin='.urlencode('http://localhost:5173'))
+            ->assertOk();
+        $state5173 = (string) $redirect5173->json('state');
+
+        $this->get('/api/auth/google/callback?code=code-5173&state='.urlencode($state5173))
+            ->assertRedirect('http://localhost:5173/login?code=code-5173&state='.rawurlencode($state5173));
+
+        // 2. Initiating from an unallowed origin ignores the untrusted origin and uses configured safe origin
+        $redirectEvil = $this->getJson('/api/auth/google/redirect?origin='.urlencode('https://evil.example.com'))
+            ->assertOk();
+        $stateEvil = (string) $redirectEvil->json('state');
+
+        $this->get('/api/auth/google/callback?code=code-evil&state='.urlencode($stateEvil))
+            ->assertRedirect('http://localhost:5174/login?code=code-evil&state='.rawurlencode($stateEvil));
+
+        // 2b. Even if services.google.frontend_url is misconfigured outside cors.allowed_origins, passing it as ?origin cannot bypass the allowlist
+        config(['services.google.frontend_url' => 'https://misconfigured.example.com']);
+        $redirectMisconfigured = $this->getJson('/api/auth/google/redirect?origin='.urlencode('https://misconfigured.example.com'))
+            ->assertOk();
+        $stateMisconfigured = (string) $redirectMisconfigured->json('state');
+
+        $this->get('/api/auth/google/callback?code=code-misconfig&state='.urlencode($stateMisconfigured))
+            ->assertRedirect('http://localhost:5173/login?code=code-misconfig&state='.rawurlencode($stateMisconfigured));
+        config(['services.google.frontend_url' => 'http://localhost:5174']);
+
+        // 3. Even if initial state cache entry is cleared before callback, encrypted PKCE verifier in signed state succeeds once and blocks replay
+        Cache::flush();
+        $this->fakeGoogleOAuthSuccess('maria@gmail.com', 'sub-maria-origin');
+
+        $this->postJson('/api/auth/google/callback', [
+            'code' => 'code-5173',
+            'state' => $state5173,
+        ])->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('user.id', $user->id);
+
+        // Replay of the same state is rejected
+        $this->postJson('/api/auth/google/callback', [
+            'code' => 'code-5173-replay',
+            'state' => $state5173,
+        ])->assertStatus(401)
+            ->assertJsonPath('error', 'Invalid or expired Google authentication state. Please try signing in again.');
+    }
+
     private function requestGoogleRedirectState(): string
     {
         return $this->requestGoogleRedirectDetails()['state'];

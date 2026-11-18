@@ -79,8 +79,9 @@ export function Login() {
     }
     processedOAuthCallbackRef.current = true;
 
-    const expectedState = sessionStorage.getItem(GOOGLE_OAUTH_STATE_STORAGE_KEY);
+    const expectedState = sessionStorage.getItem(GOOGLE_OAUTH_STATE_STORAGE_KEY) || localStorage.getItem(GOOGLE_OAUTH_STATE_STORAGE_KEY);
     sessionStorage.removeItem(GOOGLE_OAUTH_STATE_STORAGE_KEY);
+    localStorage.removeItem(GOOGLE_OAUTH_STATE_STORAGE_KEY);
 
     window.history.replaceState({}, document.title, window.location.pathname);
 
@@ -197,6 +198,7 @@ export function Login() {
         }
         if (oauthState) {
           sessionStorage.setItem(GOOGLE_OAUTH_STATE_STORAGE_KEY, oauthState);
+          localStorage.setItem(GOOGLE_OAUTH_STATE_STORAGE_KEY, oauthState);
         }
         window.location.assign(result.authUrl);
         return;

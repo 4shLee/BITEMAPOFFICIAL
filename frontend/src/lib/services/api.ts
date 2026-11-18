@@ -299,7 +299,9 @@ export const authAPI = {
   },
 
   async getGoogleAuthUrl() {
-    return apiRequest('/auth/google/redirect', {
+    const origin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : '';
+    const query = origin ? '?origin=' + encodeURIComponent(origin) : '';
+    return apiRequest('/auth/google/redirect' + query, {
       method: 'GET',
     }, false);
   },
