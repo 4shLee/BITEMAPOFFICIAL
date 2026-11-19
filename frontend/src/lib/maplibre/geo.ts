@@ -67,8 +67,9 @@ export function loadDigosBoundaries(): Promise<BarangayBoundaries> {
       })
       .then((collection) => ({
         type: 'FeatureCollection' as const,
-        features: collection.features.flatMap((feature) => {
-          const name = barangayNameByPsgc.get(feature.properties.psgc_code);
+        features: (Array.isArray(collection?.features) ? collection.features : []).flatMap((feature) => {
+          const psgcCode = feature?.properties?.psgc_code;
+          const name = psgcCode ? barangayNameByPsgc.get(psgcCode) : undefined;
           return name ? [{ ...feature, properties: { ...feature.properties, name } }] : [];
         }),
       }))

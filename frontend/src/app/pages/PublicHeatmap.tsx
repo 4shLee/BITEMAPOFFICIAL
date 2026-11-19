@@ -22,7 +22,7 @@ import { publicAPI } from '../../lib/services/api';
 import { getDefaultPathForRole, getStoredUser, hasAuthSession } from '../../lib/auth/roleAccess';
 import { AnimatedGISBackground } from '../components/Brand/AnimatedGISBackground';
 import { BITEMAP_FONT_FAMILY, BITEMAP_LOGO_SRC } from '../components/Brand/brand';
-import { DIGOS_CENTER } from '../../data/digos-geography';
+import { DIGOS_BARANGAY_POINTS, DIGOS_CENTER } from '../../data/digos-geography';
 import { DIGOS_MAX_BOUNDS } from '../../lib/maplibre/basemap';
 import { loadDigosBoundaries, validLatitude, validLongitude, type BarangayBoundaries } from '../../lib/maplibre/geo';
 import { useMapLibre } from '../../lib/maplibre/useMapLibre';
@@ -70,10 +70,11 @@ type Filters = {
 const now = new Date();
 const currentYear = now.getFullYear();
 const currentMonth = now.getMonth() + 1;
+const initialMaxMonth = Math.max(3, currentMonth);
 const initialFilters: Filters = {
   year: String(currentYear),
   monthStart: '1',
-  monthEnd: String(currentMonth),
+  monthEnd: String(initialMaxMonth),
   riskLevel: 'All',
   animalType: 'All',
 };
@@ -87,6 +88,251 @@ const RISK_STYLES: Record<RiskLevel, { color: string; label: string }> = {
 };
 
 const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+function getMonthName(monthNumber: number): string {
+  const index = Math.max(0, Math.min(months.length - 1, Math.trunc(monthNumber) - 1));
+  return months[index] ?? 'January';
+}
+
+function classifyCountRisk(count: number, suppressed: boolean): RiskLevel {
+  if (count <= 0) return 'NO DATA';
+  if (suppressed || count < 5) return 'SUPPRESSED';
+  if (count <= 10) return 'LOW';
+  if (count <= 20) return 'MODERATE';
+  return 'HIGH';
+}
+
+function normalizeRiskLevel(rawRisk: unknown, count?: number | null, suppressed?: boolean): RiskLevel {
+  if (suppressed) return 'SUPPRESSED';
+  if (typeof count === 'number' && Number.isFinite(count)) {
+    return classifyCountRisk(count, Boolean(suppressed));
+  }
+
+  if (typeof rawRisk === 'string') {
+    const cleaned = rawRisk.trim().toUpperCase().replace(/\s+RISK$/, '');
+    if (cleaned === 'LOW' || cleaned === 'MODERATE' || cleaned === 'HIGH' || cleaned === 'SUPPRESSED' || cleaned === 'NO DATA') {
+      return cleaned;
+    }
+    if (cleaned === 'MEDIUM') return 'MODERATE';
+    if (cleaned === 'NONE' || cleaned === 'NODATA') return 'NO DATA';
+  }
+
+  return 'NO DATA';
+}
+
+function getRiskStyle(riskLevel: unknown): { color: string; label: string } {
+  if (typeof riskLevel === 'string' && riskLevel in RISK_STYLES) {
+    return RISK_STYLES[riskLevel as RiskLevel];
+  }
+  return RISK_STYLES[normalizeRiskLevel(riskLevel)];
+}
+
+function normalizePublicHeatmapResponse(raw: unknown, filters: Filters): PublicHeatmapResponse {
+  const record = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const rawItems = Array.isArray(record.data) ? record.data : [];
+  const hasServerSummary = Boolean(record.summary && typeof record.summary === 'object');
+
+  const parsedItems = rawItems.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return [];
+    const item = entry as Record<string, unknown>;
+    const name = typeof item.barangay_name === 'string' ? item.barangay_name.trim() : '';
+    if (!name) return [];
+
+    const fallbackCoords = DIGOS_BARANGAY_POINTS[name];
+    const latitude = validLatitude(item.latitude) ?? fallbackCoords?.lat ?? null;
+    const longitude = validLongitude(item.longitude) ?? fallbackCoords?.lng ?? null;
+    if (latitude === null || longitude === null) return [];
+
+    const rawTotalCount =
+      typeof item.total_incident_count === 'number' && Number.isFinite(item.total_incident_count)
+        ? item.total_incident_count
+        : typeof item.total_incidents === 'number' && Number.isFinite(item.total_incidents)
+          ? item.total_incidents
+          : typeof item.incident_count === 'number' && Number.isFinite(item.incident_count)
+            ? item.incident_count
+            : null;
+
+    const suppressed =
+      typeof item.suppressed === 'boolean'
+        ? item.suppressed
+        : rawTotalCount !== null && rawTotalCount > 0 && rawTotalCount < 5;
+
+    const effectiveCount = rawTotalCount ?? (suppressed ? null : 0);
+    const riskLevel = normalizeRiskLevel(item.risk_level, rawTotalCount, suppressed);
+
+    const countLabel =
+      typeof item.count_label === 'string' && item.count_label.trim() !== ''
+        ? item.count_label
+        : suppressed
+          ? 'Fewer than 5 incidents'
+          : (effectiveCount ?? 0) <= 0
+            ? 'No recorded data'
+            : `${effectiveCount} incidents`;
+
+    const rawAnimal =
+      typeof item.most_common_animal === 'string'
+        ? item.most_common_animal
+        : typeof item.top_animal_type === 'string'
+          ? item.top_animal_type
+          : null;
+    const mostCommonAnimal =
+      !suppressed && (effectiveCount === null || effectiveCount > 0) && rawAnimal && rawAnimal !== 'N/A'
+        ? rawAnimal
+        : null;
+
+    const incidentRate =
+      typeof item.incident_rate_per_1000 === 'number' && Number.isFinite(item.incident_rate_per_1000)
+        ? item.incident_rate_per_1000
+        : null;
+
+    const comparison =
+      typeof item.comparison_to_city_average === 'number' && Number.isFinite(item.comparison_to_city_average)
+        ? item.comparison_to_city_average
+        : null;
+
+    const pepRate =
+      typeof item.pep_compliance_rate === 'number' && Number.isFinite(item.pep_compliance_rate)
+        ? item.pep_compliance_rate
+        : null;
+
+    return [{
+      barangay_name: name,
+      latitude,
+      longitude,
+      incident_count: suppressed ? null : (effectiveCount ?? 0),
+      count_label: countLabel,
+      suppressed,
+      risk_level: riskLevel,
+      incident_rate_per_1000: suppressed ? null : incidentRate,
+      most_common_animal: mostCommonAnimal,
+      comparison_to_city_average: suppressed ? null : comparison,
+      _rawCount: rawTotalCount ?? (suppressed ? 1 : 0),
+      _pepRate: pepRate,
+    }];
+  });
+
+  // If the backend returned a legacy payload (only barangays with incidents, no summary object),
+  // expand to all 26 Digos barangays and compute the privacy-safe summary client-side.
+  const recordedItems = parsedItems.filter((item) => item._rawCount > 0 || item.suppressed);
+  const cityTotal = recordedItems.reduce((sum, item) => sum + item._rawCount, 0);
+  const recordedCount = recordedItems.length;
+  const cityAverage = recordedCount > 0 ? Math.round((cityTotal / recordedCount) * 10) / 10 : 0;
+
+  let fullList: PublicBarangayAggregate[];
+  if (!hasServerSummary) {
+    const byName = new Map(parsedItems.map((item) => [item.barangay_name, item]));
+    const allNames = Object.keys(DIGOS_BARANGAY_POINTS).sort((a, b) => a.localeCompare(b));
+    fullList = allNames.map((name) => {
+      const existing = byName.get(name);
+      if (existing) {
+        const { _rawCount, _pepRate, ...clean } = existing;
+        void _pepRate;
+        return {
+          ...clean,
+          comparison_to_city_average:
+            clean.suppressed || _rawCount <= 0
+              ? null
+              : clean.comparison_to_city_average ?? Math.round((_rawCount - cityAverage) * 10) / 10,
+        };
+      }
+      const coords = DIGOS_BARANGAY_POINTS[name];
+      return {
+        barangay_name: name,
+        latitude: coords.lat,
+        longitude: coords.lng,
+        incident_count: 0,
+        count_label: 'No recorded data',
+        suppressed: false,
+        risk_level: 'NO DATA',
+        incident_rate_per_1000: null,
+        most_common_animal: null,
+        comparison_to_city_average: null,
+      };
+    });
+
+    const requestedRisk = filters.riskLevel.trim().toUpperCase();
+    if (requestedRisk && requestedRisk !== 'ALL') {
+      fullList = fullList.filter((b) => b.risk_level === requestedRisk);
+    }
+  } else {
+    fullList = parsedItems.map(({ _rawCount, _pepRate, ...clean }) => {
+      void _rawCount;
+      void _pepRate;
+      return clean;
+    });
+  }
+
+  const highestItem = [...recordedItems].sort((a, b) => b._rawCount - a._rawCount)[0] ?? null;
+  const pepItems = recordedItems.filter((item) => item._pepRate !== null && item._rawCount > 0);
+  const weightedPep =
+    pepItems.length > 0 && cityTotal > 0
+      ? Math.round(
+          (pepItems.reduce((acc, item) => acc + (item._pepRate ?? 0) * item._rawCount, 0) / cityTotal) * 10,
+        ) / 10
+      : null;
+
+  const rawSummary = (record.summary && typeof record.summary === 'object' ? record.summary : null) as Record<string, unknown> | null;
+  const summary = {
+    total_incidents:
+      rawSummary && typeof rawSummary.total_incidents === 'number'
+        ? rawSummary.total_incidents
+        : cityTotal >= 5
+          ? cityTotal
+          : null,
+    total_incidents_label:
+      rawSummary && typeof rawSummary.total_incidents_label === 'string'
+        ? rawSummary.total_incidents_label
+        : cityTotal > 0 && cityTotal < 5
+          ? 'Fewer than 5 incidents'
+          : cityTotal === 0
+            ? 'No recorded data'
+            : `${cityTotal} incidents`,
+    barangays_with_recorded_incidents:
+      rawSummary && typeof rawSummary.barangays_with_recorded_incidents === 'number'
+        ? rawSummary.barangays_with_recorded_incidents
+        : recordedCount,
+    highest_reported_barangay:
+      rawSummary && typeof rawSummary.highest_reported_barangay === 'string'
+        ? rawSummary.highest_reported_barangay
+        : highestItem?.barangay_name ?? null,
+    pep_completion_rate:
+      rawSummary && typeof rawSummary.pep_completion_rate === 'number'
+        ? rawSummary.pep_completion_rate
+        : weightedPep,
+    city_average_incidents:
+      rawSummary && typeof rawSummary.city_average_incidents === 'number'
+        ? rawSummary.city_average_incidents
+        : recordedCount > 0
+          ? cityAverage
+          : null,
+  };
+
+  const fromMonth = Math.max(1, Math.min(12, Number(filters.monthStart) || 1));
+  const toMonth = Math.max(fromMonth, Math.min(12, Number(filters.monthEnd) || initialMaxMonth));
+  const reportingYear = Number(filters.year) || currentYear;
+  const rawPeriod = (record.reporting_period && typeof record.reporting_period === 'object' ? record.reporting_period : null) as Record<string, unknown> | null;
+
+  const reportingPeriod = {
+    year: rawPeriod && typeof rawPeriod.year === 'number' ? rawPeriod.year : reportingYear,
+    month_start: rawPeriod && typeof rawPeriod.month_start === 'number' ? rawPeriod.month_start : fromMonth,
+    month_end: rawPeriod && typeof rawPeriod.month_end === 'number' ? rawPeriod.month_end : toMonth,
+    label:
+      rawPeriod && typeof rawPeriod.label === 'string' && rawPeriod.label.trim() !== ''
+        ? rawPeriod.label
+        : `${getMonthName(fromMonth)}–${getMonthName(toMonth)} ${reportingYear}`,
+  };
+
+  return {
+    success: Boolean(record.success),
+    reporting_period: reportingPeriod,
+    classification_basis:
+      typeof record.classification_basis === 'string'
+        ? record.classification_basis
+        : 'Case count: Low 5–10, Moderate 11–20, High 21+. Counts below 5 are suppressed.',
+    summary,
+    data: fullList,
+  };
+}
 
 function LoadingCard() {
   return <div className="animate-pulse rounded-2xl border border-slate-200 bg-white p-4"><div className="mb-4 h-9 w-9 rounded-xl bg-slate-200" /><div className="mb-2 h-6 w-24 rounded bg-slate-200" /><div className="h-3 w-36 max-w-full rounded bg-slate-100" /></div>;
@@ -131,14 +377,15 @@ export function PublicHeatmap() {
     setIsLoading(true);
     setError('');
     try {
-      const result = await publicAPI.getHeatmap({
+      const rawResult = await publicAPI.getHeatmap({
         year: filters.year,
         month_start: filters.monthStart,
         month_end: filters.monthEnd,
         risk_level: filters.riskLevel,
         animal_type: filters.animalType,
-      }) as PublicHeatmapResponse;
+      });
 
+      const result = normalizePublicHeatmapResponse(rawResult, filters);
       if (!result.success) throw new Error('Public map request failed.');
       setResponse(result);
       setSelectedBarangay((current) => current && result.data?.some((item) => item.barangay_name === current) ? current : null);
@@ -218,7 +465,7 @@ export function PublicHeatmap() {
     });
   };
 
-  const selectedYearMaxMonth = Number(filters.year) === currentYear ? currentMonth : 12;
+  const selectedYearMaxMonth = Number(filters.year) === currentYear ? initialMaxMonth : 12;
   const startMonthOptions = months.slice(0, Math.max(1, selectedYearMaxMonth - 2));
   const endMonthOptions = months.slice(Number(filters.monthStart) + 1, selectedYearMaxMonth);
 
@@ -226,7 +473,7 @@ export function PublicHeatmap() {
     setFilters((current) => {
       const next = { ...current, [key]: value };
       if (key === 'year') {
-        const maxMonth = Number(value) === currentYear ? currentMonth : 12;
+        const maxMonth = Number(value) === currentYear ? initialMaxMonth : 12;
         next.monthStart = '1';
         next.monthEnd = String(maxMonth);
       }
@@ -283,7 +530,7 @@ export function PublicHeatmap() {
           </section>
 
           <section aria-labelledby="map-summary-title" className="mb-5">
-            <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between"><h2 id="map-summary-title" className="text-lg font-extrabold text-slate-900">Aggregated public summary</h2><p className="text-sm font-bold text-teal-700">{response?.reporting_period?.label || `${months[Number(filters.monthStart)-1]}–${months[Number(filters.monthEnd)-1]} ${filters.year}`}</p></div>
+            <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between"><h2 id="map-summary-title" className="text-lg font-extrabold text-slate-900">Aggregated public summary</h2><p className="text-sm font-bold text-teal-700">{response?.reporting_period?.label || `${getMonthName(Number(filters.monthStart))}–${getMonthName(Number(filters.monthEnd))} ${filters.year}`}</p></div>
             {isLoading ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><LoadingCard /><LoadingCard /><LoadingCard /><LoadingCard /></div> : error ? <div className="rounded-2xl border border-rose-200 bg-white p-5"><div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center"><div><p className="font-extrabold text-slate-900">Unable to load aggregated map data</p><p className="mt-1 text-sm text-slate-600">{error}</p></div><button type="button" onClick={() => setRetryKey((key) => key + 1)} className="inline-flex h-10 items-center gap-2 rounded-full bg-teal-700 px-5 text-sm font-extrabold text-white hover:bg-teal-800"><RefreshCw className="h-4 w-4" /> Retry</button></div></div> : !hasRecordedData ? <div className="rounded-2xl border border-slate-200 bg-white p-7 text-center"><Activity className="mx-auto h-7 w-7 text-teal-600" /><p className="mt-2 font-extrabold">No data available</p><p className="mt-1 text-sm text-slate-500">No aggregated records are available for the selected broad reporting period.</p></div> : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{[
               ['Total Recorded Incidents', summary?.total_incidents_label || 'No data', Activity],
               ['Barangays with Recorded Incidents', String(summary?.barangays_with_recorded_incidents ?? 0), MapPin],
@@ -359,7 +606,7 @@ export function PublicHeatmap() {
                         <option value="">-- Jump to a barangay ({visibleData.length}) --</option>
                         {visibleData.map((item) => (
                           <option key={item.barangay_name} value={item.barangay_name}>
-                            {item.barangay_name} ({RISK_STYLES[item.risk_level]?.label ?? item.risk_level})
+                            {item.barangay_name} ({getRiskStyle(item.risk_level).label})
                           </option>
                         ))}
                       </select>
@@ -378,9 +625,9 @@ export function PublicHeatmap() {
                         </div>
                         <span
                           className="rounded-full px-3 py-1 text-xs font-extrabold text-white"
-                          style={{ backgroundColor: RISK_STYLES[selected.risk_level].color }}
+                          style={{ backgroundColor: getRiskStyle(selected.risk_level).color }}
                         >
-                          {RISK_STYLES[selected.risk_level].label}
+                          {getRiskStyle(selected.risk_level).label}
                         </span>
                       </div>
                     </div>
@@ -403,7 +650,7 @@ export function PublicHeatmap() {
                     <div className="space-y-2.5 border-t border-slate-100 pt-3">
                       <div className="flex items-center justify-between gap-3 text-sm">
                         <span className="text-slate-500">Risk level</span>
-                        <strong>{RISK_STYLES[selected.risk_level].label}</strong>
+                        <strong>{getRiskStyle(selected.risk_level).label}</strong>
                       </div>
                       <div className="flex items-center justify-between gap-3 text-sm">
                         <span className="text-slate-500">City comparison</span>
@@ -438,7 +685,7 @@ export function PublicHeatmap() {
                         >
                           <span className="font-bold text-slate-800">{b.barangay_name}</span>
                           <span className="flex items-center gap-1.5">
-                            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: RISK_STYLES[b.risk_level].color }} />
+                            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: getRiskStyle(b.risk_level).color }} />
                             <span className="font-semibold text-slate-500">{b.count_label}</span>
                           </span>
                         </button>

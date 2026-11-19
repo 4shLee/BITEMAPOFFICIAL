@@ -78,6 +78,7 @@ export function addPublicLayers(map: maplibregl.Map) {
     minzoom: 11,
     layout: {
       'text-field': ['get', 'name'],
+      'text-font': ['Open Sans Semibold'],
       'text-size': ['case', ['get', 'selected'], 12, 10.5],
       'text-offset': [0, 1.2],
       'text-anchor': 'top',
@@ -132,7 +133,14 @@ export function registerPublicInteractions(map: maplibregl.Map, onSelect: () => 
   const tooltip = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12 });
   const layers = ['public-points', 'public-fill'];
 
-  const top = (point: maplibregl.PointLike) => map.queryRenderedFeatures(point, { layers })[0];
+  const top = (point: maplibregl.PointLike) => {
+    try {
+      const activeLayers = layers.filter((id) => Boolean(map.getLayer(id)));
+      return activeLayers.length ? map.queryRenderedFeatures(point, { layers: activeLayers })[0] : undefined;
+    } catch {
+      return undefined;
+    }
+  };
 
   const onMove = (event: maplibregl.MapMouseEvent) => {
     const feature = top(event.point);

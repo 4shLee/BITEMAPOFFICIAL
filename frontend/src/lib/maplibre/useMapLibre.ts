@@ -20,14 +20,20 @@ export function useMapLibre(containerRef: RefObject<HTMLDivElement | null>, opti
     if (!container) return;
 
     let isCancelled = false;
+    let instance: maplibregl.Map;
 
-    const instance = new maplibregl.Map({
-      ...optionsRef.current,
-      container,
-      style: BASEMAP_STYLE,
-      attributionControl: { compact: true },
-    });
-    instance.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+    try {
+      instance = new maplibregl.Map({
+        ...optionsRef.current,
+        container,
+        style: BASEMAP_STYLE,
+        attributionControl: { compact: true },
+      });
+      instance.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+    } catch {
+      setBasemapError('Interactive map could not be initialized on this browser or device.');
+      return;
+    }
 
     instance.on('error', (event) => {
       const sourceId = (event as { sourceId?: string }).sourceId;
