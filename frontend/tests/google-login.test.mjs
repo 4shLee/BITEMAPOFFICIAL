@@ -63,3 +63,14 @@ test('Unregistered Google account redirects to Request Access with prefilled ema
   assert.match(requestAccessSource, /googleUnregisteredNotice/);
   assert.match(requestAccessSource, /authAPI\.signUp\(/);
 });
+
+test('Login page provides Forgot password modal with Google sign-in and administrator recovery guidance', () => {
+  assert.match(loginSource, /Forgot password\?/);
+  assert.match(loginSource, /showForgotPasswordModal/);
+  assert.match(loginSource, /Forgot Password\?/);
+  assert.match(loginSource, /Choose how you'd like to regain access to your staff account\./);
+  assert.match(loginSource, /Use your registered BITEMAP Google account\./);
+  assert.match(loginSource, /Contact an Administrator/);
+  assert.match(loginSource, /Ask your Clinic Administrator or System Administrator to reset your password\./);
+  assert.doesNotMatch(loginSource, /role="dialog"[\s\S]*backdrop-blur/);
+});

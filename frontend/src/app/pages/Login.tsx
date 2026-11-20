@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router";
-import { AlertCircle, ArrowRight, Eye, EyeOff, Globe2, Lock, Mail, ShieldAlert, Zap } from "lucide-react";
+import { AlertCircle, ArrowRight, Eye, EyeOff, Globe2, KeyRound, Lock, Mail, ShieldAlert, UserCheck, X, Zap } from "lucide-react";
 import { ApiError, authAPI, getErrorMessage } from "../../lib/services/api";
 import { getDefaultPathForRole, getStoredUser, hasAuthSession } from "../../lib/auth/roleAccess";
 import { toast } from "sonner";
@@ -39,10 +39,13 @@ export function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
+  const [signInCardMinHeight, setSignInCardMinHeight] = useState<number | undefined>(undefined);
+  const signInCardRef = useRef<HTMLElement>(null);
   const processedOAuthCallbackRef = useRef(false);
 
   useEffect(() => {
@@ -51,6 +54,33 @@ export function Login() {
       navigate(getDefaultPathForRole(user.role), { replace: true });
     }
   }, [navigate]);
+
+  useEffect(() => {
+    if (!showForgotPasswordModal) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setShowForgotPasswordModal(false);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [showForgotPasswordModal]);
+
+  useEffect(() => {
+    const updateCardHeight = () => {
+      if (signInCardRef.current) {
+        setSignInCardMinHeight(signInCardRef.current.offsetHeight);
+      }
+    };
+
+    updateCardHeight();
+    window.addEventListener("resize", updateCardHeight);
+    return () => window.removeEventListener("resize", updateCardHeight);
+  }, [showForgotPasswordModal, authError, cooldownSeconds]);
 
   useEffect(() => {
     if (cooldownSeconds <= 0) {
@@ -274,7 +304,10 @@ export function Login() {
       <main
         className="relative z-10 overflow-hidden flex-1 min-h-0 flex items-center justify-center px-4 py-3 sm:py-4 [@media(max-height:760px)]:py-2"
       >
-        <section className="relative w-full max-w-[440px] rounded-[28px] border border-white/85 bg-white/95 px-6 py-7 shadow-[0_22px_70px_rgba(15,118,110,0.24)] backdrop-blur-md sm:px-10 sm:py-8 [@media(max-height:760px)]:py-5">
+        <section
+          ref={signInCardRef}
+          className="relative w-full max-w-[440px] rounded-[28px] border border-white/85 bg-white/95 px-6 py-7 shadow-[0_22px_70px_rgba(15,118,110,0.24)] backdrop-blur-md sm:px-10 sm:py-8 [@media(max-height:760px)]:py-5"
+        >
           <div className="mb-4 text-center [@media(max-height:760px)]:mb-3">
             <div className="mx-auto flex h-14 w-14 sm:h-16 sm:w-16 items-center justify-center rounded-full bg-teal-50 shadow-inner shadow-teal-900/5 [@media(max-height:760px)]:h-12 [@media(max-height:760px)]:w-12">
               <img src={BITEMAP_LOGO_SRC} alt="BITEMAP logo" className="h-10 w-10 sm:h-12 sm:w-12 object-contain [@media(max-height:760px)]:h-9 [@media(max-height:760px)]:w-9" />
@@ -359,6 +392,15 @@ export function Login() {
                       className="absolute inset-y-0 right-5 flex items-center text-slate-500 transition-colors hover:text-slate-800"
                     >
                       {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
+                  </div>
+                  <div className="mt-1.5 flex justify-end px-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowForgotPasswordModal(true)}
+                      className="text-[13px] font-semibold text-teal-700 transition-colors hover:text-teal-900 hover:underline focus:outline-none"
+                    >
+                      Forgot password?
                     </button>
                   </div>
                 </div>
@@ -448,6 +490,125 @@ export function Login() {
           </div>
         </div>
       </footer>
+
+      {showForgotPasswordModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="forgot-password-title"
+          className="fixed inset-0 z-50 flex flex-col bg-slate-950/35"
+          onClick={() => setShowForgotPasswordModal(false)}
+        >
+          <div aria-hidden="true" className="invisible flex-shrink-0 border-b border-slate-200/70">
+            <div className="mx-auto max-w-7xl px-5 py-2 sm:px-8 [@media(max-height:640px)]:py-1">
+              <div className="h-10 sm:h-12 [@media(max-height:640px)]:h-8" />
+            </div>
+          </div>
+
+          <div className="flex flex-1 min-h-0 items-center justify-center px-4 py-3 sm:py-4 [@media(max-height:760px)]:py-2">
+            <section
+              style={signInCardMinHeight ? { minHeight: `${signInCardMinHeight}px` } : undefined}
+              className="relative flex w-full max-w-[440px] flex-col justify-between rounded-[28px] border border-white/85 bg-white px-6 py-7 shadow-[0_22px_70px_rgba(15,118,110,0.24)] sm:px-10 sm:py-8 [@media(max-height:760px)]:py-5"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => setShowForgotPasswordModal(false)}
+                aria-label="Close password recovery dialog"
+                className="absolute right-5 top-5 flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              >
+                <X className="h-4 w-4" />
+              </button>
+
+              <div>
+                <div className="mb-4 text-center [@media(max-height:760px)]:mb-3">
+                  <div className="mx-auto flex h-14 w-14 sm:h-16 sm:w-16 items-center justify-center rounded-full bg-teal-50 text-teal-700 shadow-inner shadow-teal-900/5 [@media(max-height:760px)]:h-12 [@media(max-height:760px)]:w-12">
+                    <KeyRound className="h-6 w-6 sm:h-7 sm:w-7" />
+                  </div>
+                </div>
+
+                <div className="mb-6 text-center [@media(max-height:760px)]:mb-4">
+                  <h3 id="forgot-password-title" className="text-[24px] font-extrabold leading-tight text-slate-900 sm:text-[26px]">
+                    Forgot Password?
+                  </h3>
+                  <p className="mt-1 text-[14px] font-medium text-slate-500">
+                    Choose how you'd like to regain access to your staff account.
+                  </p>
+                </div>
+              </div>
+
+              <div className="my-auto space-y-4 py-1">
+                <div>
+                  <div className="mb-3 flex items-start gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100">
+                      <GoogleLogoIcon />
+                    </div>
+                    <div>
+                      <p className="text-[14px] font-bold leading-snug text-slate-900">
+                        Continue with Google
+                      </p>
+                      <p className="mt-0.5 text-[13px] font-medium text-slate-500">
+                        Use your registered BITEMAP Google account.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowForgotPasswordModal(false);
+                      void handleGoogleSignIn();
+                    }}
+                    disabled={isLoading || isGoogleLoading || cooldownSeconds > 0}
+                    className="flex h-12 w-full items-center justify-center gap-3 rounded-full border border-slate-200 bg-white px-5 text-[15px] font-bold text-slate-700 shadow-sm shadow-slate-900/5 transition-colors hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-500/35 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <GoogleLogoIcon />
+                    <span>Continue with Google</span>
+                  </button>
+                </div>
+
+                <div className="relative my-4 flex items-center">
+                  <div className="flex-grow border-t border-slate-200" />
+                  <span className="mx-3 shrink-0 text-[12px] font-semibold uppercase tracking-wider text-slate-400">
+                    or
+                  </span>
+                  <div className="flex-grow border-t border-slate-200" />
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-teal-50 text-teal-700">
+                    <UserCheck className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-[14px] font-bold leading-snug text-slate-900">
+                      Contact an Administrator
+                    </p>
+                    <p className="mt-0.5 text-[13px] font-medium leading-relaxed text-slate-500">
+                      Ask your Clinic Administrator or System Administrator to reset your password.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-5">
+                <button
+                  type="button"
+                  onClick={() => setShowForgotPasswordModal(false)}
+                  className="relative h-12 w-full rounded-full border border-transparent bg-gradient-to-r from-teal-800 to-teal-600 text-[15px] font-extrabold text-white shadow-lg shadow-teal-900/20 transition-colors hover:from-teal-900 hover:to-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500/35 focus:ring-offset-2"
+                >
+                  Back to Sign In
+                </button>
+              </div>
+            </section>
+          </div>
+
+          <div aria-hidden="true" className="invisible flex-shrink-0">
+            <div className="max-w-7xl mx-auto px-6 py-2 [@media(max-height:760px)]:py-1.5">
+              <p className="text-[13px]">© 2026 BITEMAP Capstone Project - Cor Jesu College</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
