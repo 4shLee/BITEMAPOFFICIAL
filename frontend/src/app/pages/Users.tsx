@@ -90,93 +90,97 @@ function UserModal({ user, roles, isCurrentUser, onClose, onSave }: { user: User
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-xl border border-border bg-card shadow-xl">
-        <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1100] p-4">
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-card shadow-xl">
+        <div className="px-6 py-3.5 border-b border-border flex items-center justify-between shrink-0">
           <h2 className="text-base font-semibold text-foreground">Edit User</h2>
           <button onClick={onClose} className="p-1.5 hover:bg-muted rounded-lg transition-colors">
             <X className="w-4 h-4 text-muted-foreground" />
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-4 overflow-y-auto p-6">
+        <form onSubmit={handleSubmit} className="space-y-3.5 overflow-y-auto px-6 py-4">
           {!user.first_name && !user.last_name && (
             <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
               Legacy name: <span className="font-semibold text-foreground">{getUserDisplayName(user)}</span>. Add structured fields to modernize this record, or leave them blank to preserve it.
             </div>
           )}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">First Name</label>
+              <input type="text" value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} placeholder="First name" className="w-full px-3 py-2 bg-input-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">Middle Name <span className="font-normal text-xs text-muted-foreground">(opt.)</span></label>
+              <input type="text" value={form.middleName} onChange={e => setForm({ ...form, middleName: e.target.value })} placeholder="Middle name" className="w-full px-3 py-2 bg-input-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">Last Name</label>
+              <input type="text" value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} placeholder="Last name" className="w-full px-3 py-2 bg-input-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">Suffix <span className="font-normal text-xs text-muted-foreground">(opt.)</span></label>
+              <input type="text" value={form.suffix} onChange={e => setForm({ ...form, suffix: e.target.value })} placeholder="Jr., Sr., II, III" className="w-full px-3 py-2 bg-input-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors" />
+            </div>
+          </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">First Name</label>
-              <input type="text" value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} placeholder="First name" className="w-full px-3.5 py-2.5 bg-input-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors" />
+              <label className="block text-sm font-medium text-foreground mb-1">Email Address</label>
+              <input
+                type="email"
+                value={form.email}
+                onChange={e => setForm({ ...form, email: e.target.value })}
+                required
+                placeholder="user@health.gov.ph"
+                className="w-full px-3 py-2 bg-input-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+              />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">Middle Name <span className="font-normal text-muted-foreground">(optional)</span></label>
-              <input type="text" value={form.middleName} onChange={e => setForm({ ...form, middleName: e.target.value })} placeholder="Middle name" className="w-full px-3.5 py-2.5 bg-input-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors" />
+              <label className="block text-sm font-medium text-foreground mb-1">Phone</label>
+              <input
+                type="tel"
+                value={form.phone}
+                onChange={e => setForm({ ...form, phone: e.target.value })}
+                placeholder="09xx xxx xxxx"
+                className="w-full px-3 py-2 bg-input-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">Role</label>
+              <select
+                value={form.role}
+                onChange={e => setForm({ ...form, role: e.target.value })}
+                disabled={isCurrentUser}
+                className="w-full px-3 py-2 bg-input-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+              >
+                {roles.map(role => <option key={role.value} value={role.value}>{role.label}</option>)}
+              </select>
+              {isCurrentUser && (
+                <p className="mt-1 text-xs text-muted-foreground">You cannot change or demote your own role.</p>
+              )}
+              {!isCurrentUser && user?.approval_status === 'pending' && (
+                <p className="mt-1 text-xs text-muted-foreground">You can change the requested role before approving this account.</p>
+              )}
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">Last Name</label>
-              <input type="text" value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} placeholder="Last name" className="w-full px-3.5 py-2.5 bg-input-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors" />
+              <label className="block text-sm font-medium text-foreground mb-1">Status</label>
+              <select
+                value={form.status}
+                onChange={e => setForm({ ...form, status: e.target.value })}
+                disabled={isCurrentUser}
+                className="w-full px-3 py-2 bg-input-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+              >
+                <option value="Active">Active</option>
+                <option value="Inactive">Inactive</option>
+              </select>
+              {isCurrentUser && (
+                <p className="mt-1 text-xs text-muted-foreground">You cannot deactivate your own account.</p>
+              )}
             </div>
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">Suffix <span className="font-normal text-muted-foreground">(optional)</span></label>
-              <input type="text" value={form.suffix} onChange={e => setForm({ ...form, suffix: e.target.value })} placeholder="Jr., Sr., II, III, IV" className="w-full px-3.5 py-2.5 bg-input-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors" />
-            </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1.5">Email Address</label>
-            <input
-              type="email"
-              value={form.email}
-              onChange={e => setForm({ ...form, email: e.target.value })}
-              required
-              placeholder="user@health.gov.ph"
-              className="w-full px-3.5 py-2.5 bg-input-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1.5">Phone</label>
-            <input
-              type="tel"
-              value={form.phone}
-              onChange={e => setForm({ ...form, phone: e.target.value })}
-              placeholder="09xx xxx xxxx"
-              className="w-full px-3.5 py-2.5 bg-input-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1.5">Role</label>
-            <select
-              value={form.role}
-              onChange={e => setForm({ ...form, role: e.target.value })}
-              disabled={isCurrentUser}
-              className="w-full px-3.5 py-2.5 bg-input-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
-            >
-              {roles.map(role => <option key={role.value} value={role.value}>{role.label}</option>)}
-            </select>
-            {isCurrentUser && (
-              <p className="mt-1.5 text-xs text-muted-foreground">You cannot change or demote your own role.</p>
-            )}
-            {!isCurrentUser && user?.approval_status === 'pending' && (
-              <p className="mt-1.5 text-xs text-muted-foreground">You can change the requested role before approving this account.</p>
-            )}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1.5">Status</label>
-            <select
-              value={form.status}
-              onChange={e => setForm({ ...form, status: e.target.value })}
-              disabled={isCurrentUser}
-              className="w-full px-3.5 py-2.5 bg-input-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
-            >
-              <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
-            </select>
-            {isCurrentUser && (
-              <p className="mt-1.5 text-xs text-muted-foreground">You cannot deactivate your own account.</p>
-            )}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1.5">Reset Password</label>
+            <label className="block text-sm font-medium text-foreground mb-1">Reset Password</label>
             <input
               type="password"
               value={form.password}
@@ -185,11 +189,11 @@ function UserModal({ user, roles, isCurrentUser, onClose, onSave }: { user: User
               minLength={MIN_PASSWORD_LENGTH}
               aria-invalid={showPasswordValidationFeedback}
               placeholder="Leave blank to keep current password"
-              className={'w-full px-3.5 py-2.5 bg-input-background border rounded-lg text-sm focus:outline-none focus:ring-2 transition-colors ' + (showPasswordValidationFeedback ? 'border-destructive focus:ring-destructive/30 focus:border-destructive' : 'border-input focus:ring-primary/30 focus:border-primary')}
+              className={'w-full px-3 py-2 bg-input-background border rounded-lg text-sm focus:outline-none focus:ring-2 transition-colors ' + (showPasswordValidationFeedback ? 'border-destructive focus:ring-destructive/30 focus:border-destructive' : 'border-input focus:ring-primary/30 focus:border-primary')}
             />
             <div className="mt-2 rounded-lg border border-border bg-muted/30 p-2.5">
               <p className="text-xs font-semibold text-foreground">Password Requirements:</p>
-              <ul className="mt-1.5 space-y-1">
+              <ul className="mt-1.5 grid grid-cols-1 gap-1 sm:grid-cols-2">
                 {passwordEvaluation.checks.map((rule) => {
                   const isUnmetHighlighted = hasPasswordInput && !rule.met && (passwordTouched || showPasswordValidationFeedback);
                   return (
@@ -215,7 +219,7 @@ function UserModal({ user, roles, isCurrentUser, onClose, onSave }: { user: User
               )}
             </div>
           </div>
-          <div className="flex justify-end gap-3 pt-2">
+          <div className="flex justify-end gap-3 pt-1">
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
             <Button type="submit" variant="primary">Save Changes</Button>
           </div>
