@@ -242,18 +242,18 @@ export function Login() {
 
   return (
     <div
-      className="relative isolate flex min-h-screen flex-col bg-slate-50 overflow-hidden"
+      className="relative isolate flex h-screen max-h-screen h-dvh max-h-dvh flex-col bg-slate-50 overflow-hidden"
       style={{
         fontFamily: BITEMAP_FONT_FAMILY,
       }}
     >
       <AnimatedGISBackground />
 
-      <header className="relative z-10 border-b border-slate-200/70 bg-white">
-        <div className="mx-auto max-w-7xl px-5 py-2 sm:px-8">
+      <header className="relative z-10 flex-shrink-0 border-b border-slate-200/70 bg-white">
+        <div className="mx-auto max-w-7xl px-5 py-2 sm:px-8 [@media(max-height:640px)]:py-1">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <img src={BITEMAP_LOGO_SRC} alt="BITEMAP logo" className="h-10 w-10 object-contain sm:h-12 sm:w-12" />
+              <img src={BITEMAP_LOGO_SRC} alt="BITEMAP logo" className="h-10 w-10 object-contain sm:h-12 sm:w-12 [@media(max-height:640px)]:h-8 [@media(max-height:640px)]:w-8" />
               <div>
                 <h1 className="text-[21px] font-extrabold leading-tight text-teal-800 sm:text-[23px]">BITEMAP</h1>
                 <p className="hidden text-[13px] font-medium leading-tight text-slate-500 sm:block">Animal Bite Incident Tracking and Vaccination Monitoring</p>
@@ -261,7 +261,7 @@ export function Login() {
             </div>
             <Link
               to="/public"
-              className="inline-flex items-center gap-2 rounded-full border border-teal-700/35 bg-white px-4 py-2 text-[13px] font-extrabold text-teal-800 shadow-sm transition-colors hover:border-teal-700 hover:bg-teal-50 sm:px-5 sm:py-2.5 sm:text-[14px]"
+              className="inline-flex items-center gap-2 rounded-full border border-teal-700/35 bg-white px-4 py-2 text-[13px] font-extrabold text-teal-800 shadow-sm transition-colors hover:border-teal-700 hover:bg-teal-50 sm:px-5 sm:py-2.5 sm:text-[14px] [@media(max-height:640px)]:py-1.5"
             >
               <Globe2 className="h-4 w-4" />
               <span className="hidden sm:inline">Back to Public Portal</span>
@@ -272,21 +272,21 @@ export function Login() {
       </header>
 
       <main
-        className="relative z-10 flex min-h-[calc(100vh-108px)] flex-1 items-center justify-center px-4 py-6 sm:py-8"
+        className="relative z-10 overflow-hidden flex-1 min-h-0 flex items-center justify-center px-4 py-3 sm:py-4 [@media(max-height:760px)]:py-2"
       >
-        <section className="relative w-full max-w-[440px] rounded-[28px] border border-white/85 bg-white/95 px-6 py-8 shadow-[0_22px_70px_rgba(15,118,110,0.24)] backdrop-blur-md sm:px-10 sm:py-10">
-          <div className="mb-6 text-center">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-teal-50 shadow-inner shadow-teal-900/5">
-              <img src={BITEMAP_LOGO_SRC} alt="BITEMAP logo" className="h-12 w-12 object-contain" />
+        <section className="relative w-full max-w-[440px] rounded-[28px] border border-white/85 bg-white/95 px-6 py-7 shadow-[0_22px_70px_rgba(15,118,110,0.24)] backdrop-blur-md sm:px-10 sm:py-8 [@media(max-height:760px)]:py-5">
+          <div className="mb-4 text-center [@media(max-height:760px)]:mb-3">
+            <div className="mx-auto flex h-14 w-14 sm:h-16 sm:w-16 items-center justify-center rounded-full bg-teal-50 shadow-inner shadow-teal-900/5 [@media(max-height:760px)]:h-12 [@media(max-height:760px)]:w-12">
+              <img src={BITEMAP_LOGO_SRC} alt="BITEMAP logo" className="h-10 w-10 sm:h-12 sm:w-12 object-contain [@media(max-height:760px)]:h-9 [@media(max-height:760px)]:w-9" />
             </div>
           </div>
 
-          <div className="mb-6 text-center">
+          <div className="mb-5 text-center [@media(max-height:760px)]:mb-4">
             <h2 className="text-[24px] font-extrabold leading-tight text-slate-900 sm:text-[26px]">Staff Sign In</h2>
-            <p className="mt-1.5 text-[14px] font-medium text-slate-500">Access your BITEMAP workspace</p>
+            <p className="mt-1 text-[14px] font-medium text-slate-500">Access your BITEMAP workspace</p>
           </div>
 
-              <form onSubmit={handleSubmit} className="space-y-4">
+              <form onSubmit={handleSubmit} className="space-y-3.5">
                 {cooldownSeconds > 0 && (
                   <div
                     role="alert"
@@ -425,7 +425,7 @@ export function Login() {
                   )}
                 </button>
 
-                <div className="mt-4 text-center">
+                <div className="mt-3 text-center">
                   <Link
                     to="/request-account-approval"
                     className="text-[14px] font-medium text-teal-700 transition-colors hover:text-teal-900 hover:underline focus:outline-none"
@@ -435,14 +435,14 @@ export function Login() {
                 </div>
               </form>
 
-              <p className="mt-6 text-center text-[13px] font-medium text-slate-400">
+              <p className="mt-4 text-center text-[13px] font-medium text-slate-400">
                 Authorized clinic staff only
               </p>
         </section>
       </main>
 
-      <footer className="relative z-10 border-t border-transparent bg-transparent">
-        <div className="max-w-7xl mx-auto px-6 py-2.5">
+      <footer className="relative z-10 flex-shrink-0 border-t border-transparent bg-transparent">
+        <div className="max-w-7xl mx-auto px-6 py-2 [@media(max-height:760px)]:py-1.5">
           <div className="text-center text-[13px] font-semibold text-white drop-shadow">
             <p>© 2026 BITEMAP Capstone Project - Cor Jesu College</p>
           </div>

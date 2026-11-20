@@ -60,7 +60,7 @@ function RequestedRoleDropdown({ value, onChange }: { value: string; onChange: (
             setOpen(true);
           }
         }}
-        className={'flex h-8 w-full items-center justify-between rounded-lg border px-3 py-1 text-left text-[13px] transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20 ' + (open ? 'border-teal-600 bg-white ring-2 ring-teal-500/20' : 'border-slate-200 bg-white/90')}
+        className={'flex h-8 w-full items-center justify-between rounded-lg border px-3 py-1 text-left text-[13px] transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20 [@media(max-height:760px)]:h-7 ' + (open ? 'border-teal-600 bg-white ring-2 ring-teal-500/20' : 'border-slate-200 bg-white/90')}
       >
         <span className={selectedRole ? 'font-medium text-slate-900' : 'text-slate-400'}>
           {selectedRole?.label || 'Select the role you are requesting'}
@@ -240,10 +240,10 @@ export function RequestAccountApproval() {
         </div>
       </header>
 
-      <main className="relative z-10 overflow-hidden flex-1 min-h-0 flex items-center justify-center px-4 py-2 sm:py-3 [@media(max-height:760px)]:py-1.5 [@media(max-height:640px)]:py-0.5">
-        <section className="relative max-h-full w-full max-w-[560px] overflow-y-auto rounded-[24px] border border-slate-100 bg-white/95 px-5 py-2 sm:px-6 sm:py-3 shadow-xl shadow-slate-200/50 backdrop-blur-md [scrollbar-width:thin] [scrollbar-color:rgb(203_213_225)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-transparent">
-          <div className="mb-1 text-center">
-            <img src={BITEMAP_LOGO_SRC} alt="BITEMAP logo" className="mx-auto h-8 w-8 sm:h-9 sm:w-9 object-contain" />
+      <main className="relative z-10 overflow-hidden flex-1 min-h-0 flex items-center justify-center px-4 py-1 sm:py-2 [@media(max-height:760px)]:py-1 [@media(max-height:640px)]:py-0.5">
+        <section className="relative max-h-full w-full max-w-[560px] overflow-hidden rounded-[24px] border border-slate-100 bg-white/95 px-5 py-2 sm:px-6 sm:py-2.5 shadow-xl shadow-slate-200/50 backdrop-blur-md">
+          <div className="mb-0.5 text-center [@media(max-height:760px)]:hidden">
+            <img src={BITEMAP_LOGO_SRC} alt="BITEMAP logo" className="mx-auto h-7 w-7 sm:h-8 sm:w-8 object-contain" />
           </div>
 
           {requestSubmitted ? (
@@ -264,27 +264,27 @@ export function RequestAccountApproval() {
             </div>
           ) : (
             <>
-              <div className="mb-1.5 text-center">
+              <div className="mb-1 text-center">
                 <h2 className="text-[20px] font-extrabold leading-tight text-slate-900 sm:text-[22px] [@media(max-height:640px)]:text-[18px]">Request Account Approval</h2>
-                <p className="mt-0.5 text-[12px] font-medium text-slate-500 [@media(max-height:640px)]:hidden">Submit your details for authorized staff review.</p>
+                <p className="mt-0.5 text-[12px] font-medium text-slate-500 [@media(max-height:760px)]:hidden">Submit your details for authorized staff review.</p>
               </div>
 
               {googleUnregisteredNotice && (
                 <div
                   role="status"
-                  className="mb-1.5 flex items-start gap-2 rounded-xl border border-teal-200 bg-teal-50/90 px-3 py-1.5 text-left text-[12px] font-medium leading-snug text-teal-900"
+                  className="mb-1 flex items-start gap-2 rounded-xl border border-teal-200 bg-teal-50/90 px-3 py-1 text-left text-[12px] font-medium leading-snug text-teal-900"
                 >
                   <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-teal-700" />
                   <p>{googleUnregisteredNotice}</p>
                 </div>
               )}
 
-              <form onSubmit={handleRequestSubmit} className="space-y-1.5">
+              <form onSubmit={handleRequestSubmit} className="space-y-1.5 [@media(max-height:760px)]:space-y-1">
                 {/* Personal Information Section */}
                 <div className="space-y-1">
                   <h3 className="text-[12px] font-semibold text-slate-500 leading-tight">Personal Information</h3>
                   
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-2.5">
+                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 sm:gap-2">
                     <div>
                       <label className="mb-0.5 block text-[12px] font-semibold text-slate-800 leading-tight">First Name</label>
                       <input
@@ -294,7 +294,7 @@ export function RequestAccountApproval() {
                         onChange={(e) => setRequestForm({ ...requestForm, firstName: e.target.value })}
                         required
                         placeholder="First name"
-                        className="h-8 w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                        className="h-8 w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20 [@media(max-height:760px)]:h-7"
                       />
                     </div>
                     <div>
@@ -306,12 +306,12 @@ export function RequestAccountApproval() {
                         onChange={(e) => setRequestForm({ ...requestForm, lastName: e.target.value })}
                         required
                         placeholder="Last name"
-                        className="h-8 w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                        className="h-8 w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20 [@media(max-height:760px)]:h-7"
                       />
                     </div>
                   </div>
                   
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-2.5">
+                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 sm:gap-2">
                     <div>
                       <label className="mb-0.5 block text-[12px] font-semibold text-slate-800 leading-tight">Middle Name <span className="font-normal text-slate-400">(optional)</span></label>
                       <input
@@ -320,7 +320,7 @@ export function RequestAccountApproval() {
                         value={requestForm.middleName}
                         onChange={(e) => setRequestForm({ ...requestForm, middleName: e.target.value })}
                         placeholder="Middle name"
-                        className="h-8 w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                        className="h-8 w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20 [@media(max-height:760px)]:h-7"
                       />
                     </div>
                     <div>
@@ -331,7 +331,7 @@ export function RequestAccountApproval() {
                         value={requestForm.suffix}
                         onChange={(e) => setRequestForm({ ...requestForm, suffix: e.target.value })}
                         placeholder="Jr., Sr., II, etc."
-                        className="h-8 w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                        className="h-8 w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20 [@media(max-height:760px)]:h-7"
                       />
                     </div>
                   </div>
@@ -341,7 +341,7 @@ export function RequestAccountApproval() {
                 <div className="space-y-1">
                   <h3 className="text-[12px] font-semibold text-slate-500 leading-tight">Account Information</h3>
                   
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-2.5">
+                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 sm:gap-2">
                     <div>
                       <label className="mb-0.5 block text-[12px] font-semibold text-slate-800 leading-tight">Email</label>
                       <input
@@ -350,7 +350,7 @@ export function RequestAccountApproval() {
                         onChange={(e) => setRequestForm({ ...requestForm, email: e.target.value })}
                         required
                         placeholder="Email address"
-                        className="h-8 w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                        className="h-8 w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20 [@media(max-height:760px)]:h-7"
                       />
                     </div>
                     <div>
@@ -360,21 +360,23 @@ export function RequestAccountApproval() {
                         value={requestForm.phone}
                         onChange={(e) => setRequestForm({ ...requestForm, phone: e.target.value })}
                         placeholder="09XXXXXXXXX"
-                        className="h-8 w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                        className="h-8 w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20 [@media(max-height:760px)]:h-7"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="mb-0.5 block text-[12px] font-semibold text-slate-800 leading-tight">Requested Role</label>
+                    <div className="mb-0.5 flex items-baseline justify-between gap-2">
+                      <label className="block text-[12px] font-semibold text-slate-800 leading-tight">Requested Role</label>
+                      <span className="text-[11px] leading-tight text-slate-500">Reviewed by an authorized clinic administrator.</span>
+                    </div>
                     <RequestedRoleDropdown
                       value={requestForm.role}
                       onChange={(role) => setRequestForm({ ...requestForm, role })}
                     />
-                    <p className="mt-0.5 text-[11px] leading-tight text-slate-500">Reviewed by an authorized clinic administrator.</p>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-2.5">
+                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 sm:gap-2">
                     <div>
                       <label className="mb-0.5 block text-[12px] font-semibold text-slate-800 leading-tight">Password</label>
                       <div className="relative">
@@ -390,7 +392,7 @@ export function RequestAccountApproval() {
                           minLength={MIN_PASSWORD_LENGTH}
                           aria-invalid={showPasswordValidationFeedback}
                           placeholder="Password"
-                          className={'h-8 w-full rounded-lg border bg-white/90 px-3 py-1 pr-10 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:bg-white focus:outline-none focus:ring-2 ' + (showPasswordValidationFeedback ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-500/20' : 'border-slate-200 focus:border-teal-600 focus:ring-teal-500/20')}
+                          className={'h-8 w-full rounded-lg border bg-white/90 px-3 py-1 pr-10 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:bg-white focus:outline-none focus:ring-2 [@media(max-height:760px)]:h-7 ' + (showPasswordValidationFeedback ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-500/20' : 'border-slate-200 focus:border-teal-600 focus:ring-teal-500/20')}
                         />
                         <button
                           type="button"
@@ -413,7 +415,7 @@ export function RequestAccountApproval() {
                         minLength={MIN_PASSWORD_LENGTH}
                         aria-invalid={showConfirmMismatchFeedback}
                         placeholder="Repeat password"
-                        className={'h-8 w-full rounded-lg border bg-white/90 px-3 py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:bg-white focus:outline-none focus:ring-2 ' + (showConfirmMismatchFeedback ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-500/20' : 'border-slate-200 focus:border-teal-600 focus:ring-teal-500/20')}
+                        className={'h-8 w-full rounded-lg border bg-white/90 px-3 py-1 text-[13px] text-slate-900 placeholder:text-slate-400 transition-colors focus:bg-white focus:outline-none focus:ring-2 [@media(max-height:760px)]:h-7 ' + (showConfirmMismatchFeedback ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-500/20' : 'border-slate-200 focus:border-teal-600 focus:ring-teal-500/20')}
                       />
                       {showConfirmMismatchFeedback && passwordMismatch && (
                         <p role="alert" className="mt-0.5 flex items-center gap-1 text-[11px] font-medium leading-tight text-rose-600">
@@ -425,9 +427,9 @@ export function RequestAccountApproval() {
                   </div>
 
                   {/* Password Requirements & Validation Feedback */}
-                  <div className="rounded-lg border border-slate-200/80 bg-slate-50/90 px-2.5 py-1.5">
+                  <div className="rounded-lg border border-slate-200/80 bg-slate-50/90 px-2.5 py-1.5 [@media(max-height:760px)]:py-1">
                     <p className="text-[11px] font-semibold text-slate-700 leading-tight">Password Requirements:</p>
-                    <ul className="mt-1 grid grid-cols-1 gap-x-3 gap-y-0.5 sm:grid-cols-2" aria-label="Password requirements">
+                    <ul className="mt-0.5 grid grid-cols-1 gap-x-2.5 gap-y-0.5 sm:grid-cols-2" aria-label="Password requirements">
                       {passwordEvaluation.checks.map((rule) => {
                         const isUnmetHighlighted = !rule.met && showPasswordValidationFeedback;
                         return (
@@ -454,16 +456,16 @@ export function RequestAccountApproval() {
                   </div>
                 </div>
 
-                <div className="pt-1 [@media(max-height:640px)]:pt-0.5">
+                <div className="pt-0.5">
                   <button
                     type="submit"
                     disabled={isRequestSubmitting}
-                    className="h-9 sm:h-10 w-full rounded-full border border-transparent bg-gradient-to-r from-teal-800 to-teal-600 text-[14px] font-extrabold text-white shadow-lg shadow-teal-900/20 transition-colors hover:from-teal-900 hover:to-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500/35 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 [@media(max-height:640px)]:h-8"
+                    className="h-9 sm:h-10 w-full rounded-full border border-transparent bg-gradient-to-r from-teal-800 to-teal-600 text-[14px] font-extrabold text-white shadow-lg shadow-teal-900/20 transition-colors hover:from-teal-900 hover:to-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500/35 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 [@media(max-height:760px)]:h-8"
                   >
                     {isRequestSubmitting ? "Submitting..." : "Submit Request"}
                   </button>
                   
-                  <div className="mt-1.5 text-center [@media(max-height:640px)]:mt-1">
+                  <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-400">
                     <Link
                       to="/login"
                       className="inline-flex items-center text-[13px] font-medium text-slate-500 transition-colors hover:text-teal-700 focus:outline-none"
@@ -471,13 +473,12 @@ export function RequestAccountApproval() {
                       <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
                       Back to Sign In
                     </Link>
+                    <span className="hidden sm:inline font-medium text-slate-400">
+                      Account requests are reviewed by authorized clinic administrators.
+                    </span>
                   </div>
                 </div>
               </form>
-              
-              <p className="mt-1.5 text-center text-[11px] font-medium text-slate-400 [@media(max-height:640px)]:hidden">
-                Account requests are reviewed by authorized clinic administrators.
-              </p>
             </>
           )}
         </section>

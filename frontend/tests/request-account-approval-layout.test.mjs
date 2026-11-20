@@ -7,6 +7,20 @@ const pageSource = await readFile(
   'utf8'
 );
 
+const loginSource = await readFile(
+  new URL('../src/app/pages/Login.tsx', import.meta.url),
+  'utf8'
+);
+
+test('Login page locks root viewport without page-level scroll', () => {
+  assert.match(loginSource, /h-screen max-h-screen/);
+  assert.match(loginSource, /overflow-hidden/);
+  assert.doesNotMatch(loginSource, /<div[^>]*min-h-screen[^>]*AnimatedGISBackground/);
+  assert.match(loginSource, /<header[^>]*flex-shrink-0/);
+  assert.match(loginSource, /<main[^>]*overflow-hidden[^>]*flex-1[^>]*min-h-0/);
+  assert.match(loginSource, /<footer[^>]*flex-shrink-0/);
+});
+
 test('RequestAccountApproval locks root viewport without page-level scroll', () => {
   // Outermost root wrapper must lock viewport height and hide overflow
   assert.match(pageSource, /h-screen max-h-screen/);
@@ -18,23 +32,24 @@ test('RequestAccountApproval locks root viewport without page-level scroll', () 
   assert.match(pageSource, /<footer[^>]*flex-shrink-0/);
 });
 
-test('RequestAccountApproval isolates overflow inside main and card container', () => {
+test('RequestAccountApproval fixes modal card without card-level scrollbars', () => {
   // <main> container must clip overflow and flex-fill available space
   assert.match(pageSource, /<main[^>]*overflow-hidden[^>]*flex-1[^>]*min-h-0/);
 
-  // Card <section> must have max-h-full and overflow-y-auto
-  assert.match(pageSource, /<section[^>]*max-h-full[^>]*overflow-y-auto/);
+  // Card <section> must remain fixed (overflow-hidden, no overflow-y-auto scrollbar)
+  assert.match(pageSource, /<section[^>]*max-h-full[^>]*overflow-hidden/);
+  assert.doesNotMatch(pageSource, /<section[^>]*overflow-y-auto/);
 });
 
 test('RequestAccountApproval uses compact form spacing and field heights', () => {
   // Compact outer card padding
-  assert.match(pageSource, /py-2 sm:px-6 sm:py-3/);
+  assert.match(pageSource, /py-2 sm:px-6 sm:py-2\.5/);
 
   // Compact field grid gap
-  assert.match(pageSource, /gap-2 sm:grid-cols-2 sm:gap-2\.5/);
+  assert.match(pageSource, /gap-1\.5 sm:grid-cols-2 sm:gap-2/);
 
   // Compact vertical spacing between form groups
-  assert.match(pageSource, /className="space-y-1\.5"/);
+  assert.match(pageSource, /space-y-1\.5/);
 
   // Inputs have compact height, padding, and font size
   assert.match(pageSource, /h-8 w-full rounded-lg[^>]*px-3 py-1 text-\[13px\]/);
